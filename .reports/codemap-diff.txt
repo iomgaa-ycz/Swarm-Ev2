@@ -1,83 +1,62 @@
-Codemap Diff Report
-===================
-Generated: 2026-01-30 22:00:00
 
-Summary:
---------
-- Previous Update: 2026-01-30
-- Current Update: 2026-01-30 22:00:00
-- Changes Detected: ~5% (minor updates)
+# Codemap 差异分析报告
+生成时间: 2026-01-31 00:18:22
 
-Detailed Changes:
------------------
+## 1. 代码库统计
 
-1. architecture.md
-   - 更新时间戳
-   - 确认 Phase 1 完成状态
-   - 新增测试明细统计
-   - 变更比例: ~3%
+### 核心模块 (core/)
+- 文件数: 8
+- 总行数: 1122
 
-2. backend.md
-   - 更新时间戳
-   - 补充后端抽象层详细说明
-   - 新增 GLM 4.7 配置示例
-   - 变更比例: ~5%
+### 工具模块 (utils/)
+- 文件数: 6
+- 总行数: 1224
 
-3. data.md
-   - 更新时间戳
-   - 确认配置优先级说明
-   - 变更比例: ~2%
+### 测试模块 (tests/)
+- 文件数: 13
+- 总行数: 2218
 
-Overall Assessment:
--------------------
-总体变更 < 10%，无需用户批准，直接更新。
+## 2. 变更分析
 
-主要变化为:
-- 时间戳更新
-- 细节补充（测试统计、后端配置）
-- 内容结构优化
+### Phase 1 已完成模块 (基准)
+- 总行数: 1667
+- 模块数: 10
 
-Updated Files:
---------------
-1. docs/CODEMAPS/architecture.md
-   - 更新时间戳: 2026-01-30 22:00:00
-   - 补充测试统计表格（新增状态列）
-   - 更新 Phase 1 模块行数统计
+### Phase 2 新增模块
+- 总行数: 837
+- 模块数: 5
+- 变更百分比: 50.21%
 
-2. docs/CODEMAPS/backend.md
-   - 更新时间戳: 2026-01-30 22:00:00
-   - 新增「模块依赖图」章节（Mermaid 图）
-   - 补充依赖层级说明
+新增文件:
+  - core/executor/interpreter.py
+  - core/executor/workspace.py
+  - utils/data_preview.py
+  - utils/metric.py
+  - utils/response.py
 
-3. docs/CODEMAPS/data.md
-   - 更新时间戳: 2026-01-30 22:00:00
-   - 新增「实际使用示例」章节
-   - 补充完整初始化流程代码
-   - 补充 CLI 参数和环境变量优先级测试示例
+## 3. 结论
 
-Code Statistics:
-----------------
-Core Modules:
-- core/state/node.py: 118 lines
-- core/state/journal.py: 229 lines
-- core/state/task.py: 62 lines
-- core/backend/__init__.py: 146 lines
-- core/backend/backend_openai.py: 132 lines
-- core/backend/backend_anthropic.py: 142 lines
-- core/backend/utils.py: 80 lines
+变更百分比: 50.21%
 
-Utils Modules:
-- utils/config.py: 456 lines
-- utils/logger_system.py: 180 lines
-- utils/file_utils.py: 113 lines
+⚠️ 变更 >= 30%，需要用户审核
 
-Total Lines: 1676 lines
+---
+详细文件列表:
 
-Documentation Health:
----------------------
-✅ All codemaps updated successfully
-✅ Timestamps synchronized
-✅ Dependency graphs added
-✅ Code examples added
-✅ No structural breaking changes
-✅ Ready for next phase development
+core/:
+  - core/backend/backend_anthropic.py
+  - core/backend/backend_openai.py
+  - core/backend/utils.py
+  - core/state/task.py
+  - core/state/journal.py
+  - core/state/node.py
+  - core/executor/interpreter.py
+  - core/executor/workspace.py
+
+utils/:
+  - utils/logger_system.py
+  - utils/config.py
+  - utils/data_preview.py
+  - utils/response.py
+  - utils/metric.py
+  - utils/file_utils.py
