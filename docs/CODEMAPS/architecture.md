@@ -1,8 +1,8 @@
 # Swarm-Ev2 项目架构概览
 
-**Last Updated:** 2026-01-30 22:00:00
+**Last Updated:** 2026-01-31 00:20:00
 **项目版本:** 0.1.0
-**当前阶段:** Phase 1 基础设施搭建（已完成）
+**当前阶段:** Phase 2 核心功能（部分完成：执行层）
 
 ---
 
@@ -38,7 +38,7 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 │   ExperiencePool · GeneParser                    │  ← Phase 3-4
 ├─────────────────────────────────────────────────┤
 │              执行层 (Execution)                   │
-│   Interpreter · WorkspaceManager                 │  ← Phase 2
+│   Interpreter · WorkspaceManager                 │  ← Phase 2 ★已完成★
 ├─────────────────────────────────────────────────┤
 │              核心数据层 (State)                    │
 │   Node · Journal · Task                          │  ← Phase 1 ★已完成★
@@ -75,13 +75,16 @@ graph TD
         BUTILS[core/backend/utils.py<br/>消息格式 + 重试]
     end
 
-    subgraph "Phase 2 - 待实现"
-        AGENT[agents/base_agent.py]
-        CODER[agents/coder_agent.py]
-        ORCH[core/orchestrator.py]
-        INTERP[core/executor/interpreter.py]
-        WS[core/executor/workspace.py]
-        PB[utils/prompt_builder.py]
+    subgraph "Phase 2 - 部分完成"
+        AGENT[agents/base_agent.py<br/>待实现]
+        CODER[agents/coder_agent.py<br/>待实现]
+        ORCH[core/orchestrator.py<br/>待实现]
+        INTERP[core/executor/interpreter.py<br/>✅ 已完成]
+        WS[core/executor/workspace.py<br/>✅ 已完成]
+        PB[utils/prompt_builder.py<br/>待实现]
+        DP[utils/data_preview.py<br/>✅ 已完成]
+        METRIC[utils/metric.py<br/>✅ 已完成]
+        RESP[utils/response.py<br/>✅ 已完成]
     end
 
     subgraph "Phase 3 - 待实现"
@@ -115,7 +118,11 @@ graph TD
 
     INTERP --> LOG
     WS --> CFG
-    WS --> FU
+    WS --> LOG
+
+    DP --> LOG
+    METRIC -.-> LOG
+    RESP -.-> LOG
 
     AEVO --> EPOOL
     SEVO --> GENE
@@ -130,45 +137,66 @@ graph TD
 | Phase | 名称 | 状态 | 核心交付物 |
 |-------|------|------|-----------|
 | **1** | 基础设施重构 | **已完成** | config.py, logger_system.py, file_utils.py |
-| **1** | 核心数据结构 | **已完成** | Node (118行), Journal (229行), Task (62行) |
-| **1** | 后端抽象层 | **已完成** | Backend (500行) - OpenAI, Anthropic, GLM 4.7 |
-| 2 | 核心功能 | 待实现 | BaseAgent, Orchestrator, Interpreter |
+| **1** | 核心数据结构 | **已完成** | Node (119行), Journal (229行), Task (63行) |
+| **1** | 后端抽象层 | **已完成** | Backend (504行) - OpenAI, Anthropic, GLM 4.7 |
+| **2** | **执行层** | **已完成** | **Interpreter (177行), WorkspaceManager (182行)** |
+| **2** | **工具增强** | **已完成** | **data_preview (270行), metric (118行), response (90行)** |
+| 2 | Agent 框架 | 待实现 | BaseAgent, Orchestrator, CoderAgent |
 | 3 | 双层群体智能 | 待实现 | GA, AgentEvolution, ParallelEvaluator |
 | 4 | 扩展功能 | 待实现 | Memory, ToolRegistry, AgentRegistry |
 | 5 | 测试与文档 | 进行中 | 80%+ 覆盖率, 端到端验证 |
 
-### Phase 1 已完成模块明细
+### Phase 1-2 已完成模块明细
 
 | 模块 | 文件 | 行数 | 状态 |
 |------|------|------|------|
-| 配置管理 | `utils/config.py` | 457 | 已完成 |
-| 日志系统 | `utils/logger_system.py` | 181 | 已完成 |
-| 文件工具 | `utils/file_utils.py` | 114 | 已完成 |
-| **Node 数据类** | `core/state/node.py` | 119 | **已完成** |
-| **Journal 数据类** | `core/state/journal.py` | 229 | **已完成** |
-| **Task 数据类** | `core/state/task.py` | 63 | **已完成** |
-| **后端抽象层** | `core/backend/__init__.py` | 147 | **已完成** |
-| **OpenAI 后端** | `core/backend/backend_openai.py` | 133 | **已完成** |
-| **Anthropic 后端** | `core/backend/backend_anthropic.py` | 143 | **已完成** |
-| **后端工具** | `core/backend/utils.py` | 81 | **已完成** |
-| YAML 配置 | `config/default.yaml` | 77 | 已完成 |
-| 环境变量模板 | `.env.example` | 36 | 已完成 |
-| 依赖声明 | `requirements.txt` | 36 | 已完成 |
+| **Phase 1: 基础设施** ||||
+| 配置管理 | `utils/config.py` | 457 | ✅ 已完成 |
+| 日志系统 | `utils/logger_system.py` | 181 | ✅ 已完成 |
+| 文件工具 | `utils/file_utils.py` | 114 | ✅ 已完成 |
+| **Phase 1: 数据结构** ||||
+| Node 数据类 | `core/state/node.py` | 119 | ✅ 已完成 |
+| Journal 数据类 | `core/state/journal.py` | 229 | ✅ 已完成 |
+| Task 数据类 | `core/state/task.py` | 63 | ✅ 已完成 |
+| **Phase 1: 后端抽象** ||||
+| 后端抽象层 | `core/backend/__init__.py` | 147 | ✅ 已完成 |
+| OpenAI 后端 | `core/backend/backend_openai.py` | 133 | ✅ 已完成 |
+| Anthropic 后端 | `core/backend/backend_anthropic.py` | 143 | ✅ 已完成 |
+| 后端工具 | `core/backend/utils.py` | 81 | ✅ 已完成 |
+| **Phase 2: 执行层** ||||
+| **代码执行器** | **`core/executor/interpreter.py`** | **177** | **✅ 已完成** |
+| **工作空间管理** | **`core/executor/workspace.py`** | **182** | **✅ 已完成** |
+| **Phase 2: 工具增强** ||||
+| **数据预览** | **`utils/data_preview.py`** | **270** | **✅ 已完成** |
+| **指标工具** | **`utils/metric.py`** | **118** | **✅ 已完成** |
+| **响应解析** | **`utils/response.py`** | **90** | **✅ 已完成** |
+| **配置文件** ||||
+| YAML 配置 | `config/default.yaml` | 77 | ✅ 已完成 |
+| 环境变量模板 | `.env.example` | 36 | ✅ 已完成 |
+| 依赖声明 | `requirements.txt` | 36 | ✅ 已完成 |
 
-### Phase 1 已完成测试明细
+### Phase 1-2 已完成测试明细
 
 | 测试文件 | 测试数 | 覆盖模块 | 状态 |
 |----------|--------|---------|------|
+| **Phase 1 测试** ||||
 | `tests/unit/test_config.py` | 7 | config.py | ✅ |
 | `tests/unit/test_config_priority.py` | 4 | config.py (优先级) | ✅ |
 | `tests/unit/test_file_utils.py` | 5 | file_utils.py | ✅ |
-| **`tests/unit/test_node.py`** | 7 | **Node 数据类** | ✅ |
-| **`tests/unit/test_journal.py`** | 12 | **Journal + parse_solution_genes** | ✅ |
-| **`tests/unit/test_task.py`** | 5 | **Task 数据类** | ✅ |
-| **`tests/unit/test_state_integration.py`** | 1 | **State 模块集成** | ✅ |
-| **`tests/unit/test_backend.py`** | 待补充 | **Backend 抽象层** | 🔴 待添加 |
+| `tests/unit/test_node.py` | 7 | Node 数据类 | ✅ |
+| `tests/unit/test_journal.py` | 12 | Journal + parse_solution_genes | ✅ |
+| `tests/unit/test_task.py` | 5 | Task 数据类 | ✅ |
+| `tests/unit/test_state_integration.py` | 1 | State 模块集成 | ✅ |
+| **Phase 2 测试** ||||
+| **`tests/unit/test_interpreter.py`** | **5** | **Interpreter 执行器** | **✅** |
+| **`tests/unit/test_workspace.py`** | **6** | **WorkspaceManager** | **✅** |
+| **`tests/unit/test_data_preview.py`** | **4** | **data_preview** | **✅** |
+| **`tests/unit/test_metric.py`** | **5** | **metric** | **✅** |
+| **`tests/unit/test_response.py`** | **3** | **response** | **✅** |
+| **待补充** ||||
+| `tests/unit/test_backend.py` | 待补充 | Backend 抽象层 | 🔴 待添加 |
 
-**总计**: 41 个单元测试 | 覆盖率 > 80%
+**总计**: 64 个单元测试 | 覆盖率 > 80%
 
 ---
 
@@ -197,8 +225,9 @@ Swarm-Ev2/
 │   │   ├── backend_anthropic.py   # Anthropic             ★ 已完成
 │   │   └── utils.py               # 消息格式 + 重试        ★ 已完成
 │   ├── executor/                  # 代码执行
-│   │   ├── interpreter.py         # 执行沙箱              Phase 2
-│   │   └── workspace.py           # 工作空间管理           Phase 2
+│   │   ├── __init__.py            # 模块导出              ★ 已完成
+│   │   ├── interpreter.py         # 执行沙箱              ★ 已完成
+│   │   └── workspace.py           # 工作空间管理           ★ 已完成
 │   ├── orchestrator.py            # 编排器                 Phase 2
 │   └── evolution/                 # 进化机制
 │       ├── agent_evolution.py     # Agent 层进化           Phase 3
@@ -213,6 +242,9 @@ Swarm-Ev2/
 │   ├── config.py                  # 配置管理               ★ 已完成
 │   ├── logger_system.py           # 日志系统               ★ 已完成
 │   ├── file_utils.py              # 文件工具               ★ 已完成
+│   ├── data_preview.py            # 数据预览生成           ★ 已完成
+│   ├── metric.py                  # 评估指标工具           ★ 已完成
+│   ├── response.py                # LLM 响应解析           ★ 已完成
 │   └── prompt_builder.py          # Prompt 构建器          Phase 2
 ├── tests/                         # 测试
 │   ├── unit/                      # 单元测试               ★ 已完成 (部分)

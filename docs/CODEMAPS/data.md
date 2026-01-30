@@ -1,7 +1,7 @@
 # 数据流与配置管理
 
-**Last Updated:** 2026-01-30 22:00:00
-**模块范围:** config/, .env, utils/config.py, utils/logger_system.py
+**Last Updated:** 2026-01-31 00:20:00
+**模块范围:** config/, .env, utils/config.py, utils/logger_system.py, core/executor/
 
 ---
 
@@ -173,11 +173,14 @@ workspace/                    # project.workspace_dir
 │   ├── test.csv             # symlink → data_dir/test.csv
 │   └── ...
 ├── working/                  # Agent 临时工作目录
-│   └── runfile.py           # 临时执行文件
+│   └── _temp_script.py      # 临时执行文件（Interpreter 自动创建）
 ├── submission/               # 提交文件目录
 │   ├── submission_{node_id}.csv  # 各节点的提交文件
 │   └── ...
-└── best_solution/            # 最佳解决方案 (Phase 2)
+├── archives/                 # 归档文件目录 (Phase 2 新增)
+│   ├── node_{node_id}.zip   # 每个节点的归档文件（solution.py + submission.csv）
+│   └── ...
+└── best_solution/            # 最佳解决方案
     ├── solution.py
     ├── submission.csv
     └── node_id.txt
@@ -201,6 +204,21 @@ workspace/input/ ← shutil.copytree ← data_dir/
   - 复制后递归设置只读权限
   - Windows 环境推荐
 ```
+
+### 4.3 归档文件管理 (Phase 2)
+
+每个 Node 执行完成后，WorkspaceManager 会自动打包为 zip 归档：
+
+```
+archives/node_abc123.zip
+├── solution.py         # 代码内容
+└── submission.csv      # 预测结果（如果存在）
+```
+
+**归档时机：**
+- Node 执行完成且有 submission 文件时
+- 用于后续分析和审查
+- 节省磁盘空间（相比保留原始文件）
 
 ---
 
@@ -254,7 +272,7 @@ logs/                        # project.log_dir
 ```
 用户输入                       系统输出
 ───────                       ───────
-data_dir/ ──→ workspace/input/    (只读数据)
+data_dir/ ──→ workspace/input/    (只读数据，symlink)
                     ↓
 config.yaml ──→ Config 对象 ──→ Agent 配置
                     ↓
@@ -262,9 +280,13 @@ config.yaml ──→ Config 对象 ──→ Agent 配置
                     ↓
             Agent 生成代码
                     ↓
-        Interpreter 执行代码
+        WorkspaceManager 重写路径
                     ↓
-    workspace/submission/ ──→ submission_{id}.csv
+        Interpreter 执行代码 (subprocess)
+                    ↓
+    workspace/submission/ ──→ submission_{node_id}.csv
+                    ↓
+        WorkspaceManager 归档 ──→ archives/node_{id}.zip
                     ↓
         评估 metric_value
                     ↓

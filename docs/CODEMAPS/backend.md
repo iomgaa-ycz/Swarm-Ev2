@@ -1,7 +1,7 @@
 # 后端模块详细说明
 
-**Last Updated:** 2026-01-30 22:00:00
-**模块范围:** utils/, core/state/, config/, tests/
+**Last Updated:** 2026-01-31 00:20:00
+**模块范围:** utils/, core/state/, core/backend/, core/executor/, config/, tests/
 
 ---
 
@@ -19,6 +19,11 @@
 | **OpenAI 后端** | `core/backend/backend_openai.py` | OpenAI + GLM 支持 | **已完成** |
 | **Anthropic 后端** | `core/backend/backend_anthropic.py` | Claude 系列支持 | **已完成** |
 | **后端工具** | `core/backend/utils.py` | 消息格式化 + 重试机制 | **已完成** |
+| **代码执行器** | `core/executor/interpreter.py` | 沙箱执行 + 超时控制 | **已完成** |
+| **工作空间管理** | `core/executor/workspace.py` | 目录管理 + 文件归档 | **已完成** |
+| **数据预览** | `utils/data_preview.py` | EDA 预览生成 | **已完成** |
+| **指标工具** | `utils/metric.py` | 评估指标容器 | **已完成** |
+| **响应解析** | `utils/response.py` | LLM 响应提取 | **已完成** |
 | YAML 配置 | `config/default.yaml` | 项目主配置 | 已完成 |
 | 环境变量 | `.env.example` | API Keys 模板 | 已完成 |
 
@@ -601,7 +606,231 @@ except Exception as e:
 
 ---
 
-## 9. 模块依赖图
+## 9. 执行层模块 (`core/executor/`)
+
+### 9.1 Interpreter (`core/executor/interpreter.py`)
+
+Python 代码执行沙箱，使用独立的 subprocess 执行代码。
+
+```python
+@dataclass
+class ExecutionResult:
+    """代码执行结果容器。"""
+    term_out: List[str]              # 终端输出（stdout + stderr）
+    exec_time: float                 # 执行时间（秒）
+    exc_type: Optional[str]          # 异常类型（如 "ValueError"）
+    exc_info: Optional[str]          # 异常详情（traceback 最后 5 行）
+    success: bool                    # 执行是否成功
+    timeout: bool                    # 是否超时
+
+class Interpreter:
+    """Python 代码执行沙箱。"""
+    def __init__(self, working_dir: Path, timeout: int = 300):
+        """初始化执行器。"""
+
+    def run(self, code: str, reset_session: bool = True) -> ExecutionResult:
+        """执行 Python 代码。"""
+```
+
+**核心功能:**
+
+| 方法 | 说明 |
+|------|------|
+| `run(code)` | 在独立进程中执行代码，捕获输出和异常 |
+| `_execute_in_subprocess(code)` | 创建临时脚本并执行 |
+| `_capture_exception(stderr)` | 从 stderr 解析异常类型和 traceback |
+
+**异常处理:**
+- `TimeoutError`: 执行超过 timeout 限制
+- `UnknownError`: 无法识别的异常类型
+- 自动提取 traceback 最后 5 行作为详情
+
+**使用示例:**
+
+```python
+from core.executor import Interpreter
+from pathlib import Path
+
+interp = Interpreter(working_dir=Path("workspace/working"), timeout=300)
+
+result = interp.run(code="print('hello')")
+if result.success:
+    print(f"执行成功，耗时 {result.exec_time:.2f}s")
+else:
+    print(f"执行失败: {result.exc_type} - {result.exc_info}")
+```
+
+### 9.2 WorkspaceManager (`core/executor/workspace.py`)
+
+工作空间管理器，负责目录结构管理和文件归档。
+
+```python
+class WorkspaceManager:
+    """工作空间管理器。
+
+    目录结构：
+    workspace/
+    ├── input/          # 输入数据（符号链接）
+    ├── working/        # 临时工作目录
+    ├── submission/     # 预测结果（每个 node 一个文件）
+    ├── archives/       # 归档文件（每个 node 一个 zip）
+    └── best_solution/  # 最佳解决方案
+    """
+```
+
+**核心方法:**
+
+| 方法 | 签名 | 说明 |
+|------|------|------|
+| `setup()` | `() -> None` | 创建工作空间目录结构 |
+| `link_input_data(source_dir)` | `(Path?) -> None` | 链接/复制输入数据到 workspace/input/ |
+| `rewrite_submission_path(code, node_id)` | `(str, str) -> str` | 重写代码中的 submission 路径 |
+| `archive_node_files(node_id, code)` | `(str, str) -> Path?` | 打包节点文件为 zip |
+| `cleanup_submission()` | `() -> None` | 清空 submission 目录 |
+| `cleanup_working()` | `() -> None` | 清空 working 目录 |
+
+**路径重写示例:**
+
+```python
+manager.rewrite_submission_path(
+    code='df.to_csv("./submission/submission.csv")',
+    node_id='abc123'
+)
+# 输出: 'df.to_csv("./submission/submission_abc123.csv")'
+```
+
+**归档文件格式:**
+
+```
+archives/node_abc123.zip
+├── solution.py         # 代码内容
+└── submission.csv      # 预测结果（如果存在）
+```
+
+---
+
+## 10. 工具模块增强 (`utils/`)
+
+### 10.1 数据预览 (`utils/data_preview.py`)
+
+基于 aideml/ML-Master 实现，生成用于 LLM Prompt 的数据集预览。
+
+**核心函数:**
+
+| 函数 | 签名 | 说明 |
+|------|------|------|
+| `generate(base_path, include_file_details, simple)` | `(Path, bool, bool) -> str` | 生成目录的文本预览 |
+| `file_tree(path, depth, max_dirs)` | `(Path, int, int) -> str` | 生成目录树结构 |
+| `preview_csv(p, file_name, simple)` | `(Path, str, bool) -> str` | 生成 CSV 文件预览 |
+| `preview_json(p, file_name)` | `(Path, str) -> str` | 生成 JSON 文件预览（自动生成 Schema） |
+
+**CSV 预览模式:**
+
+- **简化模式** (`simple=True`): shape + 前 15 列列名
+- **详细模式** (`simple=False`): 每列统计
+  - bool 列：True/False 百分比
+  - 低基数列（< 10 个唯一值）：显示所有唯一值
+  - 数值列：min-max 范围 + 缺失值数量
+  - 字符串列：唯一值数量 + 前 4 个常见值
+
+**自动长度控制:**
+- 输出 > 6000 字符：自动降级到 simple 模式
+- 仍 > 6000 字符：截断并添加 "... (truncated)"
+
+**使用示例:**
+
+```python
+from utils.data_preview import generate
+from pathlib import Path
+
+preview_text = generate(
+    base_path=Path("workspace/input"),
+    include_file_details=True,
+    simple=False
+)
+print(preview_text)
+```
+
+### 10.2 评估指标 (`utils/metric.py`)
+
+提供指标值容器和比较工具。
+
+```python
+@dataclass
+class MetricValue:
+    """评估指标值容器。"""
+    value: Optional[float]           # 指标值
+    lower_is_better: bool = False   # 优化方向
+
+    def is_better_than(self, other: "MetricValue") -> bool:
+        """比较两个指标值。"""
+```
+
+**工具函数:**
+
+| 函数 | 签名 | 说明 |
+|------|------|------|
+| `WorstMetricValue(lower_is_better)` | `(bool) -> MetricValue` | 返回最差值（Infinity 或 -Infinity） |
+| `compare_metrics(a, b)` | `(MetricValue, MetricValue) -> int` | 三路比较（-1 / 0 / 1） |
+
+**使用示例:**
+
+```python
+from utils.metric import MetricValue, WorstMetricValue
+
+# 准确率（越高越好）
+m1 = MetricValue(value=0.85, lower_is_better=False)
+m2 = MetricValue(value=0.90, lower_is_better=False)
+print(m2.is_better_than(m1))  # True
+
+# 初始化最差值
+worst = WorstMetricValue(lower_is_better=False)
+print(worst.value)  # -inf
+```
+
+### 10.3 响应解析 (`utils/response.py`)
+
+从 LLM 响应中提取代码和文本的工具。
+
+**核心函数:**
+
+| 函数 | 签名 | 说明 |
+|------|------|------|
+| `extract_code(response)` | `(str) -> str` | 提取第一个 Python 代码块 |
+| `extract_text_up_to_code(response)` | `(str) -> str` | 提取代码块之前的文本（plan/说明） |
+| `trim_long_string(text, max_length)` | `(str, int) -> str` | 截断长字符串并添加省略号 |
+
+**支持的代码块格式:**
+- ` ```python ... ``` `
+- ` ```py ... ``` `
+- ` ``` ... ``` ` (无语言标记)
+
+**使用示例:**
+
+```python
+from utils.response import extract_code, extract_text_up_to_code
+
+response = """
+Here is my plan:
+1. Load data
+2. Train model
+
+```python
+import pandas as pd
+df = pd.read_csv('train.csv')
+```
+"""
+
+plan = extract_text_up_to_code(response)
+# "Here is my plan:\n1. Load data\n2. Train model"
+
+code = extract_code(response)
+# "import pandas as pd\ndf = pd.read_csv('train.csv')"
+```
+
+---
+
+## 11. 模块依赖图
 
 ```mermaid
 graph TD
@@ -624,9 +853,28 @@ graph TD
         BUTILS[core/backend/utils.py]
     end
 
+    subgraph "执行层"
+        INTERP[core/executor/interpreter.py]
+        WS[core/executor/workspace.py]
+    end
+
+    subgraph "工具增强"
+        DP[utils/data_preview.py]
+        METRIC[utils/metric.py]
+        RESP[utils/response.py]
+    end
+
     %% 依赖关系
     JOURNAL --> NODE
     TASK -.-> LOG
+
+    INTERP --> LOG
+    WS --> LOG
+    WS --> CFG
+
+    DP --> LOG
+    METRIC -.-> LOG
+    RESP -.-> LOG
 
     BACKEND --> LOG
     BACKEND --> OPENAI
@@ -648,6 +896,11 @@ graph TD
     style JOURNAL fill:#fff4e6
     style TASK fill:#fff4e6
     style BACKEND fill:#e8f5e9
+    style INTERP fill:#fff3e0
+    style WS fill:#fff3e0
+    style DP fill:#f3e5f5
+    style METRIC fill:#f3e5f5
+    style RESP fill:#f3e5f5
 ```
 
 **依赖层级**:
@@ -655,6 +908,8 @@ graph TD
 2. 配置层: `config.py`, `file_utils.py` (依赖基础层)
 3. 数据层: `Node`, `Journal`, `Task` (自包含，轻量依赖)
 4. 后端层: `backend/*` (依赖基础层)
+5. **执行层**: `executor/*` (依赖基础层 + 配置层)
+6. **工具层**: `data_preview`, `metric`, `response` (依赖基础层)
 
 **关键设计原则**:
 - 单向依赖：下层不依赖上层
@@ -663,7 +918,7 @@ graph TD
 
 ---
 
-## 10. 关联文档
+## 12. 关联文档
 
 | 文档 | 路径 |
 |------|------|
