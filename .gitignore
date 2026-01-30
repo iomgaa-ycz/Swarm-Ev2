@@ -1,4 +1,39 @@
 reference/
 draft.md
 **/.DS_Store
-hunam_draft.py
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# 虚拟环境
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 测试和覆盖率
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+
+# 日志和工作空间
+logs/
+workspace/
+*.log
+
+# 环境变量
+.env
+
+# 临时文件
+*.tmp
+.DS_Store
