@@ -17,7 +17,7 @@ class TestNode:
         assert len(node.id) == 32  # UUID hex 长度
         assert node.parent_id is None
         assert node.children_ids == []
-        assert node.task_type == "draft"
+        assert node.task_type == "explore"  # Phase 2: 默认值改为 "explore"
         assert node.metadata == {}
         assert not node.is_buggy
         assert node.is_valid
@@ -60,7 +60,7 @@ class TestNode:
         """测试 Node stage_name 属性。"""
         # Draft 节点（无父节点）
         draft_node = Node(code="x = 1")
-        assert draft_node.stage_name == "draft"
+        assert draft_node.stage_name == "initial"  # Phase 2: 改为 "initial"
 
         # 有父节点的情况（MVP 阶段返回 unknown）
         child_node = Node(code="x = 2", parent_id="parent_id_123")
