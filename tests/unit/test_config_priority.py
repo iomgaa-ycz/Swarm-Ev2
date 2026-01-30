@@ -45,13 +45,19 @@ data:
 
 llm:
   code:
+    provider: "openai"
     model: "gpt-4-turbo"
     temperature: 0.5
     api_key: ${{env:OPENAI_API_KEY}}
+    base_url: "https://api.openai.com/v1"
+    max_tokens: null
   feedback:
+    provider: "openai"
     model: "gpt-4-turbo"
     temperature: 0.5
     api_key: ${{env:ANTHROPIC_API_KEY}}
+    base_url: "https://api.openai.com/v1"
+    max_tokens: null
 
 execution:
   timeout: 3600
@@ -122,10 +128,14 @@ data:
 
 llm:
   code:
+    provider: "openai"
     model: "gpt-4-turbo"
     temperature: 0.5
     api_key: ${{env:TEST_PRIORITY_KEY}}
+    base_url: "https://api.openai.com/v1"
+    max_tokens: null
   feedback:
+    provider: "openai"
     model: "gpt-4-turbo"
     temperature: 0.5
     api_key: "fallback-key"
@@ -195,10 +205,14 @@ data:
 
 llm:
   code:
+    provider: "openai"
     model: "gpt-4-turbo"
     temperature: 0.5
     api_key: ${{env:TEST_ENV_YAML_KEY}}
+    base_url: "https://api.openai.com/v1"
+    max_tokens: null
   feedback:
+    provider: "openai"
     model: "gpt-4-turbo"
     temperature: 0.5
     api_key: "yaml-default-key"
@@ -269,10 +283,14 @@ data:
 
 llm:
   code:
+    provider: "openai"
     model: ${{env:TEST_FULL_CHAIN_MODEL}}
     temperature: 0.5
     api_key: "test-key"
+    base_url: "https://api.openai.com/v1"
+    max_tokens: null
   feedback:
+    provider: "openai"
     model: "yaml-model"
     temperature: 0.5
     api_key: "test-key"

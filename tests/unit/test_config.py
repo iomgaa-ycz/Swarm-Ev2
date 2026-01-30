@@ -3,8 +3,6 @@
 import pytest
 from pathlib import Path
 from omegaconf import OmegaConf
-import tempfile
-import os
 import re
 
 
@@ -13,11 +11,6 @@ from utils.config import (
     validate_config,
     generate_exp_name,
     setup_workspace,
-    Config,
-    ProjectConfig,
-    DataConfig,
-    LLMConfig,
-    LLMStageConfig,
 )
 
 
@@ -36,8 +29,8 @@ class TestLoadConfig:
 project:
   name: "Swarm-Ev2"
   version: "0.1.0"
-  workspace_dir: "{tmp_path / 'workspace'}"
-  log_dir: "{tmp_path / 'logs'}"
+  workspace_dir: "{tmp_path / "workspace"}"
+  log_dir: "{tmp_path / "logs"}"
   exp_name: null
 
 data:
@@ -50,13 +43,19 @@ data:
 
 llm:
   code:
+    provider: "openai"
     model: "gpt-4-turbo"
     temperature: 0.5
     api_key: "test-key-123"
+    base_url: "https://api.openai.com/v1"
+    max_tokens: null
   feedback:
+    provider: "openai"
     model: "gpt-4-turbo"
     temperature: 0.5
     api_key: "test-key-456"
+    base_url: "https://api.openai.com/v1"
+    max_tokens: null
 
 execution:
   timeout: 3600
@@ -106,8 +105,8 @@ logging:
 project:
   name: "Original"
   version: "0.1.0"
-  workspace_dir: "{tmp_path / 'workspace'}"
-  log_dir: "{tmp_path / 'logs'}"
+  workspace_dir: "{tmp_path / "workspace"}"
+  log_dir: "{tmp_path / "logs"}"
   exp_name: null
 
 data:
@@ -120,13 +119,19 @@ data:
 
 llm:
   code:
+    provider: "openai"
     model: "gpt-3.5-turbo"
     temperature: 0.5
     api_key: "original-key"
+    base_url: "https://api.openai.com/v1"
+    max_tokens: null
   feedback:
+    provider: "openai"
     model: "gpt-3.5-turbo"
     temperature: 0.5
     api_key: "original-key"
+    base_url: "https://api.openai.com/v1"
+    max_tokens: null
 
 execution:
   timeout: 3600
@@ -157,10 +162,9 @@ logging:
         config_path.write_text(config_content)
 
         # 模拟 CLI 参数
-        cli_cfg = OmegaConf.from_dotlist([
-            "project.name=TestProject",
-            "llm.code.model=gpt-4-turbo"
-        ])
+        cli_cfg = OmegaConf.from_dotlist(
+            ["project.name=TestProject", "llm.code.model=gpt-4-turbo"]
+        )
 
         # 加载并合并配置
         base_cfg = OmegaConf.load(config_path)
@@ -183,7 +187,7 @@ class TestValidateConfig:
                 "version": "0.1.0",
                 "workspace_dir": str(tmp_path / "workspace"),
                 "log_dir": str(tmp_path / "logs"),
-                "exp_name": None
+                "exp_name": None,
             },
             "data": {
                 "data_dir": None,  # 缺少必填字段
@@ -191,29 +195,47 @@ class TestValidateConfig:
                 "goal": "Test",
                 "eval": None,
                 "preprocess_data": True,
-                "copy_data": False
+                "copy_data": False,
             },
             "llm": {
-                "code": {"model": "gpt-4", "temperature": 0.5, "api_key": "test"},
-                "feedback": {"model": "gpt-4", "temperature": 0.5, "api_key": "test"}
+                "code": {
+                    "provider": "openai",
+                    "model": "gpt-4",
+                    "temperature": 0.5,
+                    "api_key": "test",
+                    "base_url": "https://api.openai.com/v1",
+                    "max_tokens": None,
+                },
+                "feedback": {
+                    "provider": "openai",
+                    "model": "gpt-4",
+                    "temperature": 0.5,
+                    "api_key": "test",
+                    "base_url": "https://api.openai.com/v1",
+                    "max_tokens": None,
+                },
             },
-            "execution": {"timeout": 3600, "agent_file_name": "run.py", "format_tb_ipython": False},
+            "execution": {
+                "timeout": 3600,
+                "agent_file_name": "run.py",
+                "format_tb_ipython": False,
+            },
             "agent": {
                 "max_steps": 50,
                 "time_limit": 86400,
                 "k_fold_validation": 5,
                 "expose_prediction": False,
                 "data_preview": True,
-                "convert_system_to_user": False
+                "convert_system_to_user": False,
             },
             "search": {
                 "strategy": "mcts",
                 "max_debug_depth": 3,
                 "debug_prob": 0.5,
                 "num_drafts": 5,
-                "parallel_num": 3
+                "parallel_num": 3,
             },
-            "logging": {"level": "INFO", "console_output": True, "file_output": True}
+            "logging": {"level": "INFO", "console_output": True, "file_output": True},
         }
 
         cfg = OmegaConf.create(config_dict)
@@ -233,7 +255,7 @@ class TestValidateConfig:
                 "version": "0.1.0",
                 "workspace_dir": str(tmp_path / "workspace"),
                 "log_dir": str(tmp_path / "logs"),
-                "exp_name": None
+                "exp_name": None,
             },
             "data": {
                 "data_dir": str(test_data_dir),
@@ -241,35 +263,55 @@ class TestValidateConfig:
                 "goal": None,  # 缺少 goal 和 desc_file
                 "eval": None,
                 "preprocess_data": True,
-                "copy_data": False
+                "copy_data": False,
             },
             "llm": {
-                "code": {"model": "gpt-4", "temperature": 0.5, "api_key": "test"},
-                "feedback": {"model": "gpt-4", "temperature": 0.5, "api_key": "test"}
+                "code": {
+                    "provider": "openai",
+                    "model": "gpt-4",
+                    "temperature": 0.5,
+                    "api_key": "test",
+                    "base_url": "https://api.openai.com/v1",
+                    "max_tokens": None,
+                },
+                "feedback": {
+                    "provider": "openai",
+                    "model": "gpt-4",
+                    "temperature": 0.5,
+                    "api_key": "test",
+                    "base_url": "https://api.openai.com/v1",
+                    "max_tokens": None,
+                },
             },
-            "execution": {"timeout": 3600, "agent_file_name": "run.py", "format_tb_ipython": False},
+            "execution": {
+                "timeout": 3600,
+                "agent_file_name": "run.py",
+                "format_tb_ipython": False,
+            },
             "agent": {
                 "max_steps": 50,
                 "time_limit": 86400,
                 "k_fold_validation": 5,
                 "expose_prediction": False,
                 "data_preview": True,
-                "convert_system_to_user": False
+                "convert_system_to_user": False,
             },
             "search": {
                 "strategy": "mcts",
                 "max_debug_depth": 3,
                 "debug_prob": 0.5,
                 "num_drafts": 5,
-                "parallel_num": 3
+                "parallel_num": 3,
             },
-            "logging": {"level": "INFO", "console_output": True, "file_output": True}
+            "logging": {"level": "INFO", "console_output": True, "file_output": True},
         }
 
         cfg = OmegaConf.create(config_dict)
 
         # 验证抛出 ValueError
-        with pytest.raises(ValueError, match="必须提供 `data.desc_file` 或 `data.goal` 之一"):
+        with pytest.raises(
+            ValueError, match="必须提供 `data.desc_file` 或 `data.goal` 之一"
+        ):
             validate_config(cfg)
 
 
@@ -309,7 +351,7 @@ class TestSetupWorkspace:
                 "version": "0.1.0",
                 "workspace_dir": str(tmp_path / "workspace"),
                 "log_dir": str(tmp_path / "logs"),
-                "exp_name": "test_exp"
+                "exp_name": "test_exp",
             },
             "data": {
                 "data_dir": str(test_data_dir),
@@ -317,29 +359,47 @@ class TestSetupWorkspace:
                 "goal": "Test",
                 "eval": None,
                 "preprocess_data": True,
-                "copy_data": False
+                "copy_data": False,
             },
             "llm": {
-                "code": {"model": "gpt-4", "temperature": 0.5, "api_key": "test"},
-                "feedback": {"model": "gpt-4", "temperature": 0.5, "api_key": "test"}
+                "code": {
+                    "provider": "openai",
+                    "model": "gpt-4",
+                    "temperature": 0.5,
+                    "api_key": "test",
+                    "base_url": "https://api.openai.com/v1",
+                    "max_tokens": None,
+                },
+                "feedback": {
+                    "provider": "openai",
+                    "model": "gpt-4",
+                    "temperature": 0.5,
+                    "api_key": "test",
+                    "base_url": "https://api.openai.com/v1",
+                    "max_tokens": None,
+                },
             },
-            "execution": {"timeout": 3600, "agent_file_name": "run.py", "format_tb_ipython": False},
+            "execution": {
+                "timeout": 3600,
+                "agent_file_name": "run.py",
+                "format_tb_ipython": False,
+            },
             "agent": {
                 "max_steps": 50,
                 "time_limit": 86400,
                 "k_fold_validation": 5,
                 "expose_prediction": False,
                 "data_preview": True,
-                "convert_system_to_user": False
+                "convert_system_to_user": False,
             },
             "search": {
                 "strategy": "mcts",
                 "max_debug_depth": 3,
                 "debug_prob": 0.5,
                 "num_drafts": 5,
-                "parallel_num": 3
+                "parallel_num": 3,
             },
-            "logging": {"level": "INFO", "console_output": True, "file_output": True}
+            "logging": {"level": "INFO", "console_output": True, "file_output": True},
         }
 
         cfg_omega = OmegaConf.create(config_dict)
@@ -369,7 +429,7 @@ class TestConfigHashable:
                 "version": "0.1.0",
                 "workspace_dir": str(tmp_path / "workspace"),
                 "log_dir": str(tmp_path / "logs"),
-                "exp_name": "test_exp_1"
+                "exp_name": "test_exp_1",
             },
             "data": {
                 "data_dir": str(test_data_dir),
@@ -377,29 +437,47 @@ class TestConfigHashable:
                 "goal": "Test",
                 "eval": None,
                 "preprocess_data": True,
-                "copy_data": False
+                "copy_data": False,
             },
             "llm": {
-                "code": {"model": "gpt-4", "temperature": 0.5, "api_key": "test"},
-                "feedback": {"model": "gpt-4", "temperature": 0.5, "api_key": "test"}
+                "code": {
+                    "provider": "openai",
+                    "model": "gpt-4",
+                    "temperature": 0.5,
+                    "api_key": "test",
+                    "base_url": "https://api.openai.com/v1",
+                    "max_tokens": None,
+                },
+                "feedback": {
+                    "provider": "openai",
+                    "model": "gpt-4",
+                    "temperature": 0.5,
+                    "api_key": "test",
+                    "base_url": "https://api.openai.com/v1",
+                    "max_tokens": None,
+                },
             },
-            "execution": {"timeout": 3600, "agent_file_name": "run.py", "format_tb_ipython": False},
+            "execution": {
+                "timeout": 3600,
+                "agent_file_name": "run.py",
+                "format_tb_ipython": False,
+            },
             "agent": {
                 "max_steps": 50,
                 "time_limit": 86400,
                 "k_fold_validation": 5,
                 "expose_prediction": False,
                 "data_preview": True,
-                "convert_system_to_user": False
+                "convert_system_to_user": False,
             },
             "search": {
                 "strategy": "mcts",
                 "max_debug_depth": 3,
                 "debug_prob": 0.5,
                 "num_drafts": 5,
-                "parallel_num": 3
+                "parallel_num": 3,
             },
-            "logging": {"level": "INFO", "console_output": True, "file_output": True}
+            "logging": {"level": "INFO", "console_output": True, "file_output": True},
         }
 
         cfg = validate_config(OmegaConf.create(config_dict))
@@ -419,7 +497,7 @@ class TestConfigHashable:
                 "version": "0.1.0",
                 "workspace_dir": str(tmp_path / "workspace"),
                 "log_dir": str(tmp_path / "logs"),
-                "exp_name": "test_exp_2"
+                "exp_name": "test_exp_2",
             },
             "data": {
                 "data_dir": str(test_data_dir),
@@ -427,29 +505,47 @@ class TestConfigHashable:
                 "goal": "Test",
                 "eval": None,
                 "preprocess_data": True,
-                "copy_data": False
+                "copy_data": False,
             },
             "llm": {
-                "code": {"model": "gpt-4", "temperature": 0.5, "api_key": "test"},
-                "feedback": {"model": "gpt-4", "temperature": 0.5, "api_key": "test"}
+                "code": {
+                    "provider": "openai",
+                    "model": "gpt-4",
+                    "temperature": 0.5,
+                    "api_key": "test",
+                    "base_url": "https://api.openai.com/v1",
+                    "max_tokens": None,
+                },
+                "feedback": {
+                    "provider": "openai",
+                    "model": "gpt-4",
+                    "temperature": 0.5,
+                    "api_key": "test",
+                    "base_url": "https://api.openai.com/v1",
+                    "max_tokens": None,
+                },
             },
-            "execution": {"timeout": 3600, "agent_file_name": "run.py", "format_tb_ipython": False},
+            "execution": {
+                "timeout": 3600,
+                "agent_file_name": "run.py",
+                "format_tb_ipython": False,
+            },
             "agent": {
                 "max_steps": 50,
                 "time_limit": 86400,
                 "k_fold_validation": 5,
                 "expose_prediction": False,
                 "data_preview": True,
-                "convert_system_to_user": False
+                "convert_system_to_user": False,
             },
             "search": {
                 "strategy": "mcts",
                 "max_debug_depth": 3,
                 "debug_prob": 0.5,
                 "num_drafts": 5,
-                "parallel_num": 3
+                "parallel_num": 3,
             },
-            "logging": {"level": "INFO", "console_output": True, "file_output": True}
+            "logging": {"level": "INFO", "console_output": True, "file_output": True},
         }
 
         cfg = validate_config(OmegaConf.create(config_dict))
@@ -457,3 +553,216 @@ class TestConfigHashable:
         # 测试可用作 set 成员
         test_set = {cfg}
         assert cfg in test_set
+
+
+class TestLLMProviderValidation:
+    """LLM Provider 配置验证测试类。"""
+
+    def test_llm_config_with_provider_fields(self, tmp_path: Path) -> None:
+        """测试 LLMStageConfig 包含 provider、base_url、max_tokens 字段。"""
+        test_data_dir = tmp_path / "test_data"
+        test_data_dir.mkdir()
+
+        config_dict = {
+            "project": {
+                "name": "Test",
+                "version": "0.1.0",
+                "workspace_dir": str(tmp_path / "workspace"),
+                "log_dir": str(tmp_path / "logs"),
+                "exp_name": "test_provider",
+            },
+            "data": {
+                "data_dir": str(test_data_dir),
+                "desc_file": None,
+                "goal": "Test provider fields",
+                "eval": None,
+                "preprocess_data": True,
+                "copy_data": False,
+            },
+            "llm": {
+                "code": {
+                    "provider": "openai",
+                    "model": "gpt-4-turbo",
+                    "temperature": 0.5,
+                    "api_key": "test",
+                    "base_url": "https://api.openai.com/v1",
+                    "max_tokens": 4096,
+                },
+                "feedback": {
+                    "provider": "anthropic",
+                    "model": "claude-3-opus",
+                    "temperature": 0.7,
+                    "api_key": "test",
+                    "base_url": "https://api.anthropic.com/v1",
+                    "max_tokens": 2048,
+                },
+            },
+            "execution": {
+                "timeout": 3600,
+                "agent_file_name": "run.py",
+                "format_tb_ipython": False,
+            },
+            "agent": {
+                "max_steps": 50,
+                "time_limit": 86400,
+                "k_fold_validation": 5,
+                "expose_prediction": False,
+                "data_preview": True,
+                "convert_system_to_user": False,
+            },
+            "search": {
+                "strategy": "mcts",
+                "max_debug_depth": 3,
+                "debug_prob": 0.5,
+                "num_drafts": 5,
+                "parallel_num": 3,
+            },
+            "logging": {"level": "INFO", "console_output": True, "file_output": True},
+        }
+
+        cfg = validate_config(OmegaConf.create(config_dict))
+
+        # 验证 provider 字段
+        assert cfg.llm.code.provider == "openai"
+        assert cfg.llm.feedback.provider == "anthropic"
+
+        # 验证 base_url 字段
+        assert cfg.llm.code.base_url == "https://api.openai.com/v1"
+        assert cfg.llm.feedback.base_url == "https://api.anthropic.com/v1"
+
+        # 验证 max_tokens 字段
+        assert cfg.llm.code.max_tokens == 4096
+        assert cfg.llm.feedback.max_tokens == 2048
+
+    def test_validate_invalid_provider(self, tmp_path: Path) -> None:
+        """测试无效的 provider 值（应抛出 ValueError）。"""
+        test_data_dir = tmp_path / "test_data"
+        test_data_dir.mkdir()
+
+        config_dict = {
+            "project": {
+                "name": "Test",
+                "version": "0.1.0",
+                "workspace_dir": str(tmp_path / "workspace"),
+                "log_dir": str(tmp_path / "logs"),
+                "exp_name": "test_invalid_provider",
+            },
+            "data": {
+                "data_dir": str(test_data_dir),
+                "desc_file": None,
+                "goal": "Test invalid provider",
+                "eval": None,
+                "preprocess_data": True,
+                "copy_data": False,
+            },
+            "llm": {
+                "code": {
+                    "provider": "invalid_provider",  # 无效的 provider
+                    "model": "gpt-4",
+                    "temperature": 0.5,
+                    "api_key": "test",
+                    "base_url": "https://api.openai.com/v1",
+                    "max_tokens": None,
+                },
+                "feedback": {
+                    "provider": "openai",
+                    "model": "gpt-4",
+                    "temperature": 0.5,
+                    "api_key": "test",
+                    "base_url": "https://api.openai.com/v1",
+                    "max_tokens": None,
+                },
+            },
+            "execution": {
+                "timeout": 3600,
+                "agent_file_name": "run.py",
+                "format_tb_ipython": False,
+            },
+            "agent": {
+                "max_steps": 50,
+                "time_limit": 86400,
+                "k_fold_validation": 5,
+                "expose_prediction": False,
+                "data_preview": True,
+                "convert_system_to_user": False,
+            },
+            "search": {
+                "strategy": "mcts",
+                "max_debug_depth": 3,
+                "debug_prob": 0.5,
+                "num_drafts": 5,
+                "parallel_num": 3,
+            },
+            "logging": {"level": "INFO", "console_output": True, "file_output": True},
+        }
+
+        cfg = OmegaConf.create(config_dict)
+
+        # 验证抛出 ValueError
+        with pytest.raises(ValueError, match="无效的 provider"):
+            validate_config(cfg)
+
+    def test_default_base_url(self, tmp_path: Path) -> None:
+        """测试 base_url 默认值。"""
+        test_data_dir = tmp_path / "test_data"
+        test_data_dir.mkdir()
+
+        config_dict = {
+            "project": {
+                "name": "Test",
+                "version": "0.1.0",
+                "workspace_dir": str(tmp_path / "workspace"),
+                "log_dir": str(tmp_path / "logs"),
+                "exp_name": "test_default_base_url",
+            },
+            "data": {
+                "data_dir": str(test_data_dir),
+                "desc_file": None,
+                "goal": "Test default base_url",
+                "eval": None,
+                "preprocess_data": True,
+                "copy_data": False,
+            },
+            "llm": {
+                "code": {
+                    "provider": "openai",
+                    "model": "gpt-4",
+                    "temperature": 0.5,
+                    "api_key": "test",
+                    # 不提供 base_url，应使用默认值
+                },
+                "feedback": {
+                    "provider": "openai",
+                    "model": "gpt-4",
+                    "temperature": 0.5,
+                    "api_key": "test",
+                },
+            },
+            "execution": {
+                "timeout": 3600,
+                "agent_file_name": "run.py",
+                "format_tb_ipython": False,
+            },
+            "agent": {
+                "max_steps": 50,
+                "time_limit": 86400,
+                "k_fold_validation": 5,
+                "expose_prediction": False,
+                "data_preview": True,
+                "convert_system_to_user": False,
+            },
+            "search": {
+                "strategy": "mcts",
+                "max_debug_depth": 3,
+                "debug_prob": 0.5,
+                "num_drafts": 5,
+                "parallel_num": 3,
+            },
+            "logging": {"level": "INFO", "console_output": True, "file_output": True},
+        }
+
+        cfg = validate_config(OmegaConf.create(config_dict))
+
+        # 验证默认 base_url
+        assert cfg.llm.code.base_url == "https://api.openai.com/v1"
+        assert cfg.llm.feedback.base_url == "https://api.openai.com/v1"
