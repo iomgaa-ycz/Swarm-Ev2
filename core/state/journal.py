@@ -203,8 +203,9 @@ def parse_solution_genes(code: str) -> Dict[str, str]:
         {'DATA': 'import pandas as pd\\n', 'MODEL': 'model = RandomForest()\\n'}
 
     注意:
-        - MVP 阶段使用简单格式，不支持嵌套的 FIXED/EVOLVABLE 分类
-        - Phase 2 可能扩展为嵌套格式
+        - 使用简单的单层格式（Swarm-Evo 标准）
+        - 代码块内可包含 `# [FIXED]` 和 `# [EVOLVABLE]` 注释标记
+        - LLM 通过 Prompt 约束识别并遵守修改规则
     """
     genes: Dict[str, str] = {}
 

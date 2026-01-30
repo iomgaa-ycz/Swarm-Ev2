@@ -701,13 +701,13 @@ class Journal(DataClassJsonMixin):
 
 **工具函数**（同一文件内定义）:
 ```python
-def parse_solution_genes(code: str) -> dict[str, dict[str, str]]:
+def parse_solution_genes(code: str) -> dict[str, str]:
     """
-    解析 solution.py 代码为基因组件。
+    解析 solution.py 代码为基因组件（Swarm-Evo 简单格式）。
 
     解析规则：
-    1. 识别 `# [SECTION: NAME]` 标记的七个主基因块
-    2. 识别 `# [FIXED: NAME]` 和 `# [EVOLVABLE: NAME]` 子区域
+    识别 `# [SECTION: NAME]` 标记的七个主基因块，
+    保留块内的 `# [FIXED]` 和 `# [EVOLVABLE]` 注释（不分离）。
 
     Args:
         code: solution.py 的完整代码
@@ -715,15 +715,19 @@ def parse_solution_genes(code: str) -> dict[str, dict[str, str]]:
     Returns:
         基因字典，结构如：
         {
-            "DATA": {
-                "FIXED": {"DATA_SPLIT": "...code..."},
-                "EVOLVABLE": {"DATA_LOADING": "...", "DATA_AUGMENTATION": "..."}
-            },
-            "MODEL": {
-                "EVOLVABLE": {"MODEL_DEFINITION": "..."}
-            },
-            ...
+            "DATA": "# [FIXED]\ntrain, val = split(...)\n# [EVOLVABLE]\ndf = augment(...)",
+            "MODEL": "# [EVOLVABLE]\nmodel = CNN(...)",
+            "LOSS": "...",
+            "OPTIMIZER": "...",
+            "REGULARIZATION": "...",
+            "INITIALIZATION": "...",
+            "TRAINING_TRICKS": "..."
         }
+
+    注意：
+        - 代码块内保留原始注释标记（`# [FIXED]`, `# [EVOLVABLE]`）
+        - LLM 通过 Prompt 约束识别并遵守修改规则
+        - 不做嵌套提取，保持代码完整性
     """
     # 实现细节见 Phase 1 实施阶段
 ```
