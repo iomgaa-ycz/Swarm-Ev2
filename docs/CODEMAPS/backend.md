@@ -1,7 +1,7 @@
 # 后端模块详细说明
 
-**Last Updated:** 2026-01-30 20:30:00
-**模块范围:** utils/, config/, tests/
+**Last Updated:** 2026-01-30
+**模块范围:** utils/, core/state/, config/, tests/
 
 ---
 
@@ -12,6 +12,9 @@
 | 配置系统 | `utils/config.py` | OmegaConf 配置加载与验证 | 已完成 |
 | 日志系统 | `utils/logger_system.py` | 双通道日志输出 | 已完成 |
 | 文件工具 | `utils/file_utils.py` | 目录复制/链接 | 已完成 |
+| **Node 数据类** | `core/state/node.py` | 解决方案 DAG 节点 | **已完成** |
+| **Journal 数据类** | `core/state/journal.py` | DAG 容器与查询 | **已完成** |
+| **Task 数据类** | `core/state/task.py` | Agent 任务定义 | **已完成** |
 | YAML 配置 | `config/default.yaml` | 项目主配置 | 已完成 |
 | 环境变量 | `.env.example` | API Keys 模板 | 已完成 |
 
@@ -250,12 +253,16 @@ copytree(src=Path("data"), dst=Path("workspace/input"), use_symlinks=False)
 ```
 tests/
 ├── __init__.py
-├── unit/                    # 单元测试
+├── unit/                              # 单元测试
 │   ├── __init__.py
-│   ├── test_config.py       # 配置系统测试 (7 个测试)
-│   ├── test_config_priority.py  # 配置优先级测试 (4 个测试)
-│   └── test_file_utils.py   # 文件工具测试 (5 个测试)
-└── integration/             # 集成测试（待添加）
+│   ├── test_config.py                 # 配置系统测试 (7 个测试)
+│   ├── test_config_priority.py        # 配置优先级测试 (4 个测试)
+│   ├── test_file_utils.py             # 文件工具测试 (5 个测试)
+│   ├── test_node.py                   # Node 数据类测试 (7 个测试)
+│   ├── test_journal.py                # Journal 数据类测试 (12 个测试)
+│   ├── test_task.py                   # Task 数据类测试 (5 个测试)
+│   └── test_state_integration.py      # State 集成测试 (1 个测试)
+└── integration/                       # 集成测试（待添加）
     └── __init__.py
 ```
 
@@ -270,6 +277,10 @@ tests/
 | `TestConfigHashable` | 2 | dict key, set member |
 | `TestConfigPriority` | 4 | .env 文件, 系统环境变量优先级, 完整链 |
 | `TestCopytree` | 5 | symlink, copy, 异常, 只读, 替换 |
+| **`TestNode`** | **7** | 创建, 序列化, 相等性, stage_name, has_exception, children_ids, metadata |
+| **`TestJournal`** | **12** | append, get_node_by_id, get_children, get_siblings, draft_nodes, buggy/good_nodes, get_best_node, build_dag, 序列化, parse_solution_genes |
+| **`TestTask`** | **5** | 创建, __str__, 序列化, 类型, dependencies |
+| **`TestStateIntegration`** | **1** | 完整工作流：创建节点 -> 构建 DAG -> 查询 -> 序列化 |
 
 ### 5.3 运行测试
 
@@ -277,90 +288,191 @@ tests/
 # 运行所有单元测试
 pytest tests/unit/ -v
 
-# 运行并查看覆盖率
-pytest tests/unit/ --cov=utils --cov-report=term-missing
+# 运行并查看覆盖率（utils + core）
+pytest tests/unit/ --cov=utils --cov=core --cov-report=term-missing
 
 # 运行特定测试文件
 pytest tests/unit/test_config.py -v
+pytest tests/unit/test_node.py -v
+pytest tests/unit/test_journal.py -v
+pytest tests/unit/test_task.py -v
 
 # 运行特定测试类
 pytest tests/unit/test_config.py::TestLoadConfig -v
+pytest tests/unit/test_journal.py::TestJournal -v
 ```
 
 ---
 
-## 6. 核心数据结构（Phase 1 待实现）
+## 6. 核心数据结构（Phase 1 已完成）
 
 ### 6.1 Node (`core/state/node.py`)
+
+解决方案 DAG 中的单个节点，包含代码、执行结果、评估信息及 MCTS/GA 统计。
 
 ```python
 @dataclass(eq=False)
 class Node(DataClassJsonMixin):
-    """解决方案树中的单个节点"""
+    # ---- 代码 ----
+    code: str                              # [必填] Python 代码
+    plan: str = ""                         # 实现计划
+    genes: Dict[str, str] = {}             # 基因组件（由 parse_solution_genes 解析）
 
-    # 核心字段
-    code: str                    # 代码
-    plan: str = ""               # 计划描述
+    # ---- 通用属性 ----
+    step: int = 0                          # Journal 中的序号
+    id: str = uuid4().hex                  # 唯一 ID
+    ctime: float = time()                  # 创建时间戳
+    parent_id: Optional[str] = None        # 父节点 ID
+    children_ids: list[str] = []           # 子节点 ID 列表（build_dag 构建）
+    task_type: str = "draft"               # 任务类型
+    metadata: Dict = {}                    # 额外元数据
 
-    # 标识
-    id: str = uuid4().hex        # 唯一 ID
-    step: int = 0                # 步数
-    parent_id: str | None        # 父节点 ID
-    ctime: float = time()        # 创建时间
+    # ---- 执行信息 ----
+    logs: str = ""                         # 执行日志
+    term_out: str = ""                     # 终端输出
+    exec_time: float = 0.0                 # 执行时间（秒）
+    exc_type: Optional[str] = None         # 异常类型
+    exc_info: Optional[Dict] = None        # 异常详情
 
-    # 执行结果
-    term_out: str = ""           # 终端输出
-    exec_time: float = 0.0       # 执行时间
-    exc_type: str | None         # 异常类型
-    exc_info: dict | None        # 异常详情
+    # ---- 评估 ----
+    analysis: str = ""                     # LLM 分析结果
+    metric_value: Optional[float] = None   # 评估指标值
+    is_buggy: bool = False                 # 是否包含 bug
+    is_valid: bool = True                  # 是否有效
 
-    # 评估
-    metric_value: float | None   # 指标值
-    is_buggy: bool = False       # 是否有 bug
-    is_valid: bool = True        # 是否有效
-    analysis: str = ""           # 分析文本
+    # ---- MCTS ----
+    visits: int = 0                        # MCTS 访问次数
+    total_reward: float = 0.0              # MCTS 累计奖励
 
-    # MCTS 字段 (Phase 3)
-    visits: int = 0
-    total_reward: float = 0.0
+    # ---- GA ----
+    generation: Optional[int] = None       # GA 进化代数
+    fitness: Optional[float] = None        # GA 适应度值
+```
 
-    # GA 字段 (Phase 3)
-    genes: dict[str, str] = {}
-    generation: int | None
-    fitness: float | None
+**方法:**
+
+| 方法 | 返回类型 | 说明 |
+|------|----------|------|
+| `__eq__(other)` | `bool` | 基于 ID 比较相等性 |
+| `__hash__()` | `int` | 基于 ID 生成哈希值 |
+| `stage_name` (property) | `Literal["draft","debug","improve","unknown"]` | 推导节点阶段 |
+| `has_exception` (property) | `bool` | 检查是否有执行异常 |
+
+**使用示例:**
+
+```python
+from core.state import Node, parse_solution_genes
+
+# 创建节点
+node = Node(code="x = 1", plan="初始方案")
+
+# 解析基因
+node.genes = parse_solution_genes(node.code)
+
+# 序列化
+json_dict = node.to_dict()
+restored = Node.from_dict(json_dict)
 ```
 
 ### 6.2 Journal (`core/state/journal.py`)
 
+解决方案节点集合，表示搜索树/DAG，提供节点管理和树结构查询。
+
 ```python
 @dataclass
 class Journal(DataClassJsonMixin):
-    """解决方案树容器"""
-
     nodes: list[Node] = []
+```
 
-    # 查询方法
-    def get_node_by_id(node_id) -> Node | None
-    def get_children(node_id) -> list[Node]
-    def get_siblings(node_id) -> list[Node]
-    def get_best_node(only_good=True) -> Node | None
+**方法:**
 
-    # 属性
-    @property draft_nodes -> list[Node]     # 无父节点的节点
-    @property buggy_nodes -> list[Node]
-    @property good_nodes -> list[Node]
+| 方法 | 签名 | 说明 | 复杂度 |
+|------|------|------|--------|
+| `__len__` | `() -> int` | 返回节点数量 | O(1) |
+| `__getitem__` | `(idx: int) -> Node` | 通过索引访问节点 | O(1) |
+| `append` | `(node: Node) -> None` | 添加节点（自动设置 step） | O(1) |
+| `get_node_by_id` | `(node_id: str) -> Optional[Node]` | 通过 ID 查找节点 | O(n) |
+| `get_children` | `(node_id: str) -> list[Node]` | 获取子节点列表 | O(k) |
+| `get_siblings` | `(node_id: str) -> list[Node]` | 获取兄弟节点（不含自身） | O(n) |
+| `get_best_node` | `(only_good: bool = True) -> Optional[Node]` | 返回 metric_value 最高节点 | O(n) |
+| `build_dag` | `() -> None` | 根据 parent_id 构建 children_ids | O(n) |
+| `draft_nodes` (property) | `-> list[Node]` | 所有无父节点的节点 | O(n) |
+| `buggy_nodes` (property) | `-> list[Node]` | 所有 is_buggy=True 的节点 | O(n) |
+| `good_nodes` (property) | `-> list[Node]` | 所有 is_buggy=False 的节点 | O(n) |
+
+**工具函数:**
+
+| 函数 | 签名 | 说明 |
+|------|------|------|
+| `parse_solution_genes` | `(code: str) -> Dict[str, str]` | 解析 `# [SECTION: NAME]` 标记，分割代码为基因组件 |
+
+**使用示例:**
+
+```python
+from core.state import Journal, Node, parse_solution_genes
+
+journal = Journal()
+
+# 添加节点
+root = Node(code="# [SECTION: DATA]\nimport pandas as pd", plan="初始方案")
+root.genes = parse_solution_genes(root.code)
+journal.append(root)
+
+child = Node(code="x = 2", parent_id=root.id, metric_value=0.85)
+journal.append(child)
+
+# 构建 DAG 并查询
+journal.build_dag()
+best = journal.get_best_node()
+children = journal.get_children(root.id)
 ```
 
 ### 6.3 Task (`core/state/task.py`)
 
+Agent 任务定义，用于任务队列和调度系统。
+
 ```python
-TaskType = Literal["draft", "debug", "improve", "review"]
+TaskType = Literal["explore", "merge", "select", "review"]
 
 @dataclass
 class Task(DataClassJsonMixin):
-    type: TaskType
-    node_id: str
-    description: str = ""
+    # ---- 核心字段 ----
+    type: TaskType                              # [必填] 任务类型
+    node_id: str                                # [必填] 关联节点 ID
+
+    # ---- 元数据 ----
+    description: str = ""                       # 任务描述
+    id: str = uuid4().hex                       # 唯一标识符
+    created_at: float = time()                  # 创建时间戳
+
+    # ---- 调度信息 ----
+    agent_name: Optional[str] = None            # 分配的 Agent 名称
+    dependencies: Optional[Dict[str, str]] = None  # 任务依赖 {名称: 任务ID}
+    payload: Dict = {}                          # 任务上下文数据
+```
+
+**Task 类型说明:**
+
+| 类型 | 说明 |
+|------|------|
+| `explore` | 探索新方案，生成新的解决方案节点 |
+| `merge` | 合并多个方案，融合不同节点的优点 |
+| `select` | 选择最佳方案，从候选节点中筛选 |
+| `review` | 审查方案质量，评估节点的有效性 |
+
+**使用示例:**
+
+```python
+from core.state import Task
+
+task = Task(
+    type="explore",
+    node_id="node_abc123",
+    description="基于最佳节点探索新方案",
+    agent_name="explorer_agent",
+    payload={"parent_metric": 0.90},
+)
+print(task)  # Task(type=explore, node_id=node_abc...)
 ```
 
 ---

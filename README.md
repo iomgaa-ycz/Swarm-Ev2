@@ -66,12 +66,12 @@ ANTHROPIC_API_KEY=sk-ant-your-anthropic-api-key-here
 # 运行所有测试
 pytest tests/unit/ -v
 
-# 查看测试覆盖率
-pytest tests/unit/ --cov=utils --cov-report=term-missing
+# 查看测试覆盖率（utils + core 模块）
+pytest tests/unit/ --cov=utils --cov=core --cov-report=term-missing
 
 # 代码格式化和检查
-ruff format utils/ tests/
-ruff check utils/ tests/ --fix
+ruff format utils/ core/ tests/
+ruff check utils/ core/ tests/ --fix
 ```
 
 ---
@@ -82,12 +82,18 @@ ruff check utils/ tests/ --fix
 Swarm-Ev2/
 ├── config/                    # 配置文件
 │   └── default.yaml          # 主配置文件
+├── core/                      # 核心模块
+│   └── state/                # 核心数据结构
+│       ├── __init__.py       # 导出 Node, Journal, Task
+│       ├── node.py           # 解决方案节点 (22字段 + 4方法)
+│       ├── journal.py        # 解决方案 DAG (11方法 + parse_solution_genes)
+│       └── task.py           # 任务定义 (8字段)
 ├── utils/                     # 工具模块
 │   ├── config.py             # 配置管理 (OmegaConf + YAML)
 │   ├── logger_system.py      # 日志系统 (双通道输出)
 │   └── file_utils.py         # 文件操作工具
 ├── tests/                     # 测试目录
-│   ├── unit/                 # 单元测试
+│   ├── unit/                 # 单元测试 (24 个测试用例)
 │   └── integration/          # 集成测试
 ├── docs/                      # 文档
 │   ├── CODEMAPS/             # 架构文档
@@ -143,7 +149,7 @@ python main.py \
 
 | Phase | 状态 | 说明 |
 |-------|------|------|
-| Phase 1 | 🟢 部分完成 | 配置系统、日志系统、测试框架 ✅<br>数据结构（Node/Journal/Task）待实现 |
+| Phase 1 | 🟢 已完成 | 配置系统、日志系统、文件工具 ✅<br>核心数据结构（Node/Journal/Task）✅ |
 | Phase 2 | 🔴 未开始 | Agent 框架、执行器、编排器 |
 | Phase 3 | 🔴 未开始 | 搜索算法（MCTS/GA）、并行评估 |
 | Phase 4 | 🔴 未开始 | 进化算法、经验池、Meta-Agent |
@@ -168,7 +174,13 @@ python main.py \
 
 ---
 
-## 核心功能（待实现）
+## 核心功能
+
+### Phase 1: 核心数据结构（已完成）
+- [x] **Node** - 解决方案 DAG 节点（代码、执行结果、评估、MCTS/GA 统计）
+- [x] **Journal** - DAG 容器（节点管理、树查询、序列化）
+- [x] **Task** - 任务定义（explore/merge/select/review）
+- [x] **parse_solution_genes** - 基因组件解析器
 
 ### Phase 2: 核心 Agent 系统
 - [ ] BaseAgent 抽象类

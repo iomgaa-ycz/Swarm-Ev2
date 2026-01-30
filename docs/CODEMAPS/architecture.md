@@ -1,8 +1,8 @@
 # Swarm-Ev2 项目架构概览
 
-**Last Updated:** 2026-01-30 20:30:00
+**Last Updated:** 2026-01-30
 **项目版本:** 0.1.0
-**当前阶段:** Phase 1 基础设施搭建（部分完成）
+**当前阶段:** Phase 1 基础设施搭建（已完成）
 
 ---
 
@@ -41,7 +41,7 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 │   Interpreter · WorkspaceManager                 │  ← Phase 2
 ├─────────────────────────────────────────────────┤
 │              核心数据层 (State)                    │
-│   Node · Journal · Task                          │  ← Phase 1 (待实现)
+│   Node · Journal · Task                          │  ← Phase 1 ★已完成★
 ├─────────────────────────────────────────────────┤
 │            ★ 基础设施层 (Infrastructure) ★         │
 │   config.py · logger_system.py · file_utils.py   │  ← Phase 1 (已完成)
@@ -54,7 +54,7 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 
 ```mermaid
 graph TD
-    subgraph "Phase 1 - 已完成"
+    subgraph "Phase 1 - 基础设施（已完成）"
         CFG[utils/config.py<br/>配置管理]
         LOG[utils/logger_system.py<br/>日志系统]
         FU[utils/file_utils.py<br/>文件工具]
@@ -62,10 +62,13 @@ graph TD
         ENV[.env<br/>环境变量]
     end
 
-    subgraph "Phase 1 - 待实现"
-        NODE[core/state/node.py]
-        JOURNAL[core/state/journal.py]
-        TASK[core/state/task.py]
+    subgraph "Phase 1 - 数据结构（已完成）"
+        NODE[core/state/node.py<br/>22字段+4方法]
+        JOURNAL[core/state/journal.py<br/>11方法]
+        TASK[core/state/task.py<br/>8字段]
+    end
+
+    subgraph "Phase 1 - 后端抽象（待实现）"
         BACKEND[core/backend/__init__.py]
     end
 
@@ -123,8 +126,8 @@ graph TD
 
 | Phase | 名称 | 状态 | 核心交付物 |
 |-------|------|------|-----------|
-| **1** | 基础设施重构 | **部分完成** | config.py, logger_system.py, file_utils.py |
-| 1 | 核心数据结构 | 待实现 | Node, Journal, Task |
+| **1** | 基础设施重构 | **已完成** | config.py, logger_system.py, file_utils.py |
+| **1** | 核心数据结构 | **已完成** | Node, Journal, Task (测试覆盖率 97%) |
 | 1 | 后端抽象层 | 待实现 | Backend (OpenAI, Anthropic) |
 | 2 | 核心功能 | 待实现 | BaseAgent, Orchestrator, Interpreter |
 | 3 | 双层群体智能 | 待实现 | GA, AgentEvolution, ParallelEvaluator |
@@ -138,6 +141,9 @@ graph TD
 | 配置管理 | `utils/config.py` | 457 | 已完成 |
 | 日志系统 | `utils/logger_system.py` | 181 | 已完成 |
 | 文件工具 | `utils/file_utils.py` | 114 | 已完成 |
+| **Node 数据类** | `core/state/node.py` | 119 | **已完成** |
+| **Journal 数据类** | `core/state/journal.py` | 229 | **已完成** |
+| **Task 数据类** | `core/state/task.py` | 63 | **已完成** |
 | YAML 配置 | `config/default.yaml` | 77 | 已完成 |
 | 环境变量模板 | `.env.example` | 36 | 已完成 |
 | 依赖声明 | `requirements.txt` | 36 | 已完成 |
@@ -149,6 +155,10 @@ graph TD
 | `tests/unit/test_config.py` | 7 | config.py |
 | `tests/unit/test_config_priority.py` | 4 | config.py (优先级) |
 | `tests/unit/test_file_utils.py` | 5 | file_utils.py |
+| **`tests/unit/test_node.py`** | 7 | **Node 数据类** |
+| **`tests/unit/test_journal.py`** | 12 | **Journal + parse_solution_genes** |
+| **`tests/unit/test_task.py`** | 5 | **Task 数据类** |
+| **`tests/unit/test_state_integration.py`** | 1 | **State 模块集成** |
 
 ---
 
@@ -167,9 +177,10 @@ Swarm-Ev2/
 │   └── registry.py                # Agent 注册表           Phase 4
 ├── core/
 │   ├── state/                     # 数据结构
-│   │   ├── node.py                # 解决方案节点           Phase 1 待实现
-│   │   ├── journal.py             # 解决方案日志           Phase 1 待实现
-│   │   └── task.py                # 任务定义               Phase 1 待实现
+│   │   ├── __init__.py            # 导出 Node, Journal, Task  ★ 已完成
+│   │   ├── node.py                # 解决方案节点              ★ 已完成
+│   │   ├── journal.py             # 解决方案日志              ★ 已完成
+│   │   └── task.py                # 任务定义                  ★ 已完成
 │   ├── backend/                   # LLM 后端抽象
 │   │   ├── __init__.py            # 统一查询接口           Phase 1 待实现
 │   │   ├── backend_openai.py      # OpenAI                Phase 1 待实现
