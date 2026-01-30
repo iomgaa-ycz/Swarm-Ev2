@@ -1,6 +1,6 @@
 # 数据流与配置管理
 
-**Last Updated:** 2026-01-31 00:20:00
+**Last Updated:** 2026-01-31 15:30:00
 **模块范围:** config/, .env, utils/config.py, utils/logger_system.py, core/executor/
 
 ---
@@ -101,13 +101,19 @@ data:
 
 llm:
   code:                       # Code Agent 的 LLM
-    model: "gpt-4-turbo"
+    provider: ${env:LLM_PROVIDER, "openai"}  # [必填] openai | anthropic
+    model: ${env:LLM_MODEL, "gpt-4-turbo"}
     temperature: 0.5
     api_key: ${env:OPENAI_API_KEY}
+    base_url: ${env:OPENAI_BASE_URL, "https://api.openai.com/v1"}  # API 端点
+    max_tokens: ${env:MAX_TOKENS, null}  # 最大生成 token 数
   feedback:                   # Feedback Agent 的 LLM
-    model: "gpt-4-turbo"
+    provider: ${env:LLM_PROVIDER, "openai"}
+    model: ${env:LLM_MODEL, "gpt-4-turbo"}
     temperature: 0.5
     api_key: ${env:OPENAI_API_KEY}
+    base_url: ${env:OPENAI_BASE_URL, "https://api.openai.com/v1"}
+    max_tokens: ${env:MAX_TOKENS, null}
 
 execution:
   timeout: 3600               # 单次超时 (秒)
@@ -138,11 +144,19 @@ logging:
 ### 3.2 `.env.example` 模板
 
 ```bash
-# LLM API Keys
-OPENAI_API_KEY=sk-your-openai-api-key-here        # [必填]
-ANTHROPIC_API_KEY=sk-ant-your-anthropic-api-key    # [可选]
-GOOGLE_API_KEY=your-google-api-key-here            # [可选]
-OPENROUTER_API_KEY=your-openrouter-api-key         # [可选]
+# LLM 配置
+LLM_PROVIDER=openai                                # [必填] openai | anthropic
+# LLM_MODEL=gpt-4-turbo                           # [可选] 模型名称
+OPENAI_API_KEY=sk-your-openai-api-key-here        # [必填] API 密钥
+
+# API 端点配置（第三方 API 时覆盖）
+# OPENAI_BASE_URL=https://api.openai.com/v1       # 默认 OpenAI
+# MAX_TOKENS=4096                                 # 最大生成 token 数
+
+# 第三方 OpenAI 兼容 API 配置示例
+# GLM (智谱):     OPENAI_BASE_URL=https://open.bigmodel.cn/api/paas/v4/
+# Moonshot:       OPENAI_BASE_URL=https://api.moonshot.cn/v1
+# DeepSeek:       OPENAI_BASE_URL=https://api.deepseek.com/v1
 
 # 可选覆盖
 # LOG_LEVEL=INFO
@@ -304,14 +318,15 @@ config.yaml ──→ Config 对象 ──→ Agent 配置
 .env 文件
     ↓ load_dotenv(override=False)
 os.environ
-    ↓ OmegaConf resolver: ${env:VAR}
+    ↓ OmegaConf resolver: ${env:VAR} / ${env:VAR, default}
 config/default.yaml
     ↓ OmegaConf.load()
 DictConfig (base)
     ↓ OmegaConf.merge(base, cli)
 DictConfig (merged)
     ↓ validate_config()
-    ├── 必填字段检查
+    ├── 必填字段检查 (data_dir, desc/goal)
+    ├── Provider 验证 (llm.*.provider ∈ {openai, anthropic})
     ├── 路径解析 (resolve)
     ├── 目录创建 (mkdir)
     ├── exp_name 生成
@@ -328,6 +343,7 @@ Config(@dataclass)
 |------|---------|---------|
 | 必填: data_dir | `cfg.data.data_dir is None` | `ValueError` |
 | 必填: desc/goal | 两者均为 None | `ValueError` |
+| **必填: provider** | `cfg.llm.*.provider not in {"openai", "anthropic"}` | `ValueError` |
 | 路径: data_dir | 目录不存在 | `ValueError` |
 | 路径: desc_file | 文件不存在 | `ValueError` |
 | 目录: workspace | 不存在 | 自动创建 |
@@ -380,11 +396,21 @@ python main.py --data.data_dir=./datasets/titanic
 python main.py \
   --data.data_dir=./datasets/house-prices \
   --data.goal="预测房价" \
+  --llm.code.provider=openai \
   --llm.code.model=gpt-3.5-turbo \
   --llm.code.temperature=0.3 \
+  --llm.code.base_url=https://api.openai.com/v1 \
+  --llm.code.max_tokens=4096 \
   --agent.max_steps=30 \
   --search.strategy=genetic \
   --project.exp_name=house_prices_exp1
+
+# 使用第三方 API (Moonshot)
+python main.py \
+  --data.data_dir=./datasets/titanic \
+  --llm.code.provider=openai \
+  --llm.code.model=moonshot-v1-8k \
+  --llm.code.base_url=https://api.moonshot.cn/v1
 ```
 
 ### 8.3 环境变量优先级测试
@@ -403,6 +429,12 @@ echo $OPENAI_API_KEY  # 输出: sk-from-shell (系统优先)
 export OPENAI_API_KEY=sk-from-shell
 python main.py --llm.code.api_key=sk-from-cli
 # 最终使用: sk-from-cli (CLI 最高优先级)
+
+# 场景 4: Provider 和 base_url 覆盖
+# .env: LLM_PROVIDER=openai, OPENAI_BASE_URL=https://api.openai.com/v1
+export LLM_PROVIDER=openai
+export OPENAI_BASE_URL=https://api.moonshot.cn/v1
+# 最终使用: base_url=https://api.moonshot.cn/v1 (系统环境变量优先)
 ```
 
 ---

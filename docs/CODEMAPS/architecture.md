@@ -1,6 +1,6 @@
 # Swarm-Ev2 项目架构概览
 
-**Last Updated:** 2026-01-31 00:20:00
+**Last Updated:** 2026-01-31 15:30:00
 **项目版本:** 0.1.0
 **当前阶段:** Phase 2 核心功能（部分完成：执行层）
 
@@ -69,8 +69,8 @@ graph TD
     end
 
     subgraph "Phase 1 - 后端抽象（已完成）"
-        BACKEND[core/backend/__init__.py<br/>统一查询接口]
-        OPENAI[core/backend/backend_openai.py<br/>OpenAI + GLM]
+        BACKEND[core/backend/__init__.py<br/>统一查询接口<br/>provider 必填]
+        OPENAI[core/backend/backend_openai.py<br/>OpenAI + 第三方兼容]
         ANTHRO[core/backend/backend_anthropic.py<br/>Claude]
         BUTILS[core/backend/utils.py<br/>消息格式 + 重试]
     end
@@ -138,7 +138,7 @@ graph TD
 |-------|------|------|-----------|
 | **1** | 基础设施重构 | **已完成** | config.py, logger_system.py, file_utils.py |
 | **1** | 核心数据结构 | **已完成** | Node (119行), Journal (229行), Task (63行) |
-| **1** | 后端抽象层 | **已完成** | Backend (504行) - OpenAI, Anthropic, GLM 4.7 |
+| **1** | 后端抽象层 | **已完成** | Backend - OpenAI, Anthropic + 第三方兼容 (Moonshot, GLM, DeepSeek) |
 | **2** | **执行层** | **已完成** | **Interpreter (177行), WorkspaceManager (182行)** |
 | **2** | **工具增强** | **已完成** | **data_preview (270行), metric (118行), response (90行)** |
 | 2 | Agent 框架 | 待实现 | BaseAgent, Orchestrator, CoderAgent |
@@ -159,7 +159,7 @@ graph TD
 | Journal 数据类 | `core/state/journal.py` | 229 | ✅ 已完成 |
 | Task 数据类 | `core/state/task.py` | 63 | ✅ 已完成 |
 | **Phase 1: 后端抽象** ||||
-| 后端抽象层 | `core/backend/__init__.py` | 147 | ✅ 已完成 |
+| 后端抽象层 | `core/backend/__init__.py` | 130 | ✅ 已完成 (provider 必填) |
 | OpenAI 后端 | `core/backend/backend_openai.py` | 133 | ✅ 已完成 |
 | Anthropic 后端 | `core/backend/backend_anthropic.py` | 143 | ✅ 已完成 |
 | 后端工具 | `core/backend/utils.py` | 81 | ✅ 已完成 |
@@ -194,9 +194,9 @@ graph TD
 | **`tests/unit/test_metric.py`** | **5** | **metric** | **✅** |
 | **`tests/unit/test_response.py`** | **3** | **response** | **✅** |
 | **待补充** ||||
-| `tests/unit/test_backend.py` | 待补充 | Backend 抽象层 | 🔴 待添加 |
+| `tests/unit/test_backend_provider.py` | 6 | Backend Provider 参数 | ✅ |
 
-**总计**: 64 个单元测试 | 覆盖率 > 80%
+**总计**: 70 个单元测试 | 覆盖率 > 80%
 
 ---
 

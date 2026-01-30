@@ -1,6 +1,6 @@
 # 后端模块详细说明
 
-**Last Updated:** 2026-01-31 00:20:00
+**Last Updated:** 2026-01-31 15:30:00
 **模块范围:** utils/, core/state/, core/backend/, core/executor/, config/, tests/
 
 ---
@@ -69,7 +69,7 @@ class Config(Hashable):
 |------|------|------|
 | `ProjectConfig` | name, version, workspace_dir, log_dir, exp_name | 项目元信息 |
 | `DataConfig` | data_dir, desc_file, goal, eval, preprocess_data, copy_data | 数据路径与选项 |
-| `LLMStageConfig` | model, temperature, api_key | 单阶段 LLM 配置 |
+| `LLMStageConfig` | provider, model, temperature, api_key, base_url, max_tokens | 单阶段 LLM 配置（provider 必填） |
 | `LLMConfig` | code, feedback | 双阶段 LLM 配置 |
 | `ExecutionConfig` | timeout, agent_file_name, format_tb_ipython | 执行选项 |
 | `AgentConfig` | max_steps, time_limit, k_fold_validation, ... | Agent 行为参数 |
@@ -91,7 +91,8 @@ class Config(Hashable):
 ```
 必填字段:
 ├── data.data_dir 必须存在
-└── data.desc_file 或 data.goal 至少提供一个
+├── data.desc_file 或 data.goal 至少提供一个
+└── llm.*.provider 必须为 "openai" 或 "anthropic"
 
 路径处理:
 ├── 相对路径 → 绝对路径 (Path.resolve())
@@ -100,6 +101,11 @@ class Config(Hashable):
 
 API Key 检查:
 └── ${env:VAR} 未解析 → 记录 WARNING
+
+Provider 验证:
+├── llm.code.provider 必须在 {"openai", "anthropic"} 中
+└── llm.feedback.provider 必须在 {"openai", "anthropic"} 中
+└── 无效值 → ValueError
 ```
 
 ### 2.5 使用示例
@@ -270,7 +276,8 @@ tests/
 │   ├── test_node.py                   # Node 数据类测试 (7 个测试)
 │   ├── test_journal.py                # Journal 数据类测试 (12 个测试)
 │   ├── test_task.py                   # Task 数据类测试 (5 个测试)
-│   └── test_state_integration.py      # State 集成测试 (1 个测试)
+│   ├── test_state_integration.py      # State 集成测试 (1 个测试)
+│   └── test_backend_provider.py       # Backend Provider 测试 (6 个测试)
 └── integration/                       # 集成测试（待添加）
     └── __init__.py
 ```
@@ -290,6 +297,7 @@ tests/
 | **`TestJournal`** | **12** | append, get_node_by_id, get_children, get_siblings, draft_nodes, buggy/good_nodes, get_best_node, build_dag, 序列化, parse_solution_genes |
 | **`TestTask`** | **5** | 创建, __str__, 序列化, 类型, dependencies |
 | **`TestStateIntegration`** | **1** | 完整工作流：创建节点 -> 构建 DAG -> 查询 -> 序列化 |
+| **`TestBackendProvider`** | **6** | Provider 参数验证、必填检查、base_url 传递、映射正确性 |
 
 ### 5.3 运行测试
 
@@ -510,15 +518,15 @@ print(task)  # Task(type=explore, node_id=node_abc...)
 ┌─────────────────────────────────────────────────────────┐
 │                      query()                              │
 │  ┌─────────────────────────────────────────────────────┐ │
-│  │              determine_provider(model)              │ │
-│  │  "gpt-*", "o1-*", "glm-*" → openai                  │ │
-│  │  "claude-*" → anthropic                             │ │
+│  │              provider 参数（必填）                    │ │
+│  │  "openai" → backend_openai.query()                  │ │
+│  │  "anthropic" → backend_anthropic.query()            │ │
 │  └─────────────────────────────────────────────────────┘ │
 │                         ↓                                 │
 │  ┌──────────────────┐   ┌──────────────────────────────┐ │
 │  │ backend_openai   │   │ backend_anthropic            │ │
 │  │ - OpenAI GPT     │   │ - Claude 3.x                 │ │
-│  │ - GLM 4.6/4.7    │   │ - 特殊消息处理               │ │
+│  │ - 第三方兼容 API  │   │ - 特殊消息处理               │ │
 │  │ - 自定义 base_url │   │                              │ │
 │  └──────────────────┘   └──────────────────────────────┘ │
 │                         ↓                                 │
@@ -529,41 +537,131 @@ print(task)  # Task(type=explore, node_id=node_abc...)
 └─────────────────────────────────────────────────────────┘
 ```
 
+**设计变更 (2026-01-31)**:
+- 删除 `determine_provider()` 函数（基于模型名自动推断）
+- `provider` 参数改为必填，由配置文件显式指定
+- 支持任意 OpenAI 兼容 API（通过 `base_url` 参数）
+
 ### 8.2 核心函数
 
 | 函数 | 文件 | 签名 | 说明 |
 |------|------|------|------|
-| `query` | `__init__.py` | `(system_message, user_message, model, ...) -> str` | 统一 LLM 查询入口 |
-| `determine_provider` | `__init__.py` | `(model: str) -> str` | 根据模型名判断提供商 |
-| `backend_openai.query` | `backend_openai.py` | 同上 | OpenAI/GLM API 调用 |
+| `query` | `__init__.py` | `(system_message, user_message, model, provider, ...) -> str` | 统一 LLM 查询入口（provider 必填） |
+| `backend_openai.query` | `backend_openai.py` | 同上 | OpenAI 兼容 API 调用 |
 | `backend_anthropic.query` | `backend_anthropic.py` | 同上 | Anthropic API 调用 |
 | `opt_messages_to_list` | `utils.py` | `(system, user) -> list[dict]` | 消息格式转换 |
 | `backoff_create` | `utils.py` | `(fn, exceptions, *args) -> Any` | 带重试的 API 调用 |
 
-### 8.3 支持的模型
+### 8.3 支持的提供商
 
-| 提供商 | 模型前缀 | 示例 | 特殊配置 |
-|--------|----------|------|----------|
-| OpenAI | `gpt-`, `o1-` | `gpt-4-turbo`, `o1-preview` | 标准 OpenAI API |
-| GLM | `glm-` | `glm-4.6`, `glm-4.7` | 需要 `base_url` 参数 |
-| Anthropic | `claude-` | `claude-3-opus-20240229` | system 消息单独传递 |
+| Provider | 说明 | 支持的第三方 API |
+|----------|------|-----------------|
+| `openai` | OpenAI 及兼容 API | GLM (智谱)、Moonshot、DeepSeek 等 |
+| `anthropic` | Anthropic Claude | - |
 
-### 8.4 GLM 配置示例
+**第三方 OpenAI 兼容 API 示例**:
+
+| 服务 | base_url | 模型示例 |
+|------|----------|---------|
+| GLM (智谱) | `https://open.bigmodel.cn/api/paas/v4/` | `glm-4`, `glm-4-flash` |
+| Moonshot | `https://api.moonshot.cn/v1` | `moonshot-v1-8k` |
+| DeepSeek | `https://api.deepseek.com/v1` | `deepseek-chat` |
+
+### 8.4 LLMStageConfig 配置
+
+```python
+@dataclass
+class LLMStageConfig:
+    """LLM 阶段配置（code/feedback）。"""
+    provider: str                              # [必填] "openai" | "anthropic"
+    model: str                                 # 模型名称
+    temperature: float                         # 采样温度
+    api_key: str                               # API 密钥
+    base_url: str = "https://api.openai.com/v1"  # API 端点（第三方 API 覆盖此值）
+    max_tokens: int | None = None              # 最大生成 token 数
+```
+
+### 8.5 配置示例
+
+**YAML 配置 (config/default.yaml)**:
+
+```yaml
+llm:
+  code:
+    provider: ${env:LLM_PROVIDER, "openai"}  # 必填
+    model: ${env:LLM_MODEL, "gpt-4-turbo"}
+    temperature: 0.5
+    api_key: ${env:OPENAI_API_KEY}
+    base_url: ${env:OPENAI_BASE_URL, "https://api.openai.com/v1"}
+    max_tokens: ${env:MAX_TOKENS, null}
+```
+
+**环境变量 (.env)**:
+
+```bash
+# 使用 OpenAI
+LLM_PROVIDER=openai
+OPENAI_API_KEY=sk-your-key
+
+# 使用第三方 API (如 Moonshot)
+LLM_PROVIDER=openai
+OPENAI_API_KEY=sk-moonshot-key
+OPENAI_BASE_URL=https://api.moonshot.cn/v1
+
+# 使用 Anthropic
+LLM_PROVIDER=anthropic
+OPENAI_API_KEY=sk-ant-your-key
+```
+
+### 8.6 使用示例
 
 ```python
 from core.backend import query
 
-# GLM 4.7 调用示例
+# 1. OpenAI GPT-4
 response = query(
-    system_message="你是一个 Python 专家",
-    user_message="解释装饰器",
-    model="glm-4.7",
-    api_key="your-glm-api-key",
-    base_url="https://open.bigmodel.cn/api/paas/v4/",  # GLM API 端点
+    system_message="You are a helpful assistant",
+    user_message="Hello",
+    model="gpt-4-turbo",
+    provider="openai",           # 必填
+    temperature=0.7,
+    api_key="sk-...",
 )
+
+# 2. 第三方 OpenAI 兼容 API (Moonshot)
+response = query(
+    system_message="你是智能助手",
+    user_message="介绍 Python",
+    model="moonshot-v1-8k",
+    provider="openai",           # 使用 openai provider
+    api_key="sk-moonshot-...",
+    base_url="https://api.moonshot.cn/v1",  # 指定第三方端点
+)
+
+# 3. Anthropic Claude
+response = query(
+    system_message="You are a helpful assistant",
+    user_message="Hello",
+    model="claude-3-opus-20240229",
+    provider="anthropic",        # 必填
+    api_key="sk-ant-...",
+)
+
+# 4. 错误处理
+try:
+    response = query(...)
+except ValueError as e:
+    # 不支持的 provider
+    print(f"Provider 错误: {e}")
+except TypeError as e:
+    # 缺少必填参数 provider
+    print(f"参数错误: {e}")
+except Exception as e:
+    # API 调用失败
+    print(f"API 错误: {e}")
 ```
 
-### 8.5 重试机制
+### 8.7 重试机制
 
 ```python
 # 自动重试的异常类型:
@@ -573,35 +671,6 @@ response = query(
 # 重试策略: 指数退避
 # 间隔: 1.5^n 秒 (n = 重试次数)
 # 最大间隔: 60 秒
-```
-
-### 8.6 使用示例
-
-```python
-from core.backend import query, determine_provider
-
-# 1. 判断提供商
-provider = determine_provider("gpt-4-turbo")  # -> "openai"
-provider = determine_provider("claude-3-opus-20240229")  # -> "anthropic"
-
-# 2. 统一查询接口
-response = query(
-    system_message="You are a helpful assistant",
-    user_message="Hello",
-    model="gpt-4-turbo",
-    temperature=0.7,
-    api_key="sk-...",  # 从 Config 获取
-)
-
-# 3. 错误处理
-try:
-    response = query(...)
-except ValueError as e:
-    # 不支持的模型
-    print(f"模型错误: {e}")
-except Exception as e:
-    # API 调用失败
-    print(f"API 错误: {e}")
 ```
 
 ---
