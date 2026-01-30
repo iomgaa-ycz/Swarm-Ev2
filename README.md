@@ -1,0 +1,316 @@
+# Swarm-Ev2
+
+**双层群体智能驱动的自动化 ML 系统**
+
+[![Python](https://img.shields.io/badge/Python-3.10-blue.svg)](https://www.python.org/)
+[![Phase](https://img.shields.io/badge/Phase-1%20%E5%9F%BA%E7%A1%80%E8%AE%BE%E6%96%BD-green.svg)]()
+[![测试覆盖率](https://img.shields.io/badge/%E6%B5%8B%E8%AF%95%E8%A6%86%E7%9B%96%E7%8E%87-80%25-brightgreen.svg)]()
+
+---
+
+## 项目概述
+
+Swarm-Ev2 是一个基于**双层群体智能**（Agent 层 + Solution 层）与**进化算法**的多 Agent 系统，旨在自动化解决复杂的机器学习问题（如 Kaggle 竞赛、MLE-Bench 评测）。
+
+### 核心特性
+
+- 🧠 **双层群体智能**: Agent 群体协作 + Solution 群体进化
+- 🔄 **自我进化**: Agent 能力持续提升，Solution 基因池演化
+- 🎯 **目标驱动**: 自动探索 + 评估 + 优化，无需人工干预
+- 📊 **可观测性**: 完整的日志系统和性能指标追踪
+- 🧪 **可测试**: TDD 驱动开发，测试覆盖率 80%+
+
+---
+
+## 快速开始
+
+### 环境要求
+
+- Python 3.10+
+- Conda（推荐）
+
+### 安装
+
+```bash
+# 1. 克隆仓库
+git clone <repository-url>
+cd Swarm-Ev2
+
+# 2. 创建 Conda 环境
+conda create -n Swarm-Evo python=3.10.19
+conda activate Swarm-Evo
+
+# 3. 安装依赖
+pip install -r requirements.txt
+
+# 4. 配置环境变量
+cp .env.example .env
+# 编辑 .env 填写 API Keys
+```
+
+### 配置 API Keys
+
+在 `.env` 文件中配置：
+
+```bash
+# OpenAI API Key (必填)
+OPENAI_API_KEY=sk-your-openai-api-key-here
+
+# Anthropic API Key (可选，如需使用 Claude 模型)
+ANTHROPIC_API_KEY=sk-ant-your-anthropic-api-key-here
+```
+
+### 运行测试
+
+```bash
+# 运行所有测试
+pytest tests/unit/ -v
+
+# 查看测试覆盖率
+pytest tests/unit/ --cov=utils --cov-report=term-missing
+
+# 代码格式化和检查
+ruff format utils/ tests/
+ruff check utils/ tests/ --fix
+```
+
+---
+
+## 项目结构
+
+```
+Swarm-Ev2/
+├── config/                    # 配置文件
+│   └── default.yaml          # 主配置文件
+├── utils/                     # 工具模块
+│   ├── config.py             # 配置管理 (OmegaConf + YAML)
+│   ├── logger_system.py      # 日志系统 (双通道输出)
+│   └── file_utils.py         # 文件操作工具
+├── tests/                     # 测试目录
+│   ├── unit/                 # 单元测试
+│   └── integration/          # 集成测试
+├── docs/                      # 文档
+│   ├── CODEMAPS/             # 架构文档
+│   │   ├── architecture.md   # 整体架构
+│   │   ├── backend.md        # 后端模块详解
+│   │   └── data.md           # 数据流与配置
+│   └── plans/                # 实施计划
+│       └── phase1_infrastructure.md
+├── logs/                      # 日志输出 (自动生成)
+│   ├── system.log            # 文本日志
+│   └── metrics.json          # 结构化日志
+├── workspace/                 # 工作空间 (自动生成)
+│   ├── input/                # 输入数据
+│   ├── working/              # Agent 工作目录
+│   └── submission/           # 提交文件
+├── .env.example              # 环境变量模板
+├── requirements.txt          # Python 依赖
+├── CLAUDE.md                 # AI Agent 开发规范
+└── README.md                 # 本文件
+```
+
+---
+
+## 配置管理
+
+### 配置优先级（从高到低）
+
+1. **CLI 参数** (`--key=value`) - 最高优先级
+2. **系统环境变量** (`export VAR=value`)
+3. **.env 文件** (`VAR=value`)
+4. **YAML 配置文件** (`key: value`) - 最低优先级
+
+### 示例
+
+```bash
+# 使用默认配置
+python main.py --data.data_dir=./datasets/titanic
+
+# 覆盖配置
+python main.py \
+  --data.data_dir=./datasets/titanic \
+  --llm.code.model=gpt-3.5-turbo \
+  --agent.max_steps=30
+```
+
+详细配置说明参见 [docs/CODEMAPS/data.md](docs/CODEMAPS/data.md)。
+
+---
+
+## 开发指南
+
+### Phase 实施状态
+
+| Phase | 状态 | 说明 |
+|-------|------|------|
+| Phase 1 | 🟢 部分完成 | 配置系统、日志系统、测试框架 ✅<br>数据结构（Node/Journal/Task）待实现 |
+| Phase 2 | 🔴 未开始 | Agent 框架、执行器、编排器 |
+| Phase 3 | 🔴 未开始 | 搜索算法（MCTS/GA）、并行评估 |
+| Phase 4 | 🔴 未开始 | 进化算法、经验池、Meta-Agent |
+| Phase 5 | 🔴 未开始 | 端到端测试、MLE-Bench 适配 |
+
+### 架构文档
+
+- [项目架构概览](docs/CODEMAPS/architecture.md) - 分层架构、模块依赖
+- [后端模块详解](docs/CODEMAPS/backend.md) - 配置、日志、测试系统
+- [数据流与配置管理](docs/CODEMAPS/data.md) - 配置加载、工作空间
+
+### 开发规范
+
+**必读**: [CLAUDE.md](CLAUDE.md) - AI Agent 和人类开发者的统一规范
+
+核心原则：
+- ✅ **MVP 优先**: 严禁过度工程化
+- ✅ **TDD 驱动**: 先写测试，后写实现
+- ✅ **类型注解**: 强制所有函数包含完整类型
+- ✅ **中文文档**: 所有 Docstring 和注释使用简体中文
+- ✅ **测试覆盖**: 最低 80% 覆盖率
+
+---
+
+## 核心功能（待实现）
+
+### Phase 2: 核心 Agent 系统
+- [ ] BaseAgent 抽象类
+- [ ] CoderAgent 实现
+- [ ] Interpreter 执行器
+- [ ] Orchestrator 编排器
+
+### Phase 3: 搜索与评估
+- [ ] MCTS 搜索算法
+- [ ] 遗传算法
+- [ ] 并行评估框架
+
+### Phase 4: 进化与学习
+- [ ] Agent 能力进化
+- [ ] Solution 基因进化
+- [ ] 经验池与记忆系统
+- [ ] Meta-Agent 自我优化
+
+### Phase 5: 集成与评测
+- [ ] 端到端测试
+- [ ] MLE-Bench 适配器
+- [ ] 性能基准测试
+
+---
+
+## 日志系统
+
+### 双通道输出
+
+- **文本日志** (`logs/system.log`): 人类可读的时间戳日志
+- **JSON 日志** (`logs/metrics.json`): 结构化指标数据
+
+### 使用示例
+
+```python
+from utils.logger_system import log_msg, log_json, ensure
+
+# 文本日志
+log_msg("INFO", "Agent 开始执行任务")
+
+# 结构化日志
+log_json({"agent_name": "Agent1", "step": 3, "score": 0.92})
+
+# 断言工具
+ensure(config.is_valid(), "配置无效")  # 失败时抛出 AssertionError
+```
+
+**重要变更（Phase 1）**: `log_msg("ERROR", ...)` 不再自动抛出异常，需要显式处理。
+
+---
+
+## 测试
+
+### 运行测试
+
+```bash
+# 单元测试
+pytest tests/unit/ -v
+
+# 集成测试
+pytest tests/integration/ -v
+
+# 测试覆盖率
+pytest tests/unit/ --cov=utils --cov-report=html
+open htmlcov/index.html  # 查看覆盖率报告
+```
+
+### 测试组织
+
+- `tests/unit/`: 单元测试（80%+ 覆盖率）
+- `tests/integration/`: 集成测试（待添加）
+- `tests/e2e/`: 端到端测试（Phase 5）
+
+---
+
+## 贡献指南
+
+### 开发工作流
+
+1. **阅读规范**: 仔细阅读 [CLAUDE.md](CLAUDE.md)
+2. **创建分支**: `git checkout -b feature/your-feature`
+3. **TDD 开发**:
+   - 先写测试 (RED)
+   - 写最小实现 (GREEN)
+   - 重构优化 (REFACTOR)
+4. **代码检查**:
+   ```bash
+   ruff format .
+   ruff check . --fix
+   pytest tests/ --cov=utils --cov-report=term-missing
+   ```
+5. **提交代码**: 遵循 [Conventional Commits](https://www.conventionalcommits.org/)
+   ```bash
+   git commit -m "feat: 添加 Agent 基类实现"
+   ```
+6. **创建 PR**: 提交 Pull Request 并等待审核
+
+### Commit Message 格式
+
+```
+<type>: <description>
+
+[optional body]
+```
+
+**Types**: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`
+
+---
+
+## 技术栈
+
+| 类别 | 技术 |
+|------|------|
+| 语言 | Python 3.10 |
+| 配置 | OmegaConf + YAML |
+| 日志 | Rich + JSON |
+| LLM | OpenAI API, Anthropic API |
+| 测试 | pytest + pytest-asyncio + pytest-cov |
+| 代码质量 | Ruff (formatter + linter) |
+| 类型检查 | Mypy |
+
+---
+
+## 许可证
+
+[MIT License](LICENSE)
+
+---
+
+## 致谢
+
+本项目受以下项目启发：
+- [AIDE](https://github.com/WecoAI/aideml) - Agent 设计与后端抽象
+- [Swarm-Evo](https://github.com/ML-Master/Swarm-Evo) - 群体智能算法
+
+---
+
+## 联系方式
+
+- **Issue Tracker**: [GitHub Issues](../../issues)
+- **Discussions**: [GitHub Discussions](../../discussions)
+
+---
+
+**最后更新**: 2026-01-30
