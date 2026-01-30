@@ -1,0 +1,76 @@
+# Swarm-Ev2 主配置文件
+# 使用 OmegaConf 加载，支持环境变量插值和 CLI 参数覆盖
+
+# ============================================================
+# 项目基础配置
+# ============================================================
+project:
+  name: "Swarm-Ev2"
+  version: "0.1.0"
+  workspace_dir: "./workspace"  # 工作空间根目录
+  log_dir: "./logs"  # 日志目录
+  exp_name: null  # 实验名称，null 时自动生成（格式: YYYYMMDD_HHMMSS_xxxx）
+
+# ============================================================
+# 数据配置
+# ============================================================
+data:
+  data_dir: null  # 数据目录路径（必填，通过 CLI 提供）
+  desc_file: null  # 数据描述文件路径（可选，与 goal 二选一）
+  goal: null  # 任务目标描述（可选，与 desc_file 二选一）
+  eval: null  # 评估指标（可选）
+  preprocess_data: true  # 是否预处理数据
+  copy_data: false  # false: 使用 symlink（只读），true: 复制数据
+
+# ============================================================
+# LLM 后端配置
+# ============================================================
+llm:
+  # Code 生成 Agent 使用的 LLM
+  code:
+    model: "gpt-4-turbo"
+    temperature: 0.5
+    api_key: ${env:OPENAI_API_KEY}  # 从环境变量读取
+
+  # Feedback Agent 使用的 LLM
+  feedback:
+    model: "gpt-4-turbo"
+    temperature: 0.5
+    api_key: ${env:OPENAI_API_KEY}
+
+# ============================================================
+# 执行配置
+# ============================================================
+execution:
+  timeout: 3600  # 单次执行超时时间（秒）
+  agent_file_name: "runfile.py"  # Agent 执行文件名
+  format_tb_ipython: false  # 是否使用 IPython 格式化 traceback
+
+# ============================================================
+# Agent 配置
+# ============================================================
+agent:
+  max_steps: 50  # 最大迭代步数
+  time_limit: 86400  # 总时间限制（秒，24 小时）
+  k_fold_validation: 5  # K-fold 交叉验证折数
+  expose_prediction: false  # 是否暴露预测结果给 Agent
+  data_preview: true  # 是否提供数据预览
+  convert_system_to_user: false  # 是否将 system message 转换为 user message
+
+# ============================================================
+# 搜索算法配置（Phase 3 使用）
+# ============================================================
+search:
+  strategy: "mcts"  # 搜索策略: mcts | genetic
+  max_debug_depth: 3  # 最大调试深度
+  debug_prob: 0.5  # 调试概率
+  num_drafts: 5  # 初始草稿数量
+  parallel_num: 3  # 并行执行数量
+
+# ============================================================
+# 日志配置
+# ============================================================
+logging:
+  level: "INFO"  # 日志级别: DEBUG | INFO | WARNING | ERROR
+  console_output: true  # 是否输出到控制台
+  file_output: true  # 是否输出到文件（logs/system.log 和 logs/metrics.json）
