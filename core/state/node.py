@@ -27,7 +27,7 @@ class Node(DataClassJsonMixin):
         ctime: 创建时间戳
         parent_id: 父节点 ID
         children_ids: 子节点 ID 列表（用于 DAG 遍历）
-        task_type: 任务类型（draft/improve/debug/merge）
+        task_type: 任务类型（explore/merge）
         metadata: 额外元数据
         logs: 执行日志
         term_out: 终端输出
@@ -55,7 +55,7 @@ class Node(DataClassJsonMixin):
     ctime: float = field(default_factory=time.time, kw_only=True)
     parent_id: Optional[str] = field(default=None, kw_only=True)
     children_ids: list[str] = field(default_factory=list, kw_only=True)
-    task_type: str = field(default="draft", kw_only=True)
+    task_type: str = field(default="explore", kw_only=True)
     metadata: Dict = field(default_factory=dict, kw_only=True)
 
     # ---- 执行信息 ----
@@ -90,20 +90,22 @@ class Node(DataClassJsonMixin):
         return hash(self.id)
 
     @property
-    def stage_name(self) -> Literal["draft", "debug", "improve", "unknown"]:
-        """返回节点所处的阶段。
+    def stage_name(self) -> Literal["initial", "bugfix", "improve", "unknown"]:
+        """返回节点的生成模式。
 
-        阶段推导规则：
-        - draft: 无父节点（初始方案）
-        - debug: 父节点有 bug（调试修复）
-        - improve: 父节点无 bug（改进优化）
+        生成模式推导规则：
+        - initial: 无父节点（初始方案）
+        - bugfix: 父节点有 bug（修复模式）
+        - improve: 父节点无 bug（改进模式）
         - unknown: 其他情况
 
         Returns:
-            阶段名称字符串
+            生成模式字符串
+
+        注意: Phase 2 简化实现，需要 Journal 上下文才能准确判断父节点状态
         """
         if self.parent_id is None:
-            return "draft"
+            return "initial"
         # Phase 2 完善：需要从 Journal 中查找父节点的 is_buggy 状态
         # 当前 MVP 阶段暂时返回 unknown
         return "unknown"
