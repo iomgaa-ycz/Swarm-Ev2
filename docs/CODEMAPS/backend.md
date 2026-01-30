@@ -1,6 +1,6 @@
 # 后端模块详细说明
 
-**Last Updated:** 2026-01-30
+**Last Updated:** 2026-01-30 22:00:00
 **模块范围:** utils/, core/state/, config/, tests/
 
 ---
@@ -15,6 +15,10 @@
 | **Node 数据类** | `core/state/node.py` | 解决方案 DAG 节点 | **已完成** |
 | **Journal 数据类** | `core/state/journal.py` | DAG 容器与查询 | **已完成** |
 | **Task 数据类** | `core/state/task.py` | Agent 任务定义 | **已完成** |
+| **后端抽象层** | `core/backend/__init__.py` | 统一 LLM 查询接口 | **已完成** |
+| **OpenAI 后端** | `core/backend/backend_openai.py` | OpenAI + GLM 支持 | **已完成** |
+| **Anthropic 后端** | `core/backend/backend_anthropic.py` | Claude 系列支持 | **已完成** |
+| **后端工具** | `core/backend/utils.py` | 消息格式化 + 重试机制 | **已完成** |
 | YAML 配置 | `config/default.yaml` | 项目主配置 | 已完成 |
 | 环境变量 | `.env.example` | API Keys 模板 | 已完成 |
 
@@ -493,7 +497,173 @@ print(task)  # Task(type=explore, node_id=node_abc...)
 
 ---
 
-## 8. 关联文档
+## 8. 后端抽象层 (`core/backend/`)
+
+### 8.1 架构设计
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                      query()                              │
+│  ┌─────────────────────────────────────────────────────┐ │
+│  │              determine_provider(model)              │ │
+│  │  "gpt-*", "o1-*", "glm-*" → openai                  │ │
+│  │  "claude-*" → anthropic                             │ │
+│  └─────────────────────────────────────────────────────┘ │
+│                         ↓                                 │
+│  ┌──────────────────┐   ┌──────────────────────────────┐ │
+│  │ backend_openai   │   │ backend_anthropic            │ │
+│  │ - OpenAI GPT     │   │ - Claude 3.x                 │ │
+│  │ - GLM 4.6/4.7    │   │ - 特殊消息处理               │ │
+│  │ - 自定义 base_url │   │                              │ │
+│  └──────────────────┘   └──────────────────────────────┘ │
+│                         ↓                                 │
+│  ┌─────────────────────────────────────────────────────┐ │
+│  │                 utils.backoff_create()              │ │
+│  │           指数退避重试: 1.5^n 秒, max 60s           │ │
+│  └─────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────┘
+```
+
+### 8.2 核心函数
+
+| 函数 | 文件 | 签名 | 说明 |
+|------|------|------|------|
+| `query` | `__init__.py` | `(system_message, user_message, model, ...) -> str` | 统一 LLM 查询入口 |
+| `determine_provider` | `__init__.py` | `(model: str) -> str` | 根据模型名判断提供商 |
+| `backend_openai.query` | `backend_openai.py` | 同上 | OpenAI/GLM API 调用 |
+| `backend_anthropic.query` | `backend_anthropic.py` | 同上 | Anthropic API 调用 |
+| `opt_messages_to_list` | `utils.py` | `(system, user) -> list[dict]` | 消息格式转换 |
+| `backoff_create` | `utils.py` | `(fn, exceptions, *args) -> Any` | 带重试的 API 调用 |
+
+### 8.3 支持的模型
+
+| 提供商 | 模型前缀 | 示例 | 特殊配置 |
+|--------|----------|------|----------|
+| OpenAI | `gpt-`, `o1-` | `gpt-4-turbo`, `o1-preview` | 标准 OpenAI API |
+| GLM | `glm-` | `glm-4.6`, `glm-4.7` | 需要 `base_url` 参数 |
+| Anthropic | `claude-` | `claude-3-opus-20240229` | system 消息单独传递 |
+
+### 8.4 GLM 配置示例
+
+```python
+from core.backend import query
+
+# GLM 4.7 调用示例
+response = query(
+    system_message="你是一个 Python 专家",
+    user_message="解释装饰器",
+    model="glm-4.7",
+    api_key="your-glm-api-key",
+    base_url="https://open.bigmodel.cn/api/paas/v4/",  # GLM API 端点
+)
+```
+
+### 8.5 重试机制
+
+```python
+# 自动重试的异常类型:
+# OpenAI: RateLimitError, APIConnectionError, APITimeoutError, InternalServerError
+# Anthropic: 同上
+
+# 重试策略: 指数退避
+# 间隔: 1.5^n 秒 (n = 重试次数)
+# 最大间隔: 60 秒
+```
+
+### 8.6 使用示例
+
+```python
+from core.backend import query, determine_provider
+
+# 1. 判断提供商
+provider = determine_provider("gpt-4-turbo")  # -> "openai"
+provider = determine_provider("claude-3-opus-20240229")  # -> "anthropic"
+
+# 2. 统一查询接口
+response = query(
+    system_message="You are a helpful assistant",
+    user_message="Hello",
+    model="gpt-4-turbo",
+    temperature=0.7,
+    api_key="sk-...",  # 从 Config 获取
+)
+
+# 3. 错误处理
+try:
+    response = query(...)
+except ValueError as e:
+    # 不支持的模型
+    print(f"模型错误: {e}")
+except Exception as e:
+    # API 调用失败
+    print(f"API 错误: {e}")
+```
+
+---
+
+## 9. 模块依赖图
+
+```mermaid
+graph TD
+    subgraph "基础设施层"
+        LOG[utils/logger_system.py]
+        CFG[utils/config.py]
+        FU[utils/file_utils.py]
+    end
+
+    subgraph "数据结构层"
+        NODE[core/state/node.py]
+        JOURNAL[core/state/journal.py]
+        TASK[core/state/task.py]
+    end
+
+    subgraph "后端抽象层"
+        BACKEND[core/backend/__init__.py]
+        OPENAI[core/backend/backend_openai.py]
+        ANTHRO[core/backend/backend_anthropic.py]
+        BUTILS[core/backend/utils.py]
+    end
+
+    %% 依赖关系
+    JOURNAL --> NODE
+    TASK -.-> LOG
+
+    BACKEND --> LOG
+    BACKEND --> OPENAI
+    BACKEND --> ANTHRO
+
+    OPENAI --> BUTILS
+    OPENAI --> LOG
+
+    ANTHRO --> BUTILS
+    ANTHRO --> LOG
+
+    BUTILS --> LOG
+
+    CFG --> LOG
+    FU --> LOG
+
+    style LOG fill:#e1f5ff
+    style NODE fill:#fff4e6
+    style JOURNAL fill:#fff4e6
+    style TASK fill:#fff4e6
+    style BACKEND fill:#e8f5e9
+```
+
+**依赖层级**:
+1. 基础层: `logger_system.py` (0 依赖)
+2. 配置层: `config.py`, `file_utils.py` (依赖基础层)
+3. 数据层: `Node`, `Journal`, `Task` (自包含，轻量依赖)
+4. 后端层: `backend/*` (依赖基础层)
+
+**关键设计原则**:
+- 单向依赖：下层不依赖上层
+- 最小耦合：数据结构独立于配置和后端
+- 易测试性：每层可独立测试
+
+---
+
+## 10. 关联文档
 
 | 文档 | 路径 |
 |------|------|

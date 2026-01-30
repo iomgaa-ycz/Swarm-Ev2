@@ -1,6 +1,6 @@
 # 数据流与配置管理
 
-**Last Updated:** 2026-01-30 20:30:00
+**Last Updated:** 2026-01-30 22:00:00
 **模块范围:** config/, .env, utils/config.py, utils/logger_system.py
 
 ---
@@ -315,7 +315,77 @@ Config(@dataclass)
 
 ---
 
-## 8. 关联文档
+## 8. 实际使用示例
+
+### 8.1 完整初始化流程
+
+```python
+from pathlib import Path
+from utils.config import load_config, setup_workspace, print_config
+from utils.logger_system import init_logger, log_msg
+
+# 1. 加载配置（优先级: CLI > 环境变量 > .env > YAML）
+cfg = load_config(
+    config_path=Path("config/default.yaml"),  # 可选
+    use_cli=True,  # 合并 CLI 参数
+    env_file=Path(".env")  # 可选
+)
+
+# 2. 打印配置概览
+print_config(cfg)
+
+# 3. 初始化日志系统
+logger = init_logger(cfg.project.log_dir)
+log_msg("INFO", "系统初始化完成")
+
+# 4. 设置工作空间
+setup_workspace(cfg)
+log_msg("INFO", f"工作空间已创建: {cfg.project.workspace_dir}")
+
+# 5. 使用配置
+print(f"实验名称: {cfg.project.exp_name}")
+print(f"数据目录: {cfg.data.data_dir}")
+print(f"LLM 模型: {cfg.llm.code.model}")
+```
+
+### 8.2 CLI 参数覆盖示例
+
+```bash
+# 基础用法
+python main.py --data.data_dir=./datasets/titanic
+
+# 完整覆盖示例
+python main.py \
+  --data.data_dir=./datasets/house-prices \
+  --data.goal="预测房价" \
+  --llm.code.model=gpt-3.5-turbo \
+  --llm.code.temperature=0.3 \
+  --agent.max_steps=30 \
+  --search.strategy=genetic \
+  --project.exp_name=house_prices_exp1
+```
+
+### 8.3 环境变量优先级测试
+
+```bash
+# 场景 1: 仅 .env 文件
+# .env: OPENAI_API_KEY=sk-from-dotenv
+echo $OPENAI_API_KEY  # 输出: sk-from-dotenv
+
+# 场景 2: .env + 系统环境变量
+export OPENAI_API_KEY=sk-from-shell
+# .env: OPENAI_API_KEY=sk-from-dotenv
+echo $OPENAI_API_KEY  # 输出: sk-from-shell (系统优先)
+
+# 场景 3: .env + 系统环境变量 + CLI
+export OPENAI_API_KEY=sk-from-shell
+python main.py --llm.code.api_key=sk-from-cli
+# 最终使用: sk-from-cli (CLI 最高优先级)
+```
+
+---
+
+## 9. 关联文档
 
 | 文档 | 路径 |
 |------|------|

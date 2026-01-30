@@ -58,6 +58,9 @@ OPENAI_API_KEY=sk-your-openai-api-key-here
 
 # Anthropic API Key (可选，如需使用 Claude 模型)
 ANTHROPIC_API_KEY=sk-ant-your-anthropic-api-key-here
+
+# GLM API Key (可选，智谱 AI，用于 glm-4.6 等模型)
+GLM_API_KEY=your-glm-api-key-here
 ```
 
 ### 运行测试
@@ -83,11 +86,16 @@ Swarm-Ev2/
 ├── config/                    # 配置文件
 │   └── default.yaml          # 主配置文件
 ├── core/                      # 核心模块
-│   └── state/                # 核心数据结构
-│       ├── __init__.py       # 导出 Node, Journal, Task
-│       ├── node.py           # 解决方案节点 (22字段 + 4方法)
-│       ├── journal.py        # 解决方案 DAG (11方法 + parse_solution_genes)
-│       └── task.py           # 任务定义 (8字段)
+│   ├── state/                # 核心数据结构
+│   │   ├── __init__.py       # 导出 Node, Journal, Task
+│   │   ├── node.py           # 解决方案节点 (22字段 + 4方法)
+│   │   ├── journal.py        # 解决方案 DAG (11方法 + parse_solution_genes)
+│   │   └── task.py           # 任务定义 (8字段)
+│   └── backend/              # LLM 后端抽象层
+│       ├── __init__.py       # 统一查询接口 (query, determine_provider)
+│       ├── backend_openai.py # OpenAI + GLM 后端
+│       ├── backend_anthropic.py # Anthropic 后端
+│       └── utils.py          # 消息格式化 + 重试机制
 ├── utils/                     # 工具模块
 │   ├── config.py             # 配置管理 (OmegaConf + YAML)
 │   ├── logger_system.py      # 日志系统 (双通道输出)
@@ -149,7 +157,7 @@ python main.py \
 
 | Phase | 状态 | 说明 |
 |-------|------|------|
-| Phase 1 | 🟢 已完成 | 配置系统、日志系统、文件工具 ✅<br>核心数据结构（Node/Journal/Task）✅ |
+| Phase 1 | 🟢 已完成 | 配置系统、日志系统、文件工具 ✅<br>核心数据结构（Node/Journal/Task）✅<br>后端抽象层（OpenAI/Anthropic/GLM）✅ |
 | Phase 2 | 🔴 未开始 | Agent 框架、执行器、编排器 |
 | Phase 3 | 🔴 未开始 | 搜索算法（MCTS/GA）、并行评估 |
 | Phase 4 | 🔴 未开始 | 进化算法、经验池、Meta-Agent |
@@ -176,11 +184,15 @@ python main.py \
 
 ## 核心功能
 
-### Phase 1: 核心数据结构（已完成）
+### Phase 1: 基础设施（已完成）
+- [x] **配置系统** - OmegaConf + YAML，支持 CLI/环境变量覆盖
+- [x] **日志系统** - 双通道输出（文本 + JSON），不自动 raise
+- [x] **文件工具** - 目录复制/链接，跨平台兼容
 - [x] **Node** - 解决方案 DAG 节点（代码、执行结果、评估、MCTS/GA 统计）
 - [x] **Journal** - DAG 容器（节点管理、树查询、序列化）
 - [x] **Task** - 任务定义（explore/merge/select/review）
 - [x] **parse_solution_genes** - 基因组件解析器
+- [x] **后端抽象层** - 统一 LLM 接口（OpenAI/Anthropic/GLM 4.7）
 
 ### Phase 2: 核心 Agent 系统
 - [ ] BaseAgent 抽象类
@@ -297,7 +309,7 @@ open htmlcov/index.html  # 查看覆盖率报告
 | 语言 | Python 3.10 |
 | 配置 | OmegaConf + YAML |
 | 日志 | Rich + JSON |
-| LLM | OpenAI API, Anthropic API |
+| LLM | OpenAI API, Anthropic API, GLM API (智谱 AI) |
 | 测试 | pytest + pytest-asyncio + pytest-cov |
 | 代码质量 | Ruff (formatter + linter) |
 | 类型检查 | Mypy |

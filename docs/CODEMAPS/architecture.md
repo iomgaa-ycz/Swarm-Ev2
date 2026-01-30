@@ -1,6 +1,6 @@
 # Swarm-Ev2 项目架构概览
 
-**Last Updated:** 2026-01-30
+**Last Updated:** 2026-01-30 22:00:00
 **项目版本:** 0.1.0
 **当前阶段:** Phase 1 基础设施搭建（已完成）
 
@@ -68,8 +68,11 @@ graph TD
         TASK[core/state/task.py<br/>8字段]
     end
 
-    subgraph "Phase 1 - 后端抽象（待实现）"
-        BACKEND[core/backend/__init__.py]
+    subgraph "Phase 1 - 后端抽象（已完成）"
+        BACKEND[core/backend/__init__.py<br/>统一查询接口]
+        OPENAI[core/backend/backend_openai.py<br/>OpenAI + GLM]
+        ANTHRO[core/backend/backend_anthropic.py<br/>Claude]
+        BUTILS[core/backend/utils.py<br/>消息格式 + 重试]
     end
 
     subgraph "Phase 2 - 待实现"
@@ -127,8 +130,8 @@ graph TD
 | Phase | 名称 | 状态 | 核心交付物 |
 |-------|------|------|-----------|
 | **1** | 基础设施重构 | **已完成** | config.py, logger_system.py, file_utils.py |
-| **1** | 核心数据结构 | **已完成** | Node, Journal, Task (测试覆盖率 97%) |
-| 1 | 后端抽象层 | 待实现 | Backend (OpenAI, Anthropic) |
+| **1** | 核心数据结构 | **已完成** | Node (118行), Journal (229行), Task (62行) |
+| **1** | 后端抽象层 | **已完成** | Backend (500行) - OpenAI, Anthropic, GLM 4.7 |
 | 2 | 核心功能 | 待实现 | BaseAgent, Orchestrator, Interpreter |
 | 3 | 双层群体智能 | 待实现 | GA, AgentEvolution, ParallelEvaluator |
 | 4 | 扩展功能 | 待实现 | Memory, ToolRegistry, AgentRegistry |
@@ -144,21 +147,28 @@ graph TD
 | **Node 数据类** | `core/state/node.py` | 119 | **已完成** |
 | **Journal 数据类** | `core/state/journal.py` | 229 | **已完成** |
 | **Task 数据类** | `core/state/task.py` | 63 | **已完成** |
+| **后端抽象层** | `core/backend/__init__.py` | 147 | **已完成** |
+| **OpenAI 后端** | `core/backend/backend_openai.py` | 133 | **已完成** |
+| **Anthropic 后端** | `core/backend/backend_anthropic.py` | 143 | **已完成** |
+| **后端工具** | `core/backend/utils.py` | 81 | **已完成** |
 | YAML 配置 | `config/default.yaml` | 77 | 已完成 |
 | 环境变量模板 | `.env.example` | 36 | 已完成 |
 | 依赖声明 | `requirements.txt` | 36 | 已完成 |
 
 ### Phase 1 已完成测试明细
 
-| 测试文件 | 测试数 | 覆盖模块 |
-|----------|--------|---------|
-| `tests/unit/test_config.py` | 7 | config.py |
-| `tests/unit/test_config_priority.py` | 4 | config.py (优先级) |
-| `tests/unit/test_file_utils.py` | 5 | file_utils.py |
-| **`tests/unit/test_node.py`** | 7 | **Node 数据类** |
-| **`tests/unit/test_journal.py`** | 12 | **Journal + parse_solution_genes** |
-| **`tests/unit/test_task.py`** | 5 | **Task 数据类** |
-| **`tests/unit/test_state_integration.py`** | 1 | **State 模块集成** |
+| 测试文件 | 测试数 | 覆盖模块 | 状态 |
+|----------|--------|---------|------|
+| `tests/unit/test_config.py` | 7 | config.py | ✅ |
+| `tests/unit/test_config_priority.py` | 4 | config.py (优先级) | ✅ |
+| `tests/unit/test_file_utils.py` | 5 | file_utils.py | ✅ |
+| **`tests/unit/test_node.py`** | 7 | **Node 数据类** | ✅ |
+| **`tests/unit/test_journal.py`** | 12 | **Journal + parse_solution_genes** | ✅ |
+| **`tests/unit/test_task.py`** | 5 | **Task 数据类** | ✅ |
+| **`tests/unit/test_state_integration.py`** | 1 | **State 模块集成** | ✅ |
+| **`tests/unit/test_backend.py`** | 待补充 | **Backend 抽象层** | 🔴 待添加 |
+
+**总计**: 41 个单元测试 | 覆盖率 > 80%
 
 ---
 
@@ -182,9 +192,10 @@ Swarm-Ev2/
 │   │   ├── journal.py             # 解决方案日志              ★ 已完成
 │   │   └── task.py                # 任务定义                  ★ 已完成
 │   ├── backend/                   # LLM 后端抽象
-│   │   ├── __init__.py            # 统一查询接口           Phase 1 待实现
-│   │   ├── backend_openai.py      # OpenAI                Phase 1 待实现
-│   │   └── backend_anthropic.py   # Anthropic             Phase 1 待实现
+│   │   ├── __init__.py            # 统一查询接口           ★ 已完成
+│   │   ├── backend_openai.py      # OpenAI + GLM          ★ 已完成
+│   │   ├── backend_anthropic.py   # Anthropic             ★ 已完成
+│   │   └── utils.py               # 消息格式 + 重试        ★ 已完成
 │   ├── executor/                  # 代码执行
 │   │   ├── interpreter.py         # 执行沙箱              Phase 2
 │   │   └── workspace.py           # 工作空间管理           Phase 2
