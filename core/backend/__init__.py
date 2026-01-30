@@ -13,6 +13,7 @@
     ...     system_message="You are a helpful assistant",
     ...     user_message="Hello",
     ...     model="gpt-4-turbo",
+    ...     provider="openai",
     ...     api_key="sk-..."
     ... )
 """
@@ -21,36 +22,6 @@ from typing import Any, Callable
 
 from utils.logger_system import log_msg, log_exception
 from . import backend_openai, backend_anthropic
-
-
-def determine_provider(model: str) -> str:
-    """根据模型名称判断 LLM 提供商。
-
-    Args:
-        model: 模型名称（如 "gpt-4-turbo", "claude-3-opus", "glm-4.6"）
-
-    Returns:
-        提供商名称 ("openai" | "anthropic")
-
-    Raises:
-        ValueError: 不支持的模型
-
-    示例:
-        >>> determine_provider("gpt-4-turbo")
-        'openai'
-        >>> determine_provider("claude-3-opus")
-        'anthropic'
-        >>> determine_provider("glm-4.6")
-        'openai'
-    """
-    if model.startswith("gpt-") or model.startswith("o1-") or model.startswith("glm-"):
-        return "openai"
-    elif model.startswith("claude-"):
-        return "anthropic"
-    else:
-        raise ValueError(
-            f"不支持的模型: {model}。支持的模型前缀: gpt-, o1-, glm-, claude-"
-        )
 
 
 # 提供商到查询函数的映射
@@ -64,6 +35,7 @@ def query(
     system_message: str | None,
     user_message: str | None,
     model: str,
+    provider: str,
     temperature: float | None = None,
     max_tokens: int | None = None,
     api_key: str | None = None,
@@ -71,22 +43,23 @@ def query(
 ) -> str:
     """统一 LLM 查询接口。
 
-    自动根据模型名称选择对应的后端实现。
+    根据 provider 参数选择对应的后端实现。
 
     Args:
         system_message: 系统消息（定义 AI 角色和行为）
         user_message: 用户消息（用户输入）
         model: 模型名称
+        provider: 提供商名称（必填，"openai" 或 "anthropic"）
         temperature: 采样温度（0-1，越高越随机）
         max_tokens: 最大生成 token 数
         api_key: API 密钥（从 Config 传入）
-        **kwargs: 额外的模型参数
+        **kwargs: 额外的模型参数（如 base_url）
 
     Returns:
         LLM 生成的文本响应
 
     Raises:
-        ValueError: 不支持的模型
+        ValueError: 不支持的 provider
         Exception: API 调用失败
 
     示例:
@@ -95,26 +68,36 @@ def query(
         ...     system_message="你是智能助手",
         ...     user_message="1+1=?",
         ...     model="gpt-4-turbo",
+        ...     provider="openai",
         ...     api_key="sk-..."
         ... )
-        >>> # 使用 GLM-4.6
+
+        >>> # 使用第三方 OpenAI 兼容 API
         >>> response = query(
         ...     system_message="你是智能助手",
         ...     user_message="介绍 Python",
-        ...     model="glm-4.6",
-        ...     api_key="sk-..."
+        ...     model="moonshot-v1-8k",
+        ...     provider="openai",
+        ...     api_key="sk-...",
+        ...     base_url="https://api.moonshot.cn/v1"
         ... )
+
         >>> # 使用 Claude
         >>> response = query(
         ...     system_message="You are a helpful assistant",
         ...     user_message="Hello",
         ...     model="claude-3-opus-20240229",
+        ...     provider="anthropic",
         ...     api_key="sk-ant-..."
         ... )
     """
     try:
-        # 判断提供商
-        provider = determine_provider(model)
+        # 验证 provider
+        if provider not in PROVIDER_TO_QUERY:
+            raise ValueError(
+                f"不支持的 provider: {provider}。支持: {list(PROVIDER_TO_QUERY.keys())}"
+            )
+
         log_msg("INFO", f"查询 LLM: model={model}, provider={provider}")
 
         # 获取对应的查询函数
@@ -135,12 +118,12 @@ def query(
         return response
 
     except ValueError as e:
-        log_msg("ERROR", f"模型选择错误: {e}")
+        log_msg("ERROR", f"Provider 验证失败: {e}")
         raise
     except Exception as e:
-        log_exception(e, f"LLM 查询失败 (model={model})")
+        log_exception(e, f"LLM 查询失败 (model={model}, provider={provider})")
         raise
 
 
 # 导出公共接口
-__all__ = ["query", "determine_provider", "PROVIDER_TO_QUERY"]
+__all__ = ["query", "PROVIDER_TO_QUERY"]
