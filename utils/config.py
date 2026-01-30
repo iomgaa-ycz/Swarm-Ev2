@@ -49,9 +49,12 @@ class DataConfig:
 class LLMStageConfig:
     """LLM 阶段配置（code/feedback）。"""
 
+    provider: str  # 必填："openai" 或 "anthropic"
     model: str
     temperature: float
     api_key: str
+    base_url: str = "https://api.openai.com/v1"  # 默认 OpenAI API 端点
+    max_tokens: int | None = None  # 最大生成 token 数
 
 
 @dataclass
@@ -268,6 +271,19 @@ def validate_config(cfg: DictConfig) -> Config:
     if not cfg.llm.code.api_key or cfg.llm.code.api_key.startswith("${env:"):
         log_msg("WARNING", "LLM API Key 未设置或环境变量未解析，请检查环境变量配置")
 
+    # ---- Provider 验证 ----
+    valid_providers = {"openai", "anthropic"}
+    if cfg.llm.code.provider not in valid_providers:
+        error_msg = f"无效的 provider: {cfg.llm.code.provider}，支持: {valid_providers}"
+        log_msg("ERROR", error_msg)
+        raise ValueError(error_msg)
+    if cfg.llm.feedback.provider not in valid_providers:
+        error_msg = (
+            f"无效的 provider: {cfg.llm.feedback.provider}，支持: {valid_providers}"
+        )
+        log_msg("ERROR", error_msg)
+        raise ValueError(error_msg)
+
     # ---- 类型化转换 ----
     # 创建结构化配置模板
     cfg_schema = OmegaConf.structured(
@@ -284,8 +300,22 @@ def validate_config(cfg: DictConfig) -> Config:
                 copy_data=False,
             ),
             llm=LLMConfig(
-                code=LLMStageConfig(model="", temperature=0.0, api_key=""),
-                feedback=LLMStageConfig(model="", temperature=0.0, api_key=""),
+                code=LLMStageConfig(
+                    provider="openai",
+                    model="",
+                    temperature=0.0,
+                    api_key="",
+                    base_url="https://api.openai.com/v1",
+                    max_tokens=None,
+                ),
+                feedback=LLMStageConfig(
+                    provider="openai",
+                    model="",
+                    temperature=0.0,
+                    api_key="",
+                    base_url="https://api.openai.com/v1",
+                    max_tokens=None,
+                ),
             ),
             execution=ExecutionConfig(
                 timeout=0, agent_file_name="", format_tb_ipython=False

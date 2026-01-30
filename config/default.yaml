@@ -28,15 +28,21 @@ data:
 llm:
   # Code 生成 Agent 使用的 LLM
   code:
-    model: "gpt-4-turbo"
+    provider: ${env:LLM_PROVIDER, "openai"}  # 必填：openai | anthropic
+    model: ${env:LLM_MODEL, "gpt-4-turbo"}
     temperature: 0.5
     api_key: ${env:OPENAI_API_KEY}  # 从环境变量读取
+    base_url: ${env:OPENAI_BASE_URL, "https://api.openai.com/v1"}  # API 端点
+    max_tokens: ${env:MAX_TOKENS, null}  # 最大生成 token 数
 
   # Feedback Agent 使用的 LLM
   feedback:
-    model: "gpt-4-turbo"
+    provider: ${env:LLM_PROVIDER, "openai"}
+    model: ${env:LLM_MODEL, "gpt-4-turbo"}
     temperature: 0.5
     api_key: ${env:OPENAI_API_KEY}
+    base_url: ${env:OPENAI_BASE_URL, "https://api.openai.com/v1"}
+    max_tokens: ${env:MAX_TOKENS, null}
 
 # ============================================================
 # 执行配置
