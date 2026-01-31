@@ -4,7 +4,8 @@ State 模块集成测试。
 测试 Node, Journal, Task 三个类的协同工作。
 """
 
-from core.state import Node, Journal, Task, parse_solution_genes
+from core.state import Node, Journal, Task
+from core.evolution.gene_parser import parse_solution_genes
 
 
 class TestStateIntegration:

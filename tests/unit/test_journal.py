@@ -2,7 +2,8 @@
 Journal 数据类单元测试。
 """
 
-from core.state import Node, Journal, parse_solution_genes
+from core.state import Node, Journal
+from core.evolution.gene_parser import parse_solution_genes
 
 
 class TestJournal:
@@ -201,3 +202,90 @@ model.fit(X_train, y_train)
         code = "x = 1\ny = 2"
         genes = parse_solution_genes(code)
         assert genes == {}
+
+    def test_get_best_k(self):
+        """测试 get_best_k 方法。"""
+        journal = Journal()
+
+        # 创建 5 个节点，metric_value 分别为 0.8, 0.6, 0.9, 0.5, 0.7
+        qualities = [0.8, 0.6, 0.9, 0.5, 0.7]
+        for i, quality in enumerate(qualities):
+            node = Node(
+                code=f"code_{i}",
+                plan=f"plan_{i}",
+                metric_value=quality,
+                is_buggy=False,
+            )
+            journal.append(node)
+
+        # 测试 k=3，返回 [0.9, 0.8, 0.7]
+        top_3 = journal.get_best_k(k=3)
+
+        assert len(top_3) == 3
+        assert top_3[0].metric_value == 0.9
+        assert top_3[1].metric_value == 0.8
+        assert top_3[2].metric_value == 0.7
+
+    def test_get_best_k_exceeds_count(self):
+        """测试 k 超过节点总数。"""
+        journal = Journal()
+
+        # 创建 3 个节点
+        for i in range(3):
+            node = Node(
+                code=f"code_{i}",
+                metric_value=0.5 + i * 0.1,
+                is_buggy=False,
+            )
+            journal.append(node)
+
+        # 请求 k=10，应该返回所有 3 个节点
+        top_10 = journal.get_best_k(k=10)
+
+        assert len(top_10) == 3
+
+    def test_get_best_k_with_buggy(self):
+        """测试 only_good 参数。"""
+        journal = Journal()
+
+        # 创建 3 个 good 节点 + 2 个 buggy 节点
+        for i in range(5):
+            node = Node(
+                code=f"code_{i}",
+                metric_value=0.5 + i * 0.1,
+                is_buggy=(i >= 3),  # 后两个是 buggy
+            )
+            journal.append(node)
+
+        # only_good=True，应该只返回前 3 个
+        top_2_good = journal.get_best_k(k=2, only_good=True)
+
+        assert len(top_2_good) == 2
+        assert all(not n.is_buggy for n in top_2_good)
+
+        # only_good=False，应该返回所有节点的 Top-2
+        top_2_all = journal.get_best_k(k=2, only_good=False)
+
+        assert len(top_2_all) == 2
+
+    def test_get_best_k_no_valid_nodes(self):
+        """测试没有有效节点的情况。"""
+        journal = Journal()
+
+        # 创建只有 buggy 节点
+        for i in range(3):
+            node = Node(code=f"code_{i}", is_buggy=True)
+            journal.append(node)
+
+        # only_good=True，应该返回空列表
+        top_k = journal.get_best_k(k=5, only_good=True)
+
+        assert len(top_k) == 0
+
+    def test_get_best_k_empty_journal(self):
+        """测试空 Journal。"""
+        journal = Journal()
+
+        top_k = journal.get_best_k(k=5)
+
+        assert len(top_k) == 0
