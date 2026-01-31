@@ -23,7 +23,7 @@ class AgentContext(DataClassJsonMixin):
     封装 Agent 执行所需的所有上下文信息。
 
     Attributes:
-        task_type: 任务类型（"explore" 或 "merge"）
+        task_type: 任务类型（"explore"、"merge" 或 "mutate"）
         parent_node: 父节点（None=初稿, buggy=修复, normal=改进）
         journal: 历史节点记录（用于 Memory 机制）
         config: 全局配置
@@ -32,7 +32,7 @@ class AgentContext(DataClassJsonMixin):
         task_desc: 任务描述字符串
     """
 
-    task_type: Literal["explore", "merge"]
+    task_type: Literal["explore", "merge", "mutate"]
     parent_node: Optional[Node]
     journal: Journal
     config: Config
