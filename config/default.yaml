@@ -80,3 +80,28 @@ logging:
   level: "INFO"  # 日志级别: DEBUG | INFO | WARNING | ERROR
   console_output: true  # 是否输出到控制台
   file_output: true  # 是否输出到文件（logs/system.log 和 logs/metrics.json）
+
+# ============================================================
+# 进化算法配置（Phase 3）
+# ============================================================
+evolution:
+  # 经验池配置
+  experience_pool:
+    max_records: 10000  # 最大记录数
+    top_k: 5  # Top-K 查询默认值
+    save_path: "workspace/evolution/experience_pool.json"  # JSON 持久化路径
+
+  # Solution 层遗传算法配置（P3.4 使用）
+  solution:
+    population_size: 12  # 种群大小
+    elite_size: 3  # 精英保留数量
+    crossover_rate: 0.8  # 交叉概率
+    mutation_rate: 0.2  # 变异概率
+    tournament_k: 3  # 锦标赛选择 k 值
+    steps_per_epoch: 10  # 每个 Epoch 的进化步数
+
+  # Agent 层进化配置（P3.3 使用）
+  agent:
+    num_agents: 4  # Agent 数量
+    evolution_interval: 3  # 每 N 个 Epoch 进化一次
+    epsilon: 0.3  # Epsilon-Greedy 探索率

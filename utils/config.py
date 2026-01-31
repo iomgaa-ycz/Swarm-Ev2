@@ -107,6 +107,45 @@ class LoggingConfig:
 
 
 @dataclass
+class ExperiencePoolConfig:
+    """经验池配置。"""
+
+    max_records: int
+    top_k: int
+    save_path: str
+
+
+@dataclass
+class SolutionEvolutionConfig:
+    """Solution 层遗传算法配置。"""
+
+    population_size: int
+    elite_size: int
+    crossover_rate: float
+    mutation_rate: float
+    tournament_k: int
+    steps_per_epoch: int
+
+
+@dataclass
+class AgentEvolutionConfig:
+    """Agent 层进化配置。"""
+
+    num_agents: int
+    evolution_interval: int
+    epsilon: float
+
+
+@dataclass
+class EvolutionConfig:
+    """进化算法配置。"""
+
+    experience_pool: ExperiencePoolConfig
+    solution: SolutionEvolutionConfig
+    agent: AgentEvolutionConfig
+
+
+@dataclass
 class Config(Hashable):
     """顶层配置类。
 
@@ -120,6 +159,7 @@ class Config(Hashable):
     agent: AgentConfig
     search: SearchConfig
     logging: LoggingConfig
+    evolution: EvolutionConfig
 
     def __hash__(self) -> int:
         """基于实验名称的哈希值。
@@ -344,6 +384,26 @@ def validate_config(cfg: DictConfig) -> Config:
                 parallel_num=0,
             ),
             logging=LoggingConfig(level="", console_output=False, file_output=False),
+            evolution=EvolutionConfig(
+                experience_pool=ExperiencePoolConfig(
+                    max_records=0,
+                    top_k=0,
+                    save_path="",
+                ),
+                solution=SolutionEvolutionConfig(
+                    population_size=0,
+                    elite_size=0,
+                    crossover_rate=0.0,
+                    mutation_rate=0.0,
+                    tournament_k=0,
+                    steps_per_epoch=0,
+                ),
+                agent=AgentEvolutionConfig(
+                    num_agents=0,
+                    evolution_interval=0,
+                    epsilon=0.0,
+                ),
+            ),
         )
     )
 
