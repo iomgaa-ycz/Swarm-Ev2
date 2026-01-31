@@ -1,7 +1,7 @@
 # 数据流与配置管理
 
 **Last Updated:** 2026-01-31
-**模块范围:** config/, .env, utils/config.py, utils/logger_system.py, core/executor/, core/orchestrator.py
+**模块范围:** config/, .env, utils/config.py, utils/logger_system.py, core/executor/, core/orchestrator.py, core/evolution/, search/
 
 ---
 
@@ -139,6 +139,26 @@ logging:
   level: "INFO"               # DEBUG | INFO | WARNING | ERROR
   console_output: true
   file_output: true
+
+# ★ Phase 3 新增: 进化算法配置
+evolution:
+  experience_pool:
+    max_records: 10000        # 最大记录数
+    top_k: 5                  # Top-K 查询默认值
+    save_path: "workspace/evolution/experience_pool.json"
+
+  solution:                   # Solution 层 GA 配置
+    population_size: 12       # 种群大小
+    elite_size: 3             # 精英保留数量
+    crossover_rate: 0.8       # 交叉概率
+    mutation_rate: 0.2        # 变异概率
+    tournament_k: 3           # 锦标赛选择 k 值
+    steps_per_epoch: 10       # 每 Epoch 步数
+
+  agent:                      # Agent 层进化配置
+    num_agents: 4             # Agent 数量
+    evolution_interval: 3     # 每 N 个 Epoch 进化一次
+    epsilon: 0.3              # Epsilon-Greedy 探索率
 ```
 
 ### 3.2 `.env.example` 模板
@@ -195,9 +215,11 @@ workspace/                    # project.workspace_dir
 ├── archives/                 # 归档文件目录
 │   ├── node_{node_id}.zip   # 每个节点的归档文件（solution.py + submission.csv）
 │   └── ...
+├── evolution/                # ★ Phase 3 新增: 进化数据目录
+│   └── experience_pool.json # ExperiencePool JSON 持久化文件
 └── best_solution/            # 最佳解决方案（Orchestrator 维护）
-    ├── solution.py           # ★ 最佳方案代码
-    └── submission.csv        # ★ 最佳方案的提交文件
+    ├── solution.py           # 最佳方案代码
+    └── submission.csv        # 最佳方案的提交文件
 ```
 
 ### 4.2 数据准备模式
@@ -414,6 +436,26 @@ llm.feedback: Review 评估 (Orchestrator)
 ├── 调用方: Orchestrator._review_node()
 └── base_url: https://open.bigmodel.cn/api/coding/paas/v4
 ```
+
+### 8.3 进化算法配置 (Phase 3 NEW)
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| **经验池配置** |||
+| `evolution.experience_pool.max_records` | 10000 | 最大记录数（FIFO 淘汰） |
+| `evolution.experience_pool.top_k` | 5 | Top-K 查询默认值 |
+| `evolution.experience_pool.save_path` | `workspace/evolution/experience_pool.json` | JSON 持久化路径 |
+| **Solution 层 GA 配置** |||
+| `evolution.solution.population_size` | 12 | 种群大小 |
+| `evolution.solution.elite_size` | 3 | 精英保留数量 |
+| `evolution.solution.crossover_rate` | 0.8 | 交叉概率 |
+| `evolution.solution.mutation_rate` | 0.2 | 变异概率 |
+| `evolution.solution.tournament_k` | 3 | 锦标赛选择 k 值 |
+| `evolution.solution.steps_per_epoch` | 10 | 每 Epoch 步数 |
+| **Agent 层进化配置** |||
+| `evolution.agent.num_agents` | 4 | Agent 数量 |
+| `evolution.agent.evolution_interval` | 3 | 每 N 个 Epoch 进化一次 |
+| `evolution.agent.epsilon` | 0.3 | Epsilon-Greedy 探索率 |
 
 ---
 

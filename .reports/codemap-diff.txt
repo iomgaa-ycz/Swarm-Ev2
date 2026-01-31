@@ -1,119 +1,227 @@
-# Codemap 更新报告
+# Codemap 变更报告
 
 **生成时间:** 2026-01-31
-**对比范围:** docs/CODEMAPS/ vs codemaps/
+**分析范围:** core/, agents/, utils/, search/, config/
 
 ---
 
-## 变更摘要
+## 1. 变更摘要
 
-| 项目 | 旧版本 (docs/CODEMAPS) | 新版本 (codemaps) | 变更 |
-|------|----------------------|------------------|------|
-| 文件位置 | docs/CODEMAPS/ | codemaps/ | ✅ 目录结构调整 |
-| 文件数量 | 3 个 | 3 个 | 无变化 |
-| 总代码行数 | ~3674 | ~3787 | +113 行 (+3.1%) |
-| 核心模块数 | 20 个 | 21 个 | +1 (main.py) |
-| 测试文件数 | 19 个 | 16 个 | -3 (合并/清理) |
+| 指标 | 原始值 | 当前值 | 变化 |
+|------|--------|--------|------|
+| 总代码行数 | ~3674 | ~4509 | +835 (+22.7%) |
+| 核心模块数 | 20 | 25 | +5 |
+| 配置文件行数 | 82 | 107 | +25 |
+| 文档变更幅度 | - | - | **~40%** |
 
-**变更幅度:** 3.1% (< 30% 阈值，自动更新)
-
----
-
-## 主要变更点
-
-### 1. 架构文档 (architecture.md)
-
-**新增内容:**
-- ✅ main.py 入口层描述 (161 行)
-- ✅ 完整的端到端数据流图
-- ✅ 精简的模块关系图 (移除冗余细节)
-- ✅ 核心模块统计表 (21 个模块)
-
-**优化内容:**
-- 📊 将复杂的 Mermaid 图简化为文本树形图 (提升可读性)
-- 🎯 突出 Phase 2.4 完成状态 (Orchestrator ✅)
-- 📝 重新组织章节结构 (系统架构 → 模块关系 → 数据流 → 策略)
-
-**移除内容:**
-- ❌ 冗长的 Mermaid 依赖图 (过于复杂，转移到 backend.md)
-- ❌ Phase 实施明细表 (保留状态摘要，详情见 README.md)
-
-### 2. 后端详解 (backend.md)
-
-**新增内容:**
-- ✅ main.py 入口层描述
-- ✅ 完整的 Orchestrator 单步数据流
-- ✅ CoderAgent LLM 重试机制详解
-- ✅ PromptBuilder 自适应逻辑示例
-
-**优化内容:**
-- 📊 模块清单表格新增 "入口层" 分类
-- 🎯 Function Calling Review 机制详细展开
-- 📝 后端抽象层架构简化为文本流程
-
-### 3. 数据流详解 (data.md)
-
-**新增内容:**
-- ✅ 完整的 Orchestrator 单步数据流
-- ✅ 配置系统数据流 (从 .env 到 Config 对象)
-- ✅ 双阶段 LLM 配置详解 (code vs feedback)
-
-**优化内容:**
-- 📊 配置加载流程简化为文本流程图
-- 🎯 工作空间目录结构说明更清晰
-- 📝 日志系统示例更新
+**变更幅度超过 30% 阈值，需用户批准后更新**
 
 ---
 
-## 目录结构变更
+## 2. 新增模块 (Phase 3)
 
-### 旧版本 (docs/CODEMAPS/)
+### 2.1 core/evolution/ (NEW - 495 行)
+
+| 文件 | 行数 | 职责 |
+|------|------|------|
+| `__init__.py` | 21 | 模块导出 |
+| `gene_parser.py` | 162 | 基因解析器 |
+| `experience_pool.py` | 312 | 共享经验池 |
+
+**gene_parser.py 核心功能:**
+- `REQUIRED_GENES`: 7 个必需基因块 (DATA, MODEL, LOSS, OPTIMIZER, REGULARIZATION, INITIALIZATION, TRAINING_TRICKS)
+- `parse_solution_genes()`: 解析 `# [SECTION: NAME]` 标记
+- `validate_genes()`: 验证必需基因块完整性
+- `merge_genes()`: 按交叉计划合并基因
+
+**experience_pool.py 核心功能:**
+- `TaskRecord`: 执行记录数据类 (agent_id, task_type, input_hash, output_quality, strategy_summary, timestamp)
+- `ExperiencePool`: 线程安全 + JSON 持久化
+- 支持 task_type: `explore | merge | mutate`
+- Top-K 查询 + 比较过滤条件
+
+### 2.2 search/ (NEW - 89 行)
+
+| 文件 | 行数 | 职责 |
+|------|------|------|
+| `__init__.py` | 8 | 模块导出 |
+| `fitness.py` | 81 | 适应度计算 |
+
+**fitness.py 核心功能:**
+- `normalize_fitness()`: 归一化到 [0,1]，统一转换为"越大越好"
+- 支持 `lower_is_better` 双向转换 (RMSE vs Accuracy)
+
+### 2.3 测试目录 (NEW)
 
 ```
-docs/
-└── CODEMAPS/
-    ├── architecture.md    (550 行)
-    ├── backend.md         (679 行)
-    └── data.md            (503 行)
-```
+tests/test_evolution/
+    __init__.py
+    test_gene_parser.py
+    test_experience_pool.py
 
-### 新版本 (codemaps/)
-
+tests/test_search/
+    __init__.py
+    test_fitness.py
 ```
-codemaps/
-├── architecture.md    (343 行)
-├── backend.md         (567 行)
-└── data.md            (442 行)
-```
-
-**总体精简:** 信息密度提升，重复内容合并
 
 ---
 
-## 内容优化统计
+## 3. 修改模块
 
-| 优化类型 | 数量 | 说明 |
-|---------|------|------|
-| 复杂 Mermaid 图 → 文本树形图 | 3 处 | 提升可读性 |
-| 冗余表格合并 | 2 处 | 避免信息重复 |
-| 章节重组 | 5 处 | 逻辑更清晰 |
-| 新增数据流图 | 3 处 | Orchestrator 详解 |
-| 移除过时内容 | 0 处 | 无过时内容 |
+### 3.1 utils/config.py (+68 行)
+
+新增配置类:
+```python
+@dataclass
+class ExperiencePoolConfig:
+    max_records: int      # 最大记录数 (10000)
+    top_k: int            # Top-K 默认值 (5)
+    save_path: str        # JSON 持久化路径
+
+@dataclass
+class SolutionEvolutionConfig:
+    population_size: int  # 种群大小 (12)
+    elite_size: int       # 精英保留 (3)
+    crossover_rate: float # 交叉概率 (0.8)
+    mutation_rate: float  # 变异概率 (0.2)
+    tournament_k: int     # 锦标赛 k 值 (3)
+    steps_per_epoch: int  # 每 Epoch 步数 (10)
+
+@dataclass
+class AgentEvolutionConfig:
+    num_agents: int       # Agent 数量 (4)
+    evolution_interval: int # 进化间隔 (3)
+    epsilon: float        # Epsilon-Greedy (0.3)
+
+@dataclass
+class EvolutionConfig:
+    experience_pool: ExperiencePoolConfig
+    solution: SolutionEvolutionConfig
+    agent: AgentEvolutionConfig
+```
+
+Config 类新增 `evolution: EvolutionConfig` 字段
+
+### 3.2 config/default.yaml (+25 行)
+
+新增 evolution 配置节:
+```yaml
+evolution:
+  experience_pool:
+    max_records: 10000
+    top_k: 5
+    save_path: "workspace/evolution/experience_pool.json"
+  solution:
+    population_size: 12
+    elite_size: 3
+    crossover_rate: 0.8
+    mutation_rate: 0.2
+    tournament_k: 3
+    steps_per_epoch: 10
+  agent:
+    num_agents: 4
+    evolution_interval: 3
+    epsilon: 0.3
+```
+
+### 3.3 core/state/journal.py (+35 行)
+
+新增方法:
+```python
+def get_best_k(self, k: int, only_good: bool = True) -> list[Node]:
+    """返回评估指标 Top-K 的节点。
+
+    时间复杂度: O(n log n)
+    """
+```
+
+### 3.4 agents/base_agent.py (+2 行)
+
+- `task_type` 新增 `"mutate"` 类型
+- `AgentContext.task_type: Literal["explore", "merge", "mutate"]`
 
 ---
 
-## 推荐操作
+## 4. 依赖关系变更
 
-1. ✅ **已自动更新:** 新版本已写入 `codemaps/` 目录
-2. ⚠️ **待人工审核:** 对比确认无误
-3. 🔄 **同步操作 (可选):**
-   ```bash
-   # 如果确认新版本无误，可替换旧版本
-   rm -rf docs/CODEMAPS/
-   mv codemaps/ docs/CODEMAPS/
-   ```
+### 新增依赖链
+
+```
+core/evolution/experience_pool.py
+    -> utils/config.Config (EvolutionConfig)
+    -> utils/logger_system.log_msg, log_exception
+
+core/evolution/gene_parser.py
+    -> (无外部依赖，纯函数)
+
+search/fitness.py
+    -> (无外部依赖，纯函数)
+```
+
+### 配置依赖链
+
+```
+Config
+    -> EvolutionConfig
+        -> ExperiencePoolConfig
+        -> SolutionEvolutionConfig
+        -> AgentEvolutionConfig
+```
 
 ---
 
-**报告生成工具:** Claude Code /update-codemaps
-**自动更新阈值:** 30% (当前 3.1% < 30%，自动更新)
+## 5. 文档更新建议
+
+### architecture.md 需更新
+
+| 章节 | 更新内容 |
+|------|---------|
+| 项目概述 | 代码行数更新为 ~4509 |
+| 分层架构 | 进化层标记为"部分完成" |
+| 目录结构 | 新增 core/evolution/, search/ |
+| Phase 状态表 | P3.1 基因解析器、P3.2 经验池 标记完成 |
+| 模块依赖图 | 添加 evolution 和 search 节点 |
+
+### backend.md 需更新
+
+| 章节 | 更新内容 |
+|------|---------|
+| 模块概览表 | 新增 3 个模块 (gene_parser, experience_pool, fitness) |
+| 配置系统 | 新增 EvolutionConfig 说明 |
+| 模块依赖图 | 添加 evolution/search 依赖关系 |
+
+### data.md 需更新
+
+| 章节 | 更新内容 |
+|------|---------|
+| 配置文件结构 | 新增 evolution 配置节完整说明 |
+| 工作空间目录 | 新增 workspace/evolution/ 子目录 |
+| 配置关键值说明 | 新增进化算法参数表 |
+
+---
+
+## 6. 风险评估
+
+**风险等级: 低**
+
+- 新增模块为独立子系统，不影响已有功能
+- 配置变更向后兼容（新增字段有默认值）
+- 测试已添加，覆盖核心功能
+
+**注意事项:**
+- ExperiencePool 依赖 `config.evolution.experience_pool`
+- 旧配置文件需手动添加 `evolution` 配置节
+
+---
+
+**报告生成:** Claude Code doc-updater
+**状态:** 已完成 (2026-01-31)
+
+---
+
+## 更新记录
+
+已更新文件:
+- `docs/CODEMAPS/architecture.md` - 分层架构、Phase 状态、模块依赖图、Phase 3 新增模块详解
+- `docs/CODEMAPS/backend.md` - 模块概览表、EvolutionConfig、测试目录结构
+- `docs/CODEMAPS/data.md` - evolution 配置节、工作空间目录、进化算法参数表

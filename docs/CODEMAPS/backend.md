@@ -1,7 +1,7 @@
 # 后端模块详细说明
 
 **Last Updated:** 2026-01-31
-**模块范围:** utils/, core/state/, core/backend/, core/executor/, agents/, core/orchestrator.py, config/, tests/
+**模块范围:** utils/, core/state/, core/backend/, core/executor/, core/evolution/, agents/, search/, config/, tests/
 
 ---
 
@@ -9,27 +9,39 @@
 
 | 模块 | 文件 | 行数 | 职责 | 状态 |
 |------|------|------|------|------|
-| 配置系统 | `utils/config.py` | 486 | OmegaConf 配置加载与验证 | ✅ 已完成 |
-| 日志系统 | `utils/logger_system.py` | 180 | 双通道日志输出 | ✅ 已完成 |
-| 文件工具 | `utils/file_utils.py` | 113 | 目录复制/链接 | ✅ 已完成 |
-| Node 数据类 | `core/state/node.py` | 121 | 解决方案 DAG 节点（+lower_is_better） | ✅ 已完成 |
-| Journal 数据类 | `core/state/journal.py` | 293 | DAG 容器与查询（+generate_summary） | ✅ 已完成 |
-| Task 数据类 | `core/state/task.py` | 62 | Agent 任务定义 | ✅ 已完成 |
-| 后端抽象层 | `core/backend/__init__.py` | 137 | 统一 LLM 查询接口（+Function Calling） | ✅ 已完成 |
-| OpenAI 后端 | `core/backend/backend_openai.py` | 163 | OpenAI + GLM 支持（+tools 参数） | ✅ 已完成 |
-| Anthropic 后端 | `core/backend/backend_anthropic.py` | 142 | Claude 系列支持 | ✅ 已完成 |
-| 后端工具 | `core/backend/utils.py` | 80 | 消息格式化 + 重试机制 | ✅ 已完成 |
-| 代码执行器 | `core/executor/interpreter.py` | 176 | 沙箱执行 + 超时控制 | ✅ 已完成 |
-| 工作空间管理 | `core/executor/workspace.py` | 181 | 目录管理 + 文件归档 | ✅ 已完成 |
-| 数据预览 | `utils/data_preview.py` | 269 | EDA 预览生成 | ✅ 已完成 |
-| 指标工具 | `utils/metric.py` | 117 | 评估指标容器 | ✅ 已完成 |
-| 响应解析 | `utils/response.py` | 89 | LLM 响应提取 | ✅ 已完成 |
-| Prompt 构建器 | `utils/prompt_builder.py` | 167 | 统一 Prompt 生成逻辑 | ✅ 已完成 |
-| Agent 基类 | `agents/base_agent.py` | 117 | Agent 抽象基类 | ✅ 已完成 |
-| CoderAgent | `agents/coder_agent.py` | 272 | 代码生成 Agent（LLM重试+响应解析） | ✅ 已完成 |
-| **Orchestrator** | **`core/orchestrator.py`** | **427** | **任务编排器（三阶段选择+Function Calling Review）** | **✅ 已完成** |
-| YAML 配置 | `config/default.yaml` | 82 | 项目主配置（+time_limit=12h, feedback.model） | ✅ 已完成 |
-| 环境变量 | `.env.example` | 36 | API Keys 模板 | ✅ 已完成 |
+| **基础设施层** |||||
+| 配置系统 | `utils/config.py` | 554 | OmegaConf 配置加载与验证 (+EvolutionConfig) | 完成 |
+| 日志系统 | `utils/logger_system.py` | 180 | 双通道日志输出 | 完成 |
+| 文件工具 | `utils/file_utils.py` | 113 | 目录复制/链接 | 完成 |
+| **数据结构层** |||||
+| Node 数据类 | `core/state/node.py` | 121 | 解决方案 DAG 节点 | 完成 |
+| Journal 数据类 | `core/state/journal.py` | 283 | DAG 容器与查询 (+get_best_k) | 完成 |
+| Task 数据类 | `core/state/task.py` | 62 | Agent 任务定义 | 完成 |
+| **后端抽象层** |||||
+| 后端抽象层 | `core/backend/__init__.py` | 137 | 统一 LLM 查询接口 (Function Calling) | 完成 |
+| OpenAI 后端 | `core/backend/backend_openai.py` | 163 | OpenAI + GLM 支持 | 完成 |
+| Anthropic 后端 | `core/backend/backend_anthropic.py` | 142 | Claude 系列支持 | 完成 |
+| 后端工具 | `core/backend/utils.py` | 80 | 消息格式化 + 重试机制 | 完成 |
+| **执行层** |||||
+| 代码执行器 | `core/executor/interpreter.py` | 176 | 沙箱执行 + 超时控制 | 完成 |
+| 工作空间管理 | `core/executor/workspace.py` | 181 | 目录管理 + 文件归档 | 完成 |
+| **工具层** |||||
+| 数据预览 | `utils/data_preview.py` | 269 | EDA 预览生成 | 完成 |
+| 指标工具 | `utils/metric.py` | 117 | 评估指标容器 | 完成 |
+| 响应解析 | `utils/response.py` | 89 | LLM 响应提取 | 完成 |
+| Prompt 构建器 | `utils/prompt_builder.py` | 167 | 统一 Prompt 生成逻辑 | 完成 |
+| **Agent 层** |||||
+| Agent 基类 | `agents/base_agent.py` | 119 | Agent 抽象基类 (+mutate task_type) | 完成 |
+| CoderAgent | `agents/coder_agent.py` | 272 | 代码生成 Agent | 完成 |
+| **编排层** |||||
+| Orchestrator | `core/orchestrator.py` | 427 | 任务编排器 (三阶段选择+Function Calling Review) | 完成 |
+| **进化层 (Phase 3 NEW)** |||||
+| **基因解析器** | **`core/evolution/gene_parser.py`** | **162** | **解析 7 基因块，支持 GA 交叉** | **完成** |
+| **共享经验池** | **`core/evolution/experience_pool.py`** | **312** | **线程安全存储 + Top-K 查询 + JSON 持久化** | **完成** |
+| **适应度计算** | **`search/fitness.py`** | **81** | **归一化到 [0,1]，支持 lower_is_better** | **完成** |
+| **配置文件** |||||
+| YAML 配置 | `config/default.yaml` | 107 | 项目主配置 (+evolution 配置节) | 完成 |
+| 环境变量 | `.env.example` | 36 | API Keys 模板 | 完成 |
 
 ---
 
@@ -181,6 +193,7 @@ class Config(Hashable):
     agent: AgentConfig       # Agent 配置（+time_limit=43200）
     search: SearchConfig     # 搜索算法配置
     logging: LoggingConfig   # 日志配置
+    evolution: EvolutionConfig # ★ Phase 3 新增
 ```
 
 #### 子配置类
@@ -195,6 +208,15 @@ class Config(Hashable):
 | `AgentConfig` | max_steps, **time_limit=43200**, k_fold_validation, ... | Agent 行为参数 |
 | `SearchConfig` | strategy, max_debug_depth, debug_prob, num_drafts, parallel_num | 搜索策略参数 |
 | `LoggingConfig` | level, console_output, file_output | 日志输出控制 |
+| **`EvolutionConfig`** | **experience_pool, solution, agent** | **Phase 3 进化算法配置** |
+
+#### EvolutionConfig 子配置类 (Phase 3 NEW)
+
+| 类名 | 字段 | 说明 |
+|------|------|------|
+| `ExperiencePoolConfig` | max_records, top_k, save_path | 经验池配置 |
+| `SolutionEvolutionConfig` | population_size, elite_size, crossover_rate, mutation_rate, tournament_k, steps_per_epoch | GA 配置 |
+| `AgentEvolutionConfig` | num_agents, evolution_interval, epsilon | Agent 层进化配置 |
 
 ### 3.3 核心函数
 
@@ -360,7 +382,7 @@ class Node(DataClassJsonMixin):
     fitness: Optional[float] = None        # GA 适应度值
 ```
 
-### 5.2 Journal (`core/state/journal.py`) - 293 行
+### 5.2 Journal (`core/state/journal.py`) - 283 行
 
 解决方案节点集合，表示搜索树/DAG，提供节点管理和树结构查询。
 
@@ -379,11 +401,12 @@ class Journal(DataClassJsonMixin):
 | `get_children` | `(node_id: str) -> list[Node]` | 获取子节点列表 | O(k) |
 | `get_siblings` | `(node_id: str) -> list[Node]` | 获取兄弟节点 | O(n) |
 | `get_best_node` | `(only_good: bool = True) -> Optional[Node]` | 返回 metric_value 最高节点 | O(n) |
+| **`get_best_k`** | **`(k: int, only_good: bool = True) -> list[Node]`** | **返回 Top-K 节点 (Phase 3 NEW)** | **O(n log n)** |
 | `build_dag` | `() -> None` | 根据 parent_id 构建 children_ids | O(n) |
 | `draft_nodes` (property) | `-> list[Node]` | 所有无父节点的节点 | O(n) |
 | `buggy_nodes` (property) | `-> list[Node]` | 所有 is_buggy=True 的节点 | O(n) |
 | `good_nodes` (property) | `-> list[Node]` | 所有 is_buggy=False 的节点 | O(n) |
-| **`generate_summary`** | **`(include_code: bool = False) -> str`** | **生成 Journal 摘要用于 Memory 机制** | O(n) |
+| `generate_summary` | `(include_code: bool = False) -> str` | 生成 Journal 摘要用于 Memory 机制 | O(n) |
 
 **generate_summary 示例输出:**
 
@@ -452,7 +475,7 @@ workspace/
 
 ## 7. Agent 抽象层 (`agents/`, `utils/prompt_builder.py`)
 
-### 7.1 BaseAgent (`agents/base_agent.py`) - 117 行
+### 7.1 BaseAgent (`agents/base_agent.py`) - 119 行
 
 Agent 抽象基类，定义统一的 Agent 接口。
 
@@ -473,8 +496,13 @@ class BaseAgent(ABC):
 
 | 类名 | 职责 | 字段 |
 |------|------|------|
-| `AgentContext` | Agent 执行上下文 | task_type, parent_node, journal, config, start_time, current_step |
+| `AgentContext` | Agent 执行上下文 | task_type ("explore"\|"merge"\|"mutate"), parent_node, journal, config, start_time, current_step, task_desc |
 | `AgentResult` | Agent 执行结果 | node, success, error |
+
+**task_type 说明 (Phase 3 更新):**
+- `"explore"`: 探索新方案（初稿/改进/修复）
+- `"merge"`: 合并两个方案（GA 交叉）
+- `"mutate"`: 变异现有方案（GA 变异）- **Phase 3 新增**
 
 ### 7.2 CoderAgent (`agents/coder_agent.py`) - 272 行
 
@@ -537,8 +565,15 @@ tests/
 │   ├── test_metric.py                 # 指标工具测试
 │   ├── test_prompt_builder.py         # PromptBuilder 测试
 │   ├── test_agents.py                 # CoderAgent 测试
-│   └── test_orchestrator.py           # ★ Orchestrator 测试
-└── integration/                       # 集成测试（待添加）
+│   └── test_orchestrator.py           # Orchestrator 测试
+├── test_evolution/                    # ★ Phase 3 进化模块测试 (NEW)
+│   ├── __init__.py
+│   ├── test_gene_parser.py            # 基因解析器测试
+│   └── test_experience_pool.py        # 经验池测试
+├── test_search/                       # ★ Phase 3 搜索模块测试 (NEW)
+│   ├── __init__.py
+│   └── test_fitness.py                # 适应度计算测试
+└── integration/                       # 集成测试
     └── __init__.py
 ```
 
