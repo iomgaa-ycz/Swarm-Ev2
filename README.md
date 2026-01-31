@@ -3,7 +3,7 @@
 **双层群体智能驱动的自动化 ML 系统**
 
 [![Python](https://img.shields.io/badge/Python-3.10-blue.svg)](https://www.python.org/)
-[![Phase](https://img.shields.io/badge/Phase-1%20%E5%9F%BA%E7%A1%80%E8%AE%BE%E6%96%BD-green.svg)]()
+[![Phase](https://img.shields.io/badge/Phase-2%20%E6%A0%B8%E5%BF%83Agent-yellow.svg)]()
 [![测试覆盖率](https://img.shields.io/badge/%E6%B5%8B%E8%AF%95%E8%A6%86%E7%9B%96%E7%8E%87-80%25-brightgreen.svg)]()
 
 ---
@@ -85,23 +85,34 @@ ruff check utils/ core/ tests/ --fix
 Swarm-Ev2/
 ├── config/                    # 配置文件
 │   └── default.yaml          # 主配置文件
+├── agents/                    # Agent 层
+│   ├── __init__.py           # 模块导出
+│   ├── base_agent.py         # Agent 抽象基类 + AgentContext
+│   └── coder_agent.py        # 代码生成 Agent (LLM重试+响应解析)
 ├── core/                      # 核心模块
 │   ├── state/                # 核心数据结构
 │   │   ├── __init__.py       # 导出 Node, Journal, Task
 │   │   ├── node.py           # 解决方案节点 (22字段 + 4方法)
 │   │   ├── journal.py        # 解决方案 DAG (11方法 + parse_solution_genes)
 │   │   └── task.py           # 任务定义 (8字段)
-│   └── backend/              # LLM 后端抽象层
-│       ├── __init__.py       # 统一查询接口 (query, determine_provider)
-│       ├── backend_openai.py # OpenAI + GLM 后端
-│       ├── backend_anthropic.py # Anthropic 后端
-│       └── utils.py          # 消息格式化 + 重试机制
+│   ├── backend/              # LLM 后端抽象层
+│   │   ├── __init__.py       # 统一查询接口 (query)
+│   │   ├── backend_openai.py # OpenAI + GLM 后端
+│   │   ├── backend_anthropic.py # Anthropic 后端
+│   │   └── utils.py          # 消息格式化 + 重试机制
+│   └── executor/             # 代码执行
+│       ├── interpreter.py    # 执行沙箱 (超时控制)
+│       └── workspace.py      # 工作空间管理
 ├── utils/                     # 工具模块
 │   ├── config.py             # 配置管理 (OmegaConf + YAML)
 │   ├── logger_system.py      # 日志系统 (双通道输出)
-│   └── file_utils.py         # 文件操作工具
+│   ├── file_utils.py         # 文件操作工具
+│   ├── data_preview.py       # 数据预览生成
+│   ├── metric.py             # 评估指标工具
+│   ├── response.py           # LLM 响应解析
+│   └── prompt_builder.py     # Prompt 构建器
 ├── tests/                     # 测试目录
-│   ├── unit/                 # 单元测试 (24 个测试用例)
+│   ├── unit/                 # 单元测试 (59 个测试用例)
 │   └── integration/          # 集成测试
 ├── docs/                      # 文档
 │   ├── CODEMAPS/             # 架构文档
@@ -158,7 +169,7 @@ python main.py \
 | Phase | 状态 | 说明 |
 |-------|------|------|
 | Phase 1 | 🟢 已完成 | 配置系统、日志系统、文件工具 ✅<br>核心数据结构（Node/Journal/Task）✅<br>后端抽象层（OpenAI/Anthropic/GLM）✅ |
-| Phase 2 | 🔴 未开始 | Agent 框架、执行器、编排器 |
+| Phase 2 | 🟡 进行中 | 执行层（Interpreter/WorkspaceManager）✅<br>工具增强（data_preview/metric/response）✅<br>Agent 抽象（BaseAgent/PromptBuilder）✅<br>**CoderAgent（5次LLM重试，92%覆盖）✅**<br>Orchestrator 待实现 |
 | Phase 3 | 🔴 未开始 | 搜索算法（MCTS/GA）、并行评估 |
 | Phase 4 | 🔴 未开始 | 进化算法、经验池、Meta-Agent |
 | Phase 5 | 🔴 未开始 | 端到端测试、MLE-Bench 适配 |
@@ -195,9 +206,10 @@ python main.py \
 - [x] **后端抽象层** - 统一 LLM 接口（OpenAI/Anthropic/GLM 4.7）
 
 ### Phase 2: 核心 Agent 系统
-- [ ] BaseAgent 抽象类
-- [ ] CoderAgent 实现
-- [ ] Interpreter 执行器
+- [x] Interpreter 执行器 + WorkspaceManager
+- [x] 工具增强（data_preview, metric, response）
+- [x] BaseAgent 抽象类 + PromptBuilder
+- [x] **CoderAgent 实现（5次LLM重试、响应解析、代码执行、92%测试覆盖）**
 - [ ] Orchestrator 编排器
 
 ### Phase 3: 搜索与评估
@@ -337,4 +349,4 @@ open htmlcov/index.html  # 查看覆盖率报告
 
 ---
 
-**最后更新**: 2026-01-30
+**最后更新**: 2026-01-31

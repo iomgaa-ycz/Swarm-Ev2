@@ -1,6 +1,6 @@
 # 后端模块详细说明
 
-**Last Updated:** 2026-01-31 23:00:00
+**Last Updated:** 2026-01-31
 **模块范围:** utils/, core/state/, core/backend/, core/executor/, agents/, config/, tests/
 
 ---
@@ -26,6 +26,7 @@
 | **响应解析** | `utils/response.py` | LLM 响应提取 | **已完成** |
 | **Prompt 构建器** | `utils/prompt_builder.py` | 统一 Prompt 生成逻辑 | **已完成** |
 | **Agent 基类** | `agents/base_agent.py` | Agent 抽象基类 | **已完成** |
+| **CoderAgent** | `agents/coder_agent.py` | 代码生成 Agent（LLM重试+响应解析） | **已完成** |
 | YAML 配置 | `config/default.yaml` | 项目主配置 | 已完成 |
 | 环境变量 | `.env.example` | API Keys 模板 | 已完成 |
 
@@ -279,7 +280,8 @@ tests/
 │   ├── test_journal.py                # Journal 数据类测试 (12 个测试)
 │   ├── test_task.py                   # Task 数据类测试 (5 个测试)
 │   ├── test_state_integration.py      # State 集成测试 (1 个测试)
-│   └── test_backend_provider.py       # Backend Provider 测试 (6 个测试)
+│   ├── test_backend_provider.py       # Backend Provider 测试 (6 个测试)
+│   └── test_agents.py                 # CoderAgent 测试 (12 个测试) ★NEW★
 └── integration/                       # 集成测试（待添加）
     └── __init__.py
 ```
@@ -300,6 +302,13 @@ tests/
 | **`TestTask`** | **5** | 创建, __str__, 序列化, 类型, dependencies |
 | **`TestStateIntegration`** | **1** | 完整工作流：创建节点 -> 构建 DAG -> 查询 -> 序列化 |
 | **`TestBackendProvider`** | **6** | Provider 参数验证、必填检查、base_url 传递、映射正确性 |
+| **`TestCoderAgentInit`** | **1** | CoderAgent 初始化参数验证 |
+| **`TestCoderAgentGenerate`** | **2** | generate() 方法、merge 类型处理 |
+| **`TestCoderAgentExplore`** | **3** | 初稿/修复/改进模式 |
+| **`TestCoderAgentLLMRetry`** | **2** | LLM 重试机制、重试次数耗尽 |
+| **`TestCoderAgentResponseParsing`** | **2** | 代码执行失败、响应解析失败 |
+| **`TestCoderAgentMemory`** | **1** | Memory 机制 |
+| **`TestCoderAgentTimeStepsCalculation`** | **1** | 时间步数计算 |
 
 ### 5.3 运行测试
 
@@ -1030,6 +1039,118 @@ prompt = builder.build_explore_prompt(
 )
 ```
 
+### 11.3 CoderAgent (`agents/coder_agent.py`) ★NEW★
+
+代码生成 Agent，继承 BaseAgent，负责调用 LLM 生成代码并执行。
+
+```python
+class CoderAgent(BaseAgent):
+    """代码生成 Agent。"""
+    def __init__(self, name: str, config, prompt_builder, interpreter: Interpreter):
+        """初始化 CoderAgent。"""
+
+    def generate(self, context: AgentContext) -> AgentResult:
+        """主入口：根据 task_type 分发到具体实现。"""
+
+    def _explore(self, context: AgentContext) -> Node:
+        """探索新方案（6 阶段流程）。"""
+
+    def _call_llm_with_retry(self, prompt: str, max_retries: int = 5) -> str:
+        """调用 LLM 并实现重试机制。"""
+
+    def _parse_response_with_retry(self, response: str, max_retries: int = 5) -> Tuple[str, str]:
+        """解析 LLM 响应并实现重试机制。"""
+```
+
+**核心方法:**
+
+| 方法 | 签名 | 说明 |
+|------|------|------|
+| `generate` | `(context: AgentContext) -> AgentResult` | 主入口，分发到 `_explore` |
+| `_explore` | `(context: AgentContext) -> Node` | 完整的代码生成→执行→评估流程 |
+| `_call_llm_with_retry` | `(prompt: str, max_retries: int) -> str` | LLM 调用（5次重试，指数退避） |
+| `_parse_response_with_retry` | `(response: str, max_retries: int) -> Tuple[str, str]` | 响应解析（硬格式失败不重试） |
+| `_generate_data_preview` | `() -> Optional[str]` | 生成数据预览（Phase 2.4 完善） |
+| `_calculate_remaining` | `(context) -> Tuple[int, int]` | 计算剩余时间和步数 |
+
+**LLM 重试机制:**
+
+```
+调用失败 → 等待 10s → 重试
+        → 等待 20s → 重试
+        → 等待 40s → 重试
+        → 等待 80s → 重试
+        → 抛出异常（5次全部失败）
+```
+
+**响应解析策略:**
+
+| 情况 | 处理方式 |
+|------|---------|
+| 硬格式失败（无代码块） | 直接抛出 ValueError，不重试 |
+| 软格式失败（代码不合理） | Phase 2 简化：只要有代码块就成功 |
+
+**_explore 6 阶段流程:**
+
+1. **Phase 1: 准备上下文** - 数据预览、Memory、剩余时间/步数
+2. **Phase 2: 构建 Prompt** - 调用 PromptBuilder
+3. **Phase 3: 调用 LLM** - 带重试机制
+4. **Phase 4: 解析响应** - 提取 plan 和 code
+5. **Phase 5: 执行代码** - 调用 Interpreter
+6. **Phase 6: 创建 Node** - 封装执行结果
+
+**使用示例:**
+
+```python
+from agents.coder_agent import CoderAgent
+from agents.base_agent import AgentContext
+from core.executor import Interpreter
+from core.state import Journal
+from utils.config import load_config
+from utils.prompt_builder import PromptBuilder
+import time
+
+# 初始化
+config = load_config()
+prompt_builder = PromptBuilder()
+interpreter = Interpreter(working_dir=Path("workspace/working"))
+agent = CoderAgent(
+    name="coder",
+    config=config,
+    prompt_builder=prompt_builder,
+    interpreter=interpreter
+)
+
+# 执行
+context = AgentContext(
+    task_type="explore",
+    parent_node=None,  # 初稿模式
+    journal=Journal(),
+    config=config,
+    start_time=time.time(),
+    current_step=0
+)
+result = agent.generate(context)
+
+if result.success:
+    print(f"生成节点: {result.node.id}")
+    print(f"代码执行: {'成功' if not result.node.is_buggy else '失败'}")
+else:
+    print(f"Agent 执行失败: {result.error}")
+```
+
+**测试覆盖 (92%):**
+
+| 测试类 | 测试数量 | 覆盖功能 |
+|--------|---------|---------|
+| `TestCoderAgentInit` | 1 | 初始化参数验证 |
+| `TestCoderAgentGenerate` | 2 | generate() 方法、merge 类型处理 |
+| `TestCoderAgentExplore` | 3 | 初稿/修复/改进模式 |
+| `TestCoderAgentLLMRetry` | 2 | LLM 重试、重试次数耗尽 |
+| `TestCoderAgentResponseParsing` | 2 | 代码执行失败、响应解析失败 |
+| `TestCoderAgentMemory` | 1 | Memory 机制 |
+| `TestCoderAgentTimeStepsCalculation` | 1 | 时间步数计算 |
+
 ---
 
 ## 12. 模块依赖图
@@ -1067,11 +1188,16 @@ graph TD
         PB[utils/prompt_builder.py]
     end
 
-    subgraph "Agent 抽象 ★NEW★"
+    subgraph "Agent 层"
         AGENT[agents/base_agent.py]
+        CODER[agents/coder_agent.py ★NEW★]
     end
 
     %% 依赖关系
+    CODER --> AGENT
+    CODER --> BACKEND
+    CODER --> INTERP
+    CODER --> RESP
     AGENT --> CFG
     AGENT --> PB
     AGENT --> NODE
@@ -1123,7 +1249,7 @@ graph TD
 4. 后端层: `backend/*` (依赖基础层)
 5. **执行层**: `executor/*` (依赖基础层 + 配置层)
 6. **工具层**: `data_preview`, `metric`, `response`, **`prompt_builder`** (依赖基础层 + 数据层)
-7. **Agent 层**: **`base_agent`** (依赖配置层 + 数据层 + 工具层)
+7. **Agent 层**: **`base_agent`**, **`coder_agent`** (依赖配置层 + 数据层 + 工具层 + 执行层 + 后端层)
 
 **关键设计原则**:
 - 单向依赖：下层不依赖上层

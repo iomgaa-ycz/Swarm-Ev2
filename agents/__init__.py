@@ -4,5 +4,6 @@
 """
 
 from .base_agent import BaseAgent, AgentContext, AgentResult
+from .coder_agent import CoderAgent
 
-__all__ = ["BaseAgent", "AgentContext", "AgentResult"]
+__all__ = ["BaseAgent", "AgentContext", "AgentResult", "CoderAgent"]
