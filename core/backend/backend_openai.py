@@ -53,9 +53,11 @@ def query(
     max_tokens: int | None = None,
     api_key: str | None = None,
     base_url: str | None = None,
+    tools: list[dict] | None = None,
+    tool_choice: dict | str | None = None,
     **model_kwargs: Any,
 ) -> str:
-    """调用 OpenAI API（或兼容的 API）。
+    """调用 OpenAI API（或兼容的 API），支持 Function Calling。
 
     Args:
         system_message: 系统消息
@@ -65,20 +67,33 @@ def query(
         max_tokens: 最大生成 token 数
         api_key: API 密钥（从 Config 传入）
         base_url: API 基础 URL（用于 GLM 等第三方 API）
+        tools: Function Calling 工具列表（可选）
+        tool_choice: 工具选择策略（可选，"auto" | "none" | {"type": "function", "function": {"name": "..."}}）
         **model_kwargs: 额外的模型参数
 
     Returns:
-        LLM 生成的文本响应
+        - 无 tools: 返回 LLM 响应文本
+        - 有 tools: 返回 tool call 的参数 JSON 字符串
 
     Raises:
         Exception: API 调用失败时抛出
 
     示例:
+        >>> # 普通调用
         >>> response = query(
         ...     system_message="You are a helpful assistant",
         ...     user_message="Hello",
         ...     model="gpt-4-turbo",
         ...     api_key="sk-..."
+        ... )
+
+        >>> # Function Calling
+        >>> response = query(
+        ...     user_message="Evaluate code",
+        ...     model="glm-4.6",
+        ...     api_key="sk-...",
+        ...     tools=[{"type": "function", "function": {...}}],
+        ...     tool_choice={"type": "function", "function": {"name": "submit_review"}}
         ... )
     """
     # 初始化客户端
@@ -91,6 +106,8 @@ def query(
             "model": model,
             "temperature": temperature,
             "max_tokens": max_tokens,
+            "tools": tools,
+            "tool_choice": tool_choice,
             **model_kwargs,
         },
     )
@@ -114,8 +131,22 @@ def query(
             **filtered_kwargs,
         )
 
-        # 提取响应文本
-        response_text = completion.choices[0].message.content
+        message = completion.choices[0].message
+
+        # 如果是 Function Calling 响应
+        if tools is not None and message.tool_calls:
+            # 提取第一个 tool call 的参数
+            tool_call = message.tool_calls[0]
+            arguments = tool_call.function.arguments
+
+            log_msg(
+                "INFO",
+                f"Function Calling 响应: {tool_call.function.name}, {len(arguments)} 字符",
+            )
+            return arguments  # 返回 JSON 字符串
+
+        # 普通文本响应
+        response_text = message.content
 
         if response_text is None:
             log_msg("ERROR", "API 返回空响应")

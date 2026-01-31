@@ -1,7 +1,7 @@
 # 数据流与配置管理
 
-**Last Updated:** 2026-01-31 15:30:00
-**模块范围:** config/, .env, utils/config.py, utils/logger_system.py, core/executor/
+**Last Updated:** 2026-01-31
+**模块范围:** config/, .env, utils/config.py, utils/logger_system.py, core/executor/, core/orchestrator.py
 
 ---
 
@@ -89,7 +89,7 @@ project:
   version: "0.1.0"            # 版本号
   workspace_dir: "./workspace" # 工作空间目录
   log_dir: "./logs"           # 日志目录
-  exp_name: null              # 实验名称 (null → 自动生成)
+  exp_name: null              # 实验名称 (null -> 自动生成)
 
 data:
   data_dir: null              # [必填] 数据目录
@@ -105,14 +105,14 @@ llm:
     model: ${env:LLM_MODEL, "gpt-4-turbo"}
     temperature: 0.5
     api_key: ${env:OPENAI_API_KEY}
-    base_url: ${env:OPENAI_BASE_URL, "https://api.openai.com/v1"}  # API 端点
-    max_tokens: ${env:MAX_TOKENS, null}  # 最大生成 token 数
-  feedback:                   # Feedback Agent 的 LLM
+    base_url: ${env:OPENAI_BASE_URL, "https://api.openai.com/v1"}
+    max_tokens: ${env:MAX_TOKENS, null}
+  feedback:                   # ★ Feedback Agent 的 LLM（Review 评估）
     provider: ${env:LLM_PROVIDER, "openai"}
-    model: ${env:LLM_MODEL, "gpt-4-turbo"}
+    model: ${env:LLM_MODEL, "glm-4.6"}  # ★ 默认 GLM-4.6（支持 Function Calling）
     temperature: 0.5
     api_key: ${env:OPENAI_API_KEY}
-    base_url: ${env:OPENAI_BASE_URL, "https://api.openai.com/v1"}
+    base_url: ${env:OPENAI_BASE_URL, "https://open.bigmodel.cn/api/coding/paas/v4"}  # ★ 智谱 API
     max_tokens: ${env:MAX_TOKENS, null}
 
 execution:
@@ -122,18 +122,18 @@ execution:
 
 agent:
   max_steps: 50               # 最大迭代步数
-  time_limit: 86400           # 总时间限制 (秒, 24h)
+  time_limit: 43200           # ★ 总时间限制 (秒, 12 小时)
   k_fold_validation: 5        # K-fold 折数
   expose_prediction: false
   data_preview: true
   convert_system_to_user: false
 
-search:                       # Phase 3 使用
+search:                       # Orchestrator 使用
   strategy: "mcts"            # mcts | genetic
   max_debug_depth: 3
-  debug_prob: 0.5
-  num_drafts: 5
-  parallel_num: 3
+  debug_prob: 0.5             # ★ 修复模式触发概率
+  num_drafts: 5               # ★ 初稿数量
+  parallel_num: 3             # 并行执行数量
 
 logging:
   level: "INFO"               # DEBUG | INFO | WARNING | ERROR
@@ -154,7 +154,7 @@ OPENAI_API_KEY=sk-your-openai-api-key-here        # [必填] API 密钥
 # MAX_TOKENS=4096                                 # 最大生成 token 数
 
 # 第三方 OpenAI 兼容 API 配置示例
-# GLM (智谱):     OPENAI_BASE_URL=https://open.bigmodel.cn/api/paas/v4/
+# GLM (智谱):     OPENAI_BASE_URL=https://open.bigmodel.cn/api/coding/paas/v4
 # Moonshot:       OPENAI_BASE_URL=https://api.moonshot.cn/v1
 # DeepSeek:       OPENAI_BASE_URL=https://api.deepseek.com/v1
 
@@ -167,8 +167,9 @@ OPENAI_API_KEY=sk-your-openai-api-key-here        # [必填] API 密钥
 ### 3.3 环境变量插值
 
 ```yaml
-# YAML 中使用 ${env:VAR} 引用环境变量
+# YAML 中使用 ${env:VAR} 或 ${env:VAR, default} 引用环境变量
 api_key: ${env:OPENAI_API_KEY}
+model: ${env:LLM_MODEL, "gpt-4-turbo"}
 
 # OmegaConf 注册的解析器
 OmegaConf.register_new_resolver("env", lambda var: os.getenv(var, ""))
@@ -183,21 +184,20 @@ OmegaConf.register_new_resolver("env", lambda var: os.getenv(var, ""))
 ```
 workspace/                    # project.workspace_dir
 ├── input/                    # 输入数据（只读）
-│   ├── train.csv            # symlink → data_dir/train.csv
-│   ├── test.csv             # symlink → data_dir/test.csv
+│   ├── train.csv            # symlink -> data_dir/train.csv
+│   ├── test.csv             # symlink -> data_dir/test.csv
 │   └── ...
 ├── working/                  # Agent 临时工作目录
 │   └── _temp_script.py      # 临时执行文件（Interpreter 自动创建）
 ├── submission/               # 提交文件目录
 │   ├── submission_{node_id}.csv  # 各节点的提交文件
 │   └── ...
-├── archives/                 # 归档文件目录 (Phase 2 新增)
+├── archives/                 # 归档文件目录
 │   ├── node_{node_id}.zip   # 每个节点的归档文件（solution.py + submission.csv）
 │   └── ...
-└── best_solution/            # 最佳解决方案
-    ├── solution.py
-    ├── submission.csv
-    └── node_id.txt
+└── best_solution/            # 最佳解决方案（Orchestrator 维护）
+    ├── solution.py           # ★ 最佳方案代码
+    └── submission.csv        # ★ 最佳方案的提交文件
 ```
 
 ### 4.2 数据准备模式
@@ -205,34 +205,19 @@ workspace/                    # project.workspace_dir
 ```
 copy_data: false (默认)
 ─────────────────────────────
-workspace/input/ → symlink → data_dir/
+workspace/input/ -> symlink -> data_dir/
   - 节省磁盘空间
   - 只读保护（防止误修改源数据）
   - macOS/Linux 完全支持
 
 copy_data: true
 ─────────────────────────────
-workspace/input/ ← shutil.copytree ← data_dir/
+workspace/input/ <- shutil.copytree <- data_dir/
   - 完全隔离，不影响原数据
   - 占用额外磁盘空间
   - 复制后递归设置只读权限
   - Windows 环境推荐
 ```
-
-### 4.3 归档文件管理 (Phase 2)
-
-每个 Node 执行完成后，WorkspaceManager 会自动打包为 zip 归档：
-
-```
-archives/node_abc123.zip
-├── solution.py         # 代码内容
-└── submission.csv      # 预测结果（如果存在）
-```
-
-**归档时机：**
-- Node 执行完成且有 submission 文件时
-- 用于后续分析和审查
-- 节省磁盘空间（相比保留原始文件）
 
 ---
 
@@ -252,8 +237,13 @@ logs/                        # project.log_dir
 [2026-01-30 20:30:00] [INFO] 加载环境变量文件: .env
 [2026-01-30 20:30:00] [INFO] 加载配置文件: config/default.yaml
 [2026-01-30 20:30:00] [INFO] 配置加载并验证成功
-[2026-01-30 20:30:01] [WARNING] LLM API Key 未设置
-[2026-01-30 20:30:02] [ERROR] 执行失败: FileNotFoundError
+[2026-01-30 20:30:01] [INFO] Orchestrator 初始化完成: task=..., max_steps=50
+[2026-01-30 20:30:01] [INFO] === Step 1/50 ===
+[2026-01-30 20:30:01] [INFO] [search_policy] 初稿模式
+[2026-01-30 20:30:02] [INFO] 查询 LLM: model=gpt-4-turbo, provider=openai
+[2026-01-30 20:30:10] [INFO] Function Calling 响应: submit_review, 234 字符
+[2026-01-30 20:30:10] [INFO] Review 完成: 节点 abc12345, metric=0.85, lower_is_better=false
+[2026-01-30 20:30:10] [INFO] 新的最佳节点: abc12345, metric=0.85 ↑
 ```
 
 ### 5.3 metrics.json 格式
@@ -281,7 +271,7 @@ logs/                        # project.log_dir
 
 ## 6. 数据流概览
 
-### 6.1 完整数据流（Phase 1-3）
+### 6.1 完整数据流（Phase 2.4 Orchestrator 已实现）
 
 ```
 用户输入                       系统输出
@@ -292,24 +282,32 @@ config.yaml ──→ Config 对象 ──→ Agent 配置
                     ↓
 .env ──→ API Keys ──→ LLM Backend
                     ↓
-            Agent 生成代码
+        ┌── Orchestrator.run() ───────────────────┐
+        │                                          │
+        │  _select_parent_node()                   │
+        │       ↓                                  │
+        │  AgentContext → CoderAgent.generate()     │
+        │       ↓                                  │
+        │  PromptBuilder → LLM → 代码              │
+        │       ↓                                  │
+        │  WorkspaceManager 重写路径               │
+        │       ↓                                  │
+        │  Interpreter 执行代码 (subprocess)       │
+        │       ↓                                  │
+        │  workspace/submission/ → submission_{id}  │
+        │       ↓                                  │
+        │  _review_node() (Function Calling)       │
+        │       ↓                                  │
+        │  _update_best_node() (lower_is_better)   │
+        │       ↓                                  │
+        │  Journal.append(node)                    │
+        │                                          │
+        └──────────────────────────────────────────┘
                     ↓
-        WorkspaceManager 重写路径
-                    ↓
-        Interpreter 执行代码 (subprocess)
-                    ↓
-    workspace/submission/ ──→ submission_{node_id}.csv
-                    ↓
-        WorkspaceManager 归档 ──→ archives/node_{id}.zip
-                    ↓
-        评估 metric_value
-                    ↓
-    Journal (内存) ──→ 下一轮迭代
+    workspace/best_solution/ ──→ 最终结果
                     ↓
     logs/system.log ──→ 文本日志
     logs/metrics.json ──→ 结构化日志
-                    ↓
-    workspace/best_solution/ ──→ 最终结果
 ```
 
 ### 6.2 配置系统数据流
@@ -335,6 +333,41 @@ DictConfig (merged)
 Config(@dataclass)
 ```
 
+### 6.3 Orchestrator 单步数据流
+
+```
+Step N 开始
+    ↓
+_prepare_step()
+    清空 submission/ 目录
+    ↓
+_select_parent_node()
+    ├── draft 不足 → None (初稿)
+    ├── random < debug_prob → buggy_leaf (修复)
+    └── 默认 → best_node (改进)
+    ↓
+AgentContext(task_type, parent_node, journal, ...)
+    ↓
+agent.generate(context) → AgentResult(node)
+    ↓
+_execute_code(node.code, node.id)
+    ├── workspace.rewrite_submission_path()
+    └── interpreter.run()
+    ↓
+_review_node(node) ← Function Calling (GLM-4.6)
+    ├── 构建 review 消息
+    ├── backend.query(tools=[submit_review])
+    └── 解析 JSON → 更新 node 字段
+    ↓
+journal.append(node)
+    ↓
+_update_best_node(node)
+    ├── lower_is_better=True:  new < old → 更新
+    └── lower_is_better=False: new > old → 更新
+    ↓
+_save_best_solution() → workspace/best_solution/
+```
+
 ---
 
 ## 7. 配置验证规则详细
@@ -353,93 +386,113 @@ Config(@dataclass)
 
 ---
 
-## 8. 实际使用示例
+## 8. 配置关键值说明
 
-### 8.1 完整初始化流程
+### 8.1 Orchestrator 相关配置
+
+| 配置项 | 值 | 说明 |
+|--------|-----|------|
+| `agent.max_steps` | 50 | 主循环最大步数 |
+| `agent.time_limit` | **43200** | **总时间限制 12 小时** |
+| `search.num_drafts` | 5 | 初稿数量（达到后切换到改进/修复模式） |
+| `search.debug_prob` | 0.5 | 修复模式触发概率 |
+| `llm.feedback.model` | **"glm-4.6"** | **Review 使用的模型（支持 Function Calling）** |
+| `llm.feedback.base_url` | `open.bigmodel.cn/...` | **智谱 AI API 端点** |
+| `execution.timeout` | 3600 | 单次代码执行超时 |
+
+### 8.2 双阶段 LLM 配置
+
+```
+llm.code: 代码生成 Agent (CoderAgent)
+├── model: gpt-4-turbo (默认)
+├── 用途: 生成 ML 代码
+└── 调用方: CoderAgent._call_llm_with_retry()
+
+llm.feedback: Review 评估 (Orchestrator)
+├── model: glm-4.6 (默认)  ★ 支持 Function Calling
+├── 用途: 评估代码执行结果
+├── 调用方: Orchestrator._review_node()
+└── base_url: https://open.bigmodel.cn/api/coding/paas/v4
+```
+
+---
+
+## 9. 实际使用示例
+
+### 9.1 完整初始化流程
 
 ```python
 from pathlib import Path
 from utils.config import load_config, setup_workspace, print_config
 from utils.logger_system import init_logger, log_msg
+from agents.coder_agent import CoderAgent
+from core.state import Journal
+from core.executor.interpreter import Interpreter
+from core.orchestrator import Orchestrator
+from utils.prompt_builder import PromptBuilder
 
-# 1. 加载配置（优先级: CLI > 环境变量 > .env > YAML）
-cfg = load_config(
-    config_path=Path("config/default.yaml"),  # 可选
-    use_cli=True,  # 合并 CLI 参数
-    env_file=Path(".env")  # 可选
-)
-
-# 2. 打印配置概览
+# 1. 加载配置
+cfg = load_config(use_cli=True)
 print_config(cfg)
 
-# 3. 初始化日志系统
-logger = init_logger(cfg.project.log_dir)
-log_msg("INFO", "系统初始化完成")
+# 2. 初始化日志
+init_logger(cfg.project.log_dir)
 
-# 4. 设置工作空间
+# 3. 设置工作空间
 setup_workspace(cfg)
-log_msg("INFO", f"工作空间已创建: {cfg.project.workspace_dir}")
 
-# 5. 使用配置
-print(f"实验名称: {cfg.project.exp_name}")
-print(f"数据目录: {cfg.data.data_dir}")
-print(f"LLM 模型: {cfg.llm.code.model}")
+# 4. 初始化 Agent
+prompt_builder = PromptBuilder()
+interpreter = Interpreter(
+    working_dir=cfg.project.workspace_dir / "working",
+    timeout=cfg.execution.timeout,
+)
+agent = CoderAgent(
+    name="coder",
+    config=cfg,
+    prompt_builder=prompt_builder,
+    interpreter=interpreter,
+)
+
+# 5. 初始化 Orchestrator
+journal = Journal()
+task_desc = open(cfg.data.desc_file).read()
+
+orchestrator = Orchestrator(
+    agent=agent,
+    config=cfg,
+    journal=journal,
+    task_desc=task_desc,
+)
+
+# 6. 运行主循环
+best_node = orchestrator.run()
+if best_node:
+    print(f"最佳方案: metric={best_node.metric_value}")
 ```
 
-### 8.2 CLI 参数覆盖示例
+### 9.2 CLI 参数覆盖示例
 
 ```bash
 # 基础用法
-python main.py --data.data_dir=./datasets/titanic
+conda run -n Swarm-Evo python main.py --data.data_dir=./datasets/titanic
 
 # 完整覆盖示例
-python main.py \
+conda run -n Swarm-Evo python main.py \
   --data.data_dir=./datasets/house-prices \
   --data.goal="预测房价" \
   --llm.code.provider=openai \
   --llm.code.model=gpt-3.5-turbo \
-  --llm.code.temperature=0.3 \
-  --llm.code.base_url=https://api.openai.com/v1 \
-  --llm.code.max_tokens=4096 \
+  --llm.feedback.model=glm-4.6 \
   --agent.max_steps=30 \
-  --search.strategy=genetic \
-  --project.exp_name=house_prices_exp1
-
-# 使用第三方 API (Moonshot)
-python main.py \
-  --data.data_dir=./datasets/titanic \
-  --llm.code.provider=openai \
-  --llm.code.model=moonshot-v1-8k \
-  --llm.code.base_url=https://api.moonshot.cn/v1
-```
-
-### 8.3 环境变量优先级测试
-
-```bash
-# 场景 1: 仅 .env 文件
-# .env: OPENAI_API_KEY=sk-from-dotenv
-echo $OPENAI_API_KEY  # 输出: sk-from-dotenv
-
-# 场景 2: .env + 系统环境变量
-export OPENAI_API_KEY=sk-from-shell
-# .env: OPENAI_API_KEY=sk-from-dotenv
-echo $OPENAI_API_KEY  # 输出: sk-from-shell (系统优先)
-
-# 场景 3: .env + 系统环境变量 + CLI
-export OPENAI_API_KEY=sk-from-shell
-python main.py --llm.code.api_key=sk-from-cli
-# 最终使用: sk-from-cli (CLI 最高优先级)
-
-# 场景 4: Provider 和 base_url 覆盖
-# .env: LLM_PROVIDER=openai, OPENAI_BASE_URL=https://api.openai.com/v1
-export LLM_PROVIDER=openai
-export OPENAI_BASE_URL=https://api.moonshot.cn/v1
-# 最终使用: base_url=https://api.moonshot.cn/v1 (系统环境变量优先)
+  --agent.time_limit=7200 \
+  --search.num_drafts=3 \
+  --search.debug_prob=0.3
 ```
 
 ---
 
-## 9. 关联文档
+## 10. 关联文档
 
 | 文档 | 路径 |
 |------|------|

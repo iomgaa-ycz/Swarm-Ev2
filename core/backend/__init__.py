@@ -39,9 +39,11 @@ def query(
     temperature: float | None = None,
     max_tokens: int | None = None,
     api_key: str | None = None,
+    tools: list[dict] | None = None,
+    tool_choice: dict | str | None = None,
     **kwargs: Any,
 ) -> str:
-    """统一 LLM 查询接口。
+    """统一 LLM 查询接口，支持 Function Calling。
 
     根据 provider 参数选择对应的后端实现。
 
@@ -53,10 +55,13 @@ def query(
         temperature: 采样温度（0-1，越高越随机）
         max_tokens: 最大生成 token 数
         api_key: API 密钥（从 Config 传入）
+        tools: Function Calling 工具列表（可选）
+        tool_choice: 工具选择策略（可选）
         **kwargs: 额外的模型参数（如 base_url）
 
     Returns:
-        LLM 生成的文本响应
+        - 无 tools: 返回 LLM 响应文本
+        - 有 tools: 返回 tool call 的参数 JSON 字符串
 
     Raises:
         ValueError: 不支持的 provider
@@ -72,14 +77,15 @@ def query(
         ...     api_key="sk-..."
         ... )
 
-        >>> # 使用第三方 OpenAI 兼容 API
+        >>> # Function Calling（GLM-4.6）
         >>> response = query(
-        ...     system_message="你是智能助手",
-        ...     user_message="介绍 Python",
-        ...     model="moonshot-v1-8k",
+        ...     user_message="Evaluate code",
+        ...     model="glm-4.6",
         ...     provider="openai",
         ...     api_key="sk-...",
-        ...     base_url="https://api.moonshot.cn/v1"
+        ...     base_url="https://open.bigmodel.cn/api/coding/paas/v4",
+        ...     tools=[{"type": "function", "function": {...}}],
+        ...     tool_choice={"type": "function", "function": {"name": "submit_review"}}
         ... )
 
         >>> # 使用 Claude
@@ -111,6 +117,8 @@ def query(
             temperature=temperature,
             max_tokens=max_tokens,
             api_key=api_key,
+            tools=tools,
+            tool_choice=tool_choice,
             **kwargs,
         )
 

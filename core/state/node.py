@@ -72,6 +72,7 @@ class Node(DataClassJsonMixin):
     metric_value: Optional[float] = field(default=None, kw_only=True)
     is_buggy: bool = field(default=False, kw_only=True)
     is_valid: bool = field(default=True, kw_only=True)
+    lower_is_better: bool = field(default=False, kw_only=True)  # 指标方向
 
     # ---- MCTS ----
     visits: int = field(default=0, kw_only=True)
