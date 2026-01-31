@@ -13,8 +13,8 @@ import os
 from dotenv import load_dotenv
 
 
-# 注册环境变量解析器（支持 ${env:VAR} 语法）
-OmegaConf.register_new_resolver("env", lambda var: os.getenv(var, ""))
+# 注册环境变量解析器（支持 ${env:VAR, default} 语法）
+OmegaConf.register_new_resolver("env", lambda var, default="": os.getenv(var, default))
 
 
 # ============================================================
@@ -231,12 +231,7 @@ def validate_config(cfg: DictConfig) -> Config:
         log_msg("ERROR", error_msg)
         raise ValueError(error_msg)
 
-    if cfg.data.desc_file is None and cfg.data.goal is None:
-        error_msg = "必须提供 `data.desc_file` 或 `data.goal` 之一"
-        log_msg("ERROR", error_msg)
-        raise ValueError(error_msg)
-
-    # ---- 路径解析和创建 ----
+    # 解析 data_dir
     cfg.data.data_dir = Path(cfg.data.data_dir).resolve()
 
     # 验证数据目录存在
@@ -245,6 +240,19 @@ def validate_config(cfg: DictConfig) -> Config:
         log_msg("ERROR", error_msg)
         raise ValueError(error_msg)
 
+    # 自动设置 desc_file（如果未提供且存在 description.md）
+    if cfg.data.desc_file is None:
+        auto_desc_file = cfg.data.data_dir / "description.md"
+        if auto_desc_file.exists():
+            cfg.data.desc_file = auto_desc_file
+            log_msg("INFO", f"自动设置 desc_file: {auto_desc_file}")
+
+    if cfg.data.desc_file is None and cfg.data.goal is None:
+        error_msg = "必须提供 `data.desc_file` 或 `data.goal` 之一"
+        log_msg("ERROR", error_msg)
+        raise ValueError(error_msg)
+
+    # ---- 路径解析和创建 ----
     # 解析其他路径
     if cfg.data.desc_file is not None:
         cfg.data.desc_file = Path(cfg.data.desc_file).resolve()

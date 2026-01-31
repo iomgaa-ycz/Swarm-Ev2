@@ -37,3 +37,9 @@ workspace/
 # 临时文件
 *.tmp
 .DS_Store
+
+# 任务文件
+workspace/
+datasets/
+tests/outputs/
+prepared.zip

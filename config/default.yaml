@@ -15,8 +15,8 @@ project:
 # 数据配置
 # ============================================================
 data:
-  data_dir: null  # 数据目录路径（必填，通过 CLI 提供）
-  desc_file: null  # 数据描述文件路径（可选，与 goal 二选一）
+  data_dir: "./datasets/public"  # 数据目录路径（默认 datasets/public）
+  desc_file: null  # 数据描述文件路径（自动从 data_dir 读取 description.md）
   goal: null  # 任务目标描述（可选，与 desc_file 二选一）
   eval: null  # 评估指标（可选）
   preprocess_data: true  # 是否预处理数据
@@ -56,7 +56,7 @@ execution:
 # Agent 配置
 # ============================================================
 agent:
-  max_steps: 50  # 最大迭代步数
+  max_steps: 10  # 最大迭代步数（测试用，生产环境建议 50+）
   time_limit: 43200  # 总时间限制（秒，12 小时）
   k_fold_validation: 5  # K-fold 交叉验证折数
   expose_prediction: false  # 是否暴露预测结果给 Agent

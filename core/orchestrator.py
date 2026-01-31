@@ -116,7 +116,8 @@ class Orchestrator:
         3. 调用 Agent 生成代码
         4. 执行代码
         5. Review 评估
-        6. 更新 Journal 和 best_node
+        6. 保存节点代码和输出
+        7. 更新 Journal 和 best_node
         """
         try:
             # Phase 1: 准备环境
@@ -133,6 +134,7 @@ class Orchestrator:
                 config=self.config,
                 start_time=self.start_time,
                 current_step=self.current_step,
+                task_desc=self.task_desc,
             )
             result = self.agent.generate(context)
 
@@ -152,9 +154,15 @@ class Orchestrator:
             # Phase 5: Review 评估
             self._review_node(node)
 
-            # Phase 6: 更新状态
+            # Phase 6: 保存节点代码和输出
+            self._save_node_solution(node)
+
+            # Phase 7: 更新状态
             self.journal.append(node)
             self._update_best_node(node)
+
+            # Phase 8: 打印评估结果
+            self._print_node_summary(node)
 
         except Exception as e:
             log_exception(e, "Orchestrator step() 执行失败")
@@ -358,42 +366,51 @@ Please analyze the execution results and call the `submit_review` function with 
     def _update_best_node(self, node: Node) -> None:
         """更新最佳节点（支持 lower_is_better）。
 
+        策略：
+        1. 优先选择非 buggy 节点
+        2. 如果都是 buggy，选择指标最好的（作为参考）
+        3. 如果没有指标，不更新
+
         Args:
             node: 候选节点对象
-
-        注意:
-            根据 node.lower_is_better 决定比较方向
         """
-        # 过滤无效节点
-        if node.is_buggy or node.metric_value is None:
+        # 跳过无指标节点
+        if node.metric_value is None:
             return
 
-        # 初始化 best_node
+        # 初始化 best_node（即使是 buggy）
         if self.best_node is None:
             log_msg(
                 "INFO",
-                f"初始化最佳节点: {node.id[:8]}, metric={node.metric_value}",
+                f"初始化最佳节点: {node.id[:8]}, metric={node.metric_value}, buggy={node.is_buggy}",
             )
             self.best_node = node
             self._save_best_solution(node)
             return
 
-        # 根据 lower_is_better 比较
-        lower_is_better = node.lower_is_better
-        is_better = False
+        # 优先级：非buggy > buggy
+        current_is_good = not node.is_buggy
+        best_is_good = not self.best_node.is_buggy
 
-        if lower_is_better:
-            # 越小越好（如 RMSE, MAE）
-            is_better = node.metric_value < self.best_node.metric_value
+        should_update = False
+
+        if current_is_good and not best_is_good:
+            # 当前节点成功，最佳节点失败 -> 必须更新
+            should_update = True
+        elif not current_is_good and best_is_good:
+            # 当前节点失败，最佳节点成功 -> 不更新
+            should_update = False
         else:
-            # 越大越好（如 Accuracy, F1）
-            is_better = node.metric_value > self.best_node.metric_value
+            # 都成功 或 都失败 -> 比较指标
+            if self._is_better(node, self.best_node):
+                should_update = True
 
-        if is_better:
-            direction = "↓" if lower_is_better else "↑"
+        if should_update:
+            direction = "↓" if node.lower_is_better else "↑"
+            status = "✅ 成功" if current_is_good else "⚠️  失败（参考）"
             log_msg(
                 "INFO",
-                f"新的最佳节点: {node.id[:8]}, metric={node.metric_value} {direction}",
+                f"新的最佳节点: {node.id[:8]}, metric={node.metric_value} {direction}, {status}",
             )
             self.best_node = node
             self._save_best_solution(node)
@@ -425,3 +442,93 @@ Please analyze the execution results and call the `submit_review` function with 
 
         except Exception as e:
             log_exception(e, "保存最佳方案失败")
+
+    def _save_node_solution(self, node: Node) -> None:
+        """保存节点代码和输出到独立目录。
+
+        Args:
+            node: 节点对象
+        """
+        try:
+            # 创建节点专属目录
+            node_dir = (
+                self.config.project.workspace_dir
+                / "working"
+                / f"solution_{node.id[:8]}"
+            )
+            node_dir.mkdir(exist_ok=True, parents=True)
+
+            # 保存代码
+            with open(node_dir / "solution.py", "w", encoding="utf-8") as f:
+                f.write(node.code)
+
+            # 保存执行输出
+            with open(node_dir / "output.txt", "w", encoding="utf-8") as f:
+                f.write(f"执行时间: {node.exec_time:.2f}s\n")
+                f.write(f"异常类型: {node.exc_type or 'None'}\n")
+                f.write(f"是否有Bug: {node.is_buggy}\n")
+                f.write(f"评估指标: {node.metric_value}\n")
+                f.write("\n=== 终端输出 ===\n")
+                f.write(node.term_out or "")
+                if node.exc_info:
+                    f.write("\n\n=== 异常信息 ===\n")
+                    f.write(node.exc_info)
+
+            # 复制 submission 文件（如果存在）
+            submission_src = (
+                self.config.project.workspace_dir
+                / "submission"
+                / f"submission_{node.id}.csv"
+            )
+            if submission_src.exists():
+                shutil.copy(submission_src, node_dir / "submission.csv")
+
+            log_msg("INFO", f"节点 {node.id[:8]} 已保存到 {node_dir}")
+
+        except Exception as e:
+            log_exception(e, f"保存节点 {node.id[:8]} 失败")
+
+    def _print_node_summary(self, node: Node) -> None:
+        """打印节点评估摘要（日志+控制台）。
+
+        Args:
+            node: 节点对象
+        """
+        # 构建评估信息
+        status = "❌ BUGGY" if node.is_buggy else "✅ SUCCESS"
+        metric_str = f"{node.metric_value}" if node.metric_value is not None else "N/A"
+        direction = "↓ (越小越好)" if node.lower_is_better else "↑ (越大越好)"
+
+        summary = (
+            f"{status} | 节点 {node.id[:8]} | "
+            f"指标: {metric_str} {direction} | "
+            f"执行: {node.exec_time:.2f}s"
+        )
+
+        # 打印到日志和控制台
+        log_msg("INFO", f"[评估] {summary}")
+        print(f"\n  {summary}")
+
+        # 如果是最佳节点，额外高亮
+        if not node.is_buggy and node.metric_value is not None:
+            if self.best_node is None or self._is_better(node, self.best_node):
+                print("  🎉 新的最佳节点！")
+                log_msg("INFO", f"[最佳] 节点 {node.id[:8]} 成为新的最佳方案")
+
+    def _is_better(self, node: Node, best_node: Node) -> bool:
+        """判断节点是否优于最佳节点。
+
+        Args:
+            node: 候选节点
+            best_node: 当前最佳节点
+
+        Returns:
+            是否更好
+        """
+        if node.metric_value is None or best_node.metric_value is None:
+            return False
+
+        if node.lower_is_better:
+            return node.metric_value < best_node.metric_value
+        else:
+            return node.metric_value > best_node.metric_value

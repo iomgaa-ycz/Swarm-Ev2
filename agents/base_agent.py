@@ -29,6 +29,7 @@ class AgentContext(DataClassJsonMixin):
         config: 全局配置
         start_time: 任务开始时间（用于计算剩余时间）
         current_step: 当前步数（用于计算剩余步数）
+        task_desc: 任务描述字符串
     """
 
     task_type: Literal["explore", "merge"]
@@ -37,6 +38,7 @@ class AgentContext(DataClassJsonMixin):
     config: Config
     start_time: float
     current_step: int
+    task_desc: str
 
 
 @dataclass
