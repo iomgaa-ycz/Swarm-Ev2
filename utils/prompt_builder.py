@@ -1,11 +1,23 @@
 """Prompt 模板构建器模块。
 
 提供统一的 Prompt 生成逻辑，根据上下文动态调整。
+
+注意:
+    此模块已重构为 PromptManager 的轻量级包装器，保持接口兼容性。
+    核心逻辑已迁移到 utils/prompt_manager.py（基于 Jinja2）。
 """
 
+from pathlib import Path
 from typing import Optional
 
 from core.state import Node
+from utils.logger_system import log_msg
+
+# 延迟导入 PromptManager（避免循环依赖）
+try:
+    from utils.prompt_manager import PromptManager
+except ImportError:
+    PromptManager = None
 
 
 class PromptBuilder:
@@ -16,15 +28,50 @@ class PromptBuilder:
 
     Attributes:
         obfuscate: 是否混淆任务描述（用于防止 LLM 识别评测平台）
+        prompt_manager: PromptManager 实例（使用新的 Jinja2 系统）
     """
 
-    def __init__(self, obfuscate: bool = False):
+    def __init__(
+        self,
+        obfuscate: bool = False,
+        template_dir: Optional[Path] = None,
+        skills_dir: Optional[Path] = None,
+        agent_configs_dir: Optional[Path] = None,
+    ):
         """初始化 PromptBuilder。
 
         Args:
             obfuscate: 是否混淆任务描述（默认 False）
+            template_dir: Jinja2 模板目录（默认使用项目标准路径）
+            skills_dir: Skill 文件根目录（默认使用项目标准路径）
+            agent_configs_dir: Agent 配置文件根目录（默认使用项目标准路径）
         """
         self.obfuscate = obfuscate
+
+        # 初始化 PromptManager（新系统）
+        if PromptManager is not None:
+            # 使用默认路径（项目标准结构）
+            base_dir = Path(__file__).parent.parent / "benchmark" / "mle-bench"
+            template_dir = template_dir or base_dir / "prompt_templates"
+            skills_dir = skills_dir or base_dir / "skills"
+            agent_configs_dir = agent_configs_dir or base_dir / "agent_configs"
+
+            try:
+                self.prompt_manager = PromptManager(
+                    template_dir=template_dir,
+                    skills_dir=skills_dir,
+                    agent_configs_dir=agent_configs_dir,
+                )
+                log_msg("INFO", "PromptBuilder 已初始化（使用 PromptManager 新系统）")
+            except Exception as e:
+                log_msg(
+                    "WARNING",
+                    f"PromptManager 初始化失败，回退到旧逻辑: {e}",
+                )
+                self.prompt_manager = None
+        else:
+            log_msg("WARNING", "PromptManager 不可用，使用旧版 PromptBuilder 逻辑")
+            self.prompt_manager = None
 
     def build_explore_prompt(
         self,
@@ -34,6 +81,8 @@ class PromptBuilder:
         data_preview: Optional[str] = None,
         time_remaining: int = 0,
         steps_remaining: int = 0,
+        agent_id: str = "agent_0",
+        experience_pool=None,
     ) -> str:
         """构建统一的 explore prompt。
 
@@ -49,15 +98,67 @@ class PromptBuilder:
             data_preview: 数据预览文本
             time_remaining: 剩余时间（秒）
             steps_remaining: 剩余步数
+            agent_id: Agent ID（默认 "agent_0"）
+            experience_pool: 经验池实例（用于注入 Top-K Skill）
 
         Returns:
             完整的 Prompt 字符串
 
         注意:
-            - 不显式告诉 LLM 任务类型，让 LLM 根据上下文判断
-            - 没有 Previous Attempt → LLM 知道要生成初稿
-            - 有 Previous Attempt + 错误输出 → LLM 知道要修复
-            - 有 Previous Attempt + 正常输出 → LLM 知道要改进
+            - 优先使用 PromptManager（新系统，基于 Jinja2 模板）
+            - 如果 PromptManager 不可用，回退到旧逻辑
+        """
+        # 新逻辑：使用 PromptManager
+        if self.prompt_manager is not None:
+            context = {
+                "task_desc": task_desc,
+                "parent_node": parent_node,
+                "memory": memory,
+                "data_preview": data_preview,
+                "time_remaining": time_remaining,
+                "steps_remaining": steps_remaining,
+                "experience_pool": experience_pool,
+            }
+
+            return self.prompt_manager.build_prompt(
+                task_type="explore",
+                agent_id=agent_id,
+                context=context,
+            )
+
+        # 旧逻辑：回退到手动拼接（保持向后兼容）
+        return self._build_explore_prompt_legacy(
+            task_desc=task_desc,
+            parent_node=parent_node,
+            memory=memory,
+            data_preview=data_preview,
+            time_remaining=time_remaining,
+            steps_remaining=steps_remaining,
+        )
+
+    def _build_explore_prompt_legacy(
+        self,
+        task_desc: str,
+        parent_node: Optional[Node] = None,
+        memory: str = "",
+        data_preview: Optional[str] = None,
+        time_remaining: int = 0,
+        steps_remaining: int = 0,
+    ) -> str:
+        """旧版 Prompt 构建逻辑（回退兼容）。
+
+        此方法保留原有的手动拼接逻辑，用于在 PromptManager 不可用时回退。
+
+        Args:
+            task_desc: 任务描述
+            parent_node: 父节点（None=初稿, buggy=修复, normal=改进）
+            memory: Journal 摘要（历史经验）
+            data_preview: 数据预览文本
+            time_remaining: 剩余时间（秒）
+            steps_remaining: 剩余步数
+
+        Returns:
+            完整的 Prompt 字符串
         """
         sections = [
             f"# Introduction\n{self._get_role_intro()}",
