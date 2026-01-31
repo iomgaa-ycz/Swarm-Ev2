@@ -1,7 +1,7 @@
 # 后端模块详细说明
 
-**Last Updated:** 2026-01-31 15:30:00
-**模块范围:** utils/, core/state/, core/backend/, core/executor/, config/, tests/
+**Last Updated:** 2026-01-31 23:00:00
+**模块范围:** utils/, core/state/, core/backend/, core/executor/, agents/, config/, tests/
 
 ---
 
@@ -24,6 +24,8 @@
 | **数据预览** | `utils/data_preview.py` | EDA 预览生成 | **已完成** |
 | **指标工具** | `utils/metric.py` | 评估指标容器 | **已完成** |
 | **响应解析** | `utils/response.py` | LLM 响应提取 | **已完成** |
+| **Prompt 构建器** | `utils/prompt_builder.py` | 统一 Prompt 生成逻辑 | **已完成** |
+| **Agent 基类** | `agents/base_agent.py` | Agent 抽象基类 | **已完成** |
 | YAML 配置 | `config/default.yaml` | 项目主配置 | 已完成 |
 | 环境变量 | `.env.example` | API Keys 模板 | 已完成 |
 
@@ -899,7 +901,138 @@ code = extract_code(response)
 
 ---
 
-## 11. 模块依赖图
+## 11. Agent 抽象层 (`agents/`, `utils/prompt_builder.py`) ★NEW★
+
+### 11.1 BaseAgent (`agents/base_agent.py`)
+
+Agent 抽象基类，定义统一的 Agent 接口。
+
+```python
+class BaseAgent(ABC):
+    """Agent 抽象基类。"""
+    def __init__(self, name: str, config: Config, prompt_builder: PromptBuilder):
+        """初始化 BaseAgent。"""
+
+    @abstractmethod
+    def generate(self, context: AgentContext) -> AgentResult:
+        """主入口：根据 task_type 分发到具体实现。"""
+
+    @abstractmethod
+    def _explore(self, context: AgentContext) -> Node:
+        """探索新方案（统一方法）。"""
+```
+
+**数据类:**
+
+| 类名 | 职责 | 字段 |
+|------|------|------|
+| `AgentContext` | Agent 执行上下文 | task_type, parent_node, journal, config, start_time, current_step |
+| `AgentResult` | Agent 执行结果 | node, success, error |
+
+**设计要点:**
+- 不显式区分初稿/改进/修复，让 LLM 根据上下文判断
+- `parent_node=None` → LLM 知道要生成初稿
+- `parent_node.is_buggy=True` → LLM 看到错误输出，自动修复
+- `parent_node.is_buggy=False` → LLM 看到正常输出，自动改进
+
+**使用示例:**
+
+```python
+from agents.base_agent import AgentContext, AgentResult, BaseAgent
+from core.state import Journal, Node
+from utils.config import load_config
+from utils.prompt_builder import PromptBuilder
+
+# 初始化
+config = load_config()
+prompt_builder = PromptBuilder()
+agent = CoderAgent(name="coder", config=config, prompt_builder=prompt_builder)
+
+# 执行
+context = AgentContext(
+    task_type="explore",
+    parent_node=None,  # 初稿模式
+    journal=Journal(),
+    config=config,
+    start_time=time.time(),
+    current_step=0
+)
+result = agent.generate(context)
+
+if result.success:
+    print(f"生成节点: {result.node.id}")
+else:
+    print(f"执行失败: {result.error}")
+```
+
+### 11.2 PromptBuilder (`utils/prompt_builder.py`)
+
+统一 Prompt 构建逻辑，根据上下文动态调整。
+
+**核心方法:**
+
+| 方法 | 签名 | 说明 |
+|------|------|------|
+| `build_explore_prompt` | `(task_desc, parent_node, memory, data_preview, time_remaining, steps_remaining) -> str` | 构建统一的 explore prompt |
+| `_get_role_intro` | `() -> str` | 获取角色介绍 |
+| `_get_guidelines` | `(time_remaining, steps_remaining) -> str` | 获取实现指南 |
+| `_get_response_format` | `() -> str` | 获取响应格式说明 |
+| `_format_time` | `(seconds) -> str` | 格式化时间（秒 → 人类可读） |
+
+**自适应 Prompt 逻辑:**
+
+```python
+# 场景 1: 初稿模式
+parent_node = None
+→ Prompt 不包含 "Previous Attempt"
+→ LLM 知道要生成初稿
+
+# 场景 2: 修复模式
+parent_node.is_buggy = True
+→ Prompt 包含 "Previous Attempt + 错误输出"
+→ LLM 看到异常信息，自动修复
+
+# 场景 3: 改进模式
+parent_node.is_buggy = False
+→ Prompt 包含 "Previous Attempt + 正常输出"
+→ LLM 看到正常执行，自动改进
+```
+
+**混淆模式:**
+- `obfuscate=True`: 隐藏 Kaggle 背景，通用 ML 工程师
+- `obfuscate=False`: 显式 Kaggle 大师身份
+
+**使用示例:**
+
+```python
+from utils.prompt_builder import PromptBuilder
+
+builder = PromptBuilder(obfuscate=False)
+
+# 初稿模式
+prompt = builder.build_explore_prompt(
+    task_desc="预测房价",
+    parent_node=None,
+    memory="",
+    data_preview="train.csv: 1460 rows, 81 columns",
+    time_remaining=3600,
+    steps_remaining=50
+)
+
+# 修复模式
+prompt = builder.build_explore_prompt(
+    task_desc="预测房价",
+    parent_node=buggy_node,  # is_buggy=True
+    memory="",
+    data_preview="train.csv: 1460 rows, 81 columns",
+    time_remaining=3500,
+    steps_remaining=49
+)
+```
+
+---
+
+## 12. 模块依赖图
 
 ```mermaid
 graph TD
@@ -931,9 +1064,20 @@ graph TD
         DP[utils/data_preview.py]
         METRIC[utils/metric.py]
         RESP[utils/response.py]
+        PB[utils/prompt_builder.py]
+    end
+
+    subgraph "Agent 抽象 ★NEW★"
+        AGENT[agents/base_agent.py]
     end
 
     %% 依赖关系
+    AGENT --> CFG
+    AGENT --> PB
+    AGENT --> NODE
+    AGENT --> JOURNAL
+
+    PB --> NODE
     JOURNAL --> NODE
     TASK -.-> LOG
 
@@ -978,7 +1122,8 @@ graph TD
 3. 数据层: `Node`, `Journal`, `Task` (自包含，轻量依赖)
 4. 后端层: `backend/*` (依赖基础层)
 5. **执行层**: `executor/*` (依赖基础层 + 配置层)
-6. **工具层**: `data_preview`, `metric`, `response` (依赖基础层)
+6. **工具层**: `data_preview`, `metric`, `response`, **`prompt_builder`** (依赖基础层 + 数据层)
+7. **Agent 层**: **`base_agent`** (依赖配置层 + 数据层 + 工具层)
 
 **关键设计原则**:
 - 单向依赖：下层不依赖上层
@@ -987,7 +1132,7 @@ graph TD
 
 ---
 
-## 12. 关联文档
+## 13. 关联文档
 
 | 文档 | 路径 |
 |------|------|

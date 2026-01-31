@@ -1,8 +1,8 @@
 # Swarm-Ev2 项目架构概览
 
-**Last Updated:** 2026-01-31 15:30:00
+**Last Updated:** 2026-01-31 23:00:00
 **项目版本:** 0.1.0
-**当前阶段:** Phase 2 核心功能（部分完成：执行层）
+**当前阶段:** Phase 2 核心功能（部分完成：执行层 + Agent 抽象）
 
 ---
 
@@ -17,6 +17,7 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 | 配置 | OmegaConf + YAML |
 | 日志 | 双通道（文本 + JSON） |
 | 测试 | pytest + pytest-asyncio |
+| 代码行数 | ~2900 行（22 个核心模块） |
 
 ---
 
@@ -31,7 +32,7 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 │   Orchestrator · ParallelEvaluator               │  ← Phase 2-3
 ├─────────────────────────────────────────────────┤
 │              Agent 层 (Agents)                    │
-│   BaseAgent · CoderAgent · SwarmAgent            │  ← Phase 2-3
+│   BaseAgent · AgentContext · PromptBuilder       │  ← Phase 2 ★部分完成★
 ├─────────────────────────────────────────────────┤
 │              进化层 (Evolution)                   │
 │   AgentEvolution · SolutionEvolution             │
@@ -44,7 +45,7 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 │   Node · Journal · Task                          │  ← Phase 1 ★已完成★
 ├─────────────────────────────────────────────────┤
 │            ★ 基础设施层 (Infrastructure) ★         │
-│   config.py · logger_system.py · file_utils.py   │  ← Phase 1 (已完成)
+│   config.py · logger_system.py · file_utils.py   │  ← Phase 1 ★已完成★
 └─────────────────────────────────────────────────┘
 ```
 
@@ -54,37 +55,46 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 
 ```mermaid
 graph TD
-    subgraph "Phase 1 - 基础设施（已完成）"
-        CFG[utils/config.py<br/>配置管理]
-        LOG[utils/logger_system.py<br/>日志系统]
-        FU[utils/file_utils.py<br/>文件工具]
+    subgraph "Phase 1 - 基础设施 ★已完成★"
+        CFG[utils/config.py<br/>配置管理 457行]
+        LOG[utils/logger_system.py<br/>日志系统 181行]
+        FU[utils/file_utils.py<br/>文件工具 114行]
         YAML[config/default.yaml<br/>YAML 配置]
         ENV[.env<br/>环境变量]
     end
 
-    subgraph "Phase 1 - 数据结构（已完成）"
-        NODE[core/state/node.py<br/>22字段+4方法]
-        JOURNAL[core/state/journal.py<br/>11方法]
-        TASK[core/state/task.py<br/>8字段]
+    subgraph "Phase 1 - 数据结构 ★已完成★"
+        NODE[core/state/node.py<br/>Node 数据类 119行]
+        JOURNAL[core/state/journal.py<br/>Journal DAG 229行]
+        TASK[core/state/task.py<br/>Task 定义 63行]
     end
 
-    subgraph "Phase 1 - 后端抽象（已完成）"
-        BACKEND[core/backend/__init__.py<br/>统一查询接口<br/>provider 必填]
-        OPENAI[core/backend/backend_openai.py<br/>OpenAI + 第三方兼容]
-        ANTHRO[core/backend/backend_anthropic.py<br/>Claude]
-        BUTILS[core/backend/utils.py<br/>消息格式 + 重试]
+    subgraph "Phase 1 - 后端抽象 ★已完成★"
+        BACKEND[core/backend/__init__.py<br/>统一查询接口 130行]
+        OPENAI[core/backend/backend_openai.py<br/>OpenAI + 第三方 133行]
+        ANTHRO[core/backend/backend_anthropic.py<br/>Claude 143行]
+        BUTILS[core/backend/utils.py<br/>消息格式 + 重试 81行]
     end
 
-    subgraph "Phase 2 - 部分完成"
-        AGENT[agents/base_agent.py<br/>待实现]
-        CODER[agents/coder_agent.py<br/>待实现]
-        ORCH[core/orchestrator.py<br/>待实现]
-        INTERP[core/executor/interpreter.py<br/>✅ 已完成]
-        WS[core/executor/workspace.py<br/>✅ 已完成]
-        PB[utils/prompt_builder.py<br/>待实现]
-        DP[utils/data_preview.py<br/>✅ 已完成]
-        METRIC[utils/metric.py<br/>✅ 已完成]
-        RESP[utils/response.py<br/>✅ 已完成]
+    subgraph "Phase 2 - 执行层 ★已完成★"
+        INTERP[core/executor/interpreter.py<br/>代码执行沙箱 177行]
+        WS[core/executor/workspace.py<br/>工作空间管理 182行]
+    end
+
+    subgraph "Phase 2 - 工具增强 ★已完成★"
+        DP[utils/data_preview.py<br/>EDA 预览 270行]
+        METRIC[utils/metric.py<br/>评估指标 118行]
+        RESP[utils/response.py<br/>响应解析 90行]
+    end
+
+    subgraph "Phase 2 - Agent 抽象 ★NEW★"
+        AGENT[agents/base_agent.py<br/>BaseAgent + AgentContext 118行]
+        PB[utils/prompt_builder.py<br/>PromptBuilder 168行]
+    end
+
+    subgraph "Phase 2-3 - 待实现"
+        CODER[agents/coder_agent.py<br/>CoderAgent 具体实现]
+        ORCH[core/orchestrator.py<br/>任务编排器]
     end
 
     subgraph "Phase 3 - 待实现"
@@ -107,8 +117,11 @@ graph TD
 
     AGENT --> CFG
     AGENT --> PB
-    AGENT --> BACKEND
+    AGENT --> NODE
+    AGENT --> JOURNAL
     CODER --> AGENT
+
+    PB --> NODE
 
     ORCH --> AGENT
     ORCH --> JOURNAL
@@ -124,10 +137,19 @@ graph TD
     METRIC -.-> LOG
     RESP -.-> LOG
 
+    BACKEND --> OPENAI
+    BACKEND --> ANTHRO
+    OPENAI --> BUTILS
+    ANTHRO --> BUTILS
+    BUTILS --> LOG
+
     AEVO --> EPOOL
     SEVO --> GENE
     SEVO --> EPOOL
     PARA --> INTERP
+
+    style AGENT fill:#e8f5e9
+    style PB fill:#e8f5e9
 ```
 
 ---
@@ -136,15 +158,16 @@ graph TD
 
 | Phase | 名称 | 状态 | 核心交付物 |
 |-------|------|------|-----------|
-| **1** | 基础设施重构 | **已完成** | config.py, logger_system.py, file_utils.py |
-| **1** | 核心数据结构 | **已完成** | Node (119行), Journal (229行), Task (63行) |
-| **1** | 后端抽象层 | **已完成** | Backend - OpenAI, Anthropic + 第三方兼容 (Moonshot, GLM, DeepSeek) |
-| **2** | **执行层** | **已完成** | **Interpreter (177行), WorkspaceManager (182行)** |
-| **2** | **工具增强** | **已完成** | **data_preview (270行), metric (118行), response (90行)** |
-| 2 | Agent 框架 | 待实现 | BaseAgent, Orchestrator, CoderAgent |
-| 3 | 双层群体智能 | 待实现 | GA, AgentEvolution, ParallelEvaluator |
-| 4 | 扩展功能 | 待实现 | Memory, ToolRegistry, AgentRegistry |
-| 5 | 测试与文档 | 进行中 | 80%+ 覆盖率, 端到端验证 |
+| **1** | 基础设施重构 | **✅ 已完成** | config.py, logger_system.py, file_utils.py |
+| **1** | 核心数据结构 | **✅ 已完成** | Node (119行), Journal (229行), Task (63行) |
+| **1** | 后端抽象层 | **✅ 已完成** | Backend - OpenAI, Anthropic + 第三方兼容 |
+| **2** | **执行层** | **✅ 已完成** | **Interpreter (177行), WorkspaceManager (182行)** |
+| **2** | **工具增强** | **✅ 已完成** | **data_preview (270行), metric (118行), response (90行)** |
+| **2** | **Agent 抽象** | **✅ 已完成** | **BaseAgent (118行), PromptBuilder (168行)** |
+| 2 | Agent 具体实现 | 🔴 待实现 | CoderAgent, Orchestrator |
+| 3 | 双层群体智能 | 🔴 待实现 | GA, AgentEvolution, ParallelEvaluator |
+| 4 | 扩展功能 | 🔴 待实现 | Memory, ToolRegistry, AgentRegistry |
+| 5 | 测试与文档 | 🟡 进行中 | 80%+ 覆盖率, 端到端验证 |
 
 ### Phase 1-2 已完成模块明细
 
@@ -159,44 +182,26 @@ graph TD
 | Journal 数据类 | `core/state/journal.py` | 229 | ✅ 已完成 |
 | Task 数据类 | `core/state/task.py` | 63 | ✅ 已完成 |
 | **Phase 1: 后端抽象** ||||
-| 后端抽象层 | `core/backend/__init__.py` | 130 | ✅ 已完成 (provider 必填) |
+| 后端抽象层 | `core/backend/__init__.py` | 130 | ✅ 已完成 |
 | OpenAI 后端 | `core/backend/backend_openai.py` | 133 | ✅ 已完成 |
 | Anthropic 后端 | `core/backend/backend_anthropic.py` | 143 | ✅ 已完成 |
 | 后端工具 | `core/backend/utils.py` | 81 | ✅ 已完成 |
 | **Phase 2: 执行层** ||||
-| **代码执行器** | **`core/executor/interpreter.py`** | **177** | **✅ 已完成** |
-| **工作空间管理** | **`core/executor/workspace.py`** | **182** | **✅ 已完成** |
+| 代码执行器 | `core/executor/interpreter.py` | 177 | ✅ 已完成 |
+| 工作空间管理 | `core/executor/workspace.py` | 182 | ✅ 已完成 |
 | **Phase 2: 工具增强** ||||
-| **数据预览** | **`utils/data_preview.py`** | **270** | **✅ 已完成** |
-| **指标工具** | **`utils/metric.py`** | **118** | **✅ 已完成** |
-| **响应解析** | **`utils/response.py`** | **90** | **✅ 已完成** |
+| 数据预览 | `utils/data_preview.py` | 270 | ✅ 已完成 |
+| 指标工具 | `utils/metric.py` | 118 | ✅ 已完成 |
+| 响应解析 | `utils/response.py` | 90 | ✅ 已完成 |
+| **Phase 2: Agent 抽象 ★NEW★** ||||
+| **Agent 基类** | **`agents/base_agent.py`** | **118** | **✅ 已完成** |
+| **Prompt 构建器** | **`utils/prompt_builder.py`** | **168** | **✅ 已完成** |
 | **配置文件** ||||
 | YAML 配置 | `config/default.yaml` | 77 | ✅ 已完成 |
 | 环境变量模板 | `.env.example` | 36 | ✅ 已完成 |
 | 依赖声明 | `requirements.txt` | 36 | ✅ 已完成 |
 
-### Phase 1-2 已完成测试明细
-
-| 测试文件 | 测试数 | 覆盖模块 | 状态 |
-|----------|--------|---------|------|
-| **Phase 1 测试** ||||
-| `tests/unit/test_config.py` | 7 | config.py | ✅ |
-| `tests/unit/test_config_priority.py` | 4 | config.py (优先级) | ✅ |
-| `tests/unit/test_file_utils.py` | 5 | file_utils.py | ✅ |
-| `tests/unit/test_node.py` | 7 | Node 数据类 | ✅ |
-| `tests/unit/test_journal.py` | 12 | Journal + parse_solution_genes | ✅ |
-| `tests/unit/test_task.py` | 5 | Task 数据类 | ✅ |
-| `tests/unit/test_state_integration.py` | 1 | State 模块集成 | ✅ |
-| **Phase 2 测试** ||||
-| **`tests/unit/test_interpreter.py`** | **5** | **Interpreter 执行器** | **✅** |
-| **`tests/unit/test_workspace.py`** | **6** | **WorkspaceManager** | **✅** |
-| **`tests/unit/test_data_preview.py`** | **4** | **data_preview** | **✅** |
-| **`tests/unit/test_metric.py`** | **5** | **metric** | **✅** |
-| **`tests/unit/test_response.py`** | **3** | **response** | **✅** |
-| **待补充** ||||
-| `tests/unit/test_backend_provider.py` | 6 | Backend Provider 参数 | ✅ |
-
-**总计**: 70 个单元测试 | 覆盖率 > 80%
+**总计**: 16 个核心模块 | ~2900 行代码 | 22 个源文件
 
 ---
 
@@ -209,7 +214,8 @@ Swarm-Ev2/
 ├── config/
 │   └── default.yaml               # 统一 YAML 配置        ★ 已完成
 ├── agents/                        # Agent 层
-│   ├── base_agent.py              # Agent 抽象基类         Phase 2
+│   ├── __init__.py                # 模块导出               ★ 已完成
+│   ├── base_agent.py              # Agent 抽象基类         ★ 已完成
 │   ├── coder_agent.py             # 代码生成 Agent         Phase 2
 │   ├── swarm_agent.py             # 群体 Agent             Phase 3
 │   └── registry.py                # Agent 注册表           Phase 4
@@ -245,12 +251,12 @@ Swarm-Ev2/
 │   ├── data_preview.py            # 数据预览生成           ★ 已完成
 │   ├── metric.py                  # 评估指标工具           ★ 已完成
 │   ├── response.py                # LLM 响应解析           ★ 已完成
-│   └── prompt_builder.py          # Prompt 构建器          Phase 2
+│   └── prompt_builder.py          # Prompt 构建器          ★ 已完成
 ├── tests/                         # 测试
 │   ├── unit/                      # 单元测试               ★ 已完成 (部分)
 │   └── integration/               # 集成测试               待实现
 └── docs/                          # 文档
-    ├── CODEMAPS/                   # 架构图                 ★ 本次创建
+    ├── CODEMAPS/                   # 架构图                 ★ 本次更新
     ├── plans/                     # Phase 详细计划          已完成
     └── implementation_plan.md     # 总体实施计划            已完成
 ```
@@ -283,13 +289,69 @@ Swarm-Ev2/
 
 ---
 
-## 7. 关联文档
+## 7. Agent 抽象层设计 ★NEW★
+
+### 7.1 核心组件
+
+| 组件 | 文件 | 职责 |
+|------|------|------|
+| `BaseAgent` | `agents/base_agent.py` | Agent 抽象基类，定义统一接口 |
+| `AgentContext` | `agents/base_agent.py` | Agent 执行上下文容器 |
+| `AgentResult` | `agents/base_agent.py` | Agent 执行结果容器 |
+| `PromptBuilder` | `utils/prompt_builder.py` | 统一 Prompt 构建逻辑 |
+
+### 7.2 AgentContext 数据流
+
+```
+AgentContext (输入)
+├── task_type: "explore" | "merge"
+├── parent_node: Optional[Node]
+│   ├── None → 初稿模式
+│   ├── is_buggy=True → 修复模式
+│   └── is_buggy=False → 改进模式
+├── journal: Journal (历史记录)
+├── config: Config (全局配置)
+├── start_time: float (任务开始时间)
+└── current_step: int (当前步数)
+    ↓
+BaseAgent.generate(context)
+    ↓
+AgentResult (输出)
+├── node: Optional[Node] (生成的节点)
+├── success: bool (是否成功)
+└── error: Optional[str] (错误信息)
+```
+
+### 7.3 PromptBuilder 自适应逻辑
+
+```python
+# 不显式告诉 LLM 任务类型，让 LLM 根据上下文判断
+
+# 场景 1: 初稿模式
+parent_node = None
+→ Prompt 不包含 "Previous Attempt"
+→ LLM 知道要生成初稿
+
+# 场景 2: 修复模式
+parent_node.is_buggy = True
+→ Prompt 包含 "Previous Attempt + 错误输出"
+→ LLM 看到异常信息，自动修复
+
+# 场景 3: 改进模式
+parent_node.is_buggy = False
+→ Prompt 包含 "Previous Attempt + 正常输出"
+→ LLM 看到正常执行，自动改进
+```
+
+---
+
+## 8. 关联文档
 
 | 文档 | 路径 | 说明 |
 |------|------|------|
 | 总体实施计划 | `docs/implementation_plan.md` | 5 Phase 概览 |
 | Phase 1 详细计划 | `docs/plans/phase1_infrastructure.md` | 基础设施设计 |
-| Phase 2 详细计划 | `docs/plans/phase2_core.md` | 核心功能设计 |
+| Phase 2 详细计划 | `docs/plans/p2.2_agent_abstraction_plan.md` | Agent 抽象层设计 ★NEW★ |
 | Phase 3 详细计划 | `docs/plans/phase3_search.md` | 搜索算法设计 |
 | Phase 4 详细计划 | `docs/plans/phase4_extensions.md` | 扩展功能设计 |
 | Phase 5 详细计划 | `docs/plans/phase5_testing.md` | 测试文档设计 |
