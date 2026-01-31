@@ -4,9 +4,8 @@ Journal 数据类模块。
 管理解决方案 DAG，提供节点的增删查改和树结构查询功能。
 """
 
-import re
 from dataclasses import dataclass, field
-from typing import Optional, Dict
+from typing import Optional
 
 from dataclasses_json import DataClassJsonMixin
 
@@ -161,6 +160,44 @@ class Journal(DataClassJsonMixin):
 
         return max(valid_nodes, key=lambda n: n.metric_value)  # type: ignore
 
+    def get_best_k(self, k: int, only_good: bool = True) -> list[Node]:
+        """返回评估指标 Top-K 的节点。
+
+        Args:
+            k: 返回前 k 个节点
+            only_good: 是否只考虑无 bug 的节点
+
+        Returns:
+            Top-K 节点列表，按 metric_value 降序排列
+
+        时间复杂度: O(n log n)
+
+        示例:
+            >>> journal = Journal()
+            >>> for i in range(5):
+            ...     node = Node(code=f"code_{i}", metric_value=0.5 + i * 0.1)
+            ...     journal.append(node)
+            >>> top_3 = journal.get_best_k(k=3)
+            >>> len(top_3)
+            3
+            >>> top_3[0].metric_value >= top_3[1].metric_value
+            True
+        """
+        candidates = self.good_nodes if only_good else self.nodes
+        valid_nodes = [n for n in candidates if n.metric_value is not None]
+
+        if not valid_nodes:
+            return []
+
+        # 按 metric_value 降序排序
+        sorted_nodes = sorted(
+            valid_nodes,
+            key=lambda n: n.metric_value,  # type: ignore
+            reverse=True,
+        )
+
+        return sorted_nodes[:k]
+
     def build_dag(self) -> None:
         """根据 parent_id 构建 children_ids 关系。
 
@@ -244,50 +281,3 @@ class Journal(DataClassJsonMixin):
         return "\n\n-------------------------------\n\n".join(summaries)
 
 
-def parse_solution_genes(code: str) -> Dict[str, str]:
-    """解析解决方案代码中的基因标记（Swarm-Evo 简单格式）。
-
-    解析 `# [SECTION: NAME]` 标记，将代码分割为不同的基因组件。
-
-    Args:
-        code: Python 代码字符串
-
-    Returns:
-        基因字典，格式为 {"SECTION_NAME": "code_block"}
-
-    示例:
-        >>> code = '''
-        ... # [SECTION: DATA]
-        ... import pandas as pd
-        ... # [SECTION: MODEL]
-        ... model = RandomForest()
-        ... '''
-        >>> genes = parse_solution_genes(code)
-        >>> genes
-        {'DATA': 'import pandas as pd\\n', 'MODEL': 'model = RandomForest()\\n'}
-
-    注意:
-        - 使用简单的单层格式（Swarm-Evo 标准）
-        - 代码块内可包含 `# [FIXED]` 和 `# [EVOLVABLE]` 注释标记
-        - LLM 通过 Prompt 约束识别并遵守修改规则
-    """
-    genes: Dict[str, str] = {}
-
-    # 匹配 # [SECTION: NAME] 格式
-    pattern = re.compile(r"^#\s*\[SECTION:\s*(\w+)\]", re.MULTILINE)
-    matches = list(pattern.finditer(code))
-
-    for i, match in enumerate(matches):
-        section_name = match.group(1)
-        start_idx = match.end()
-
-        # 确定结束位置（下一个 SECTION 或代码末尾）
-        if i + 1 < len(matches):
-            end_idx = matches[i + 1].start()
-        else:
-            end_idx = len(code)
-
-        content = code[start_idx:end_idx].strip()
-        genes[section_name] = content
-
-    return genes
