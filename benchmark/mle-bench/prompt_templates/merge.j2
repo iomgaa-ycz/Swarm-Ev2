@@ -1,0 +1,98 @@
+{# ===================================================================== #}
+{# MERGE TASK PROMPT TEMPLATE                                          #}
+{# 用于执行基因交叉，合并两个父节点的基因块                                  #}
+{# ===================================================================== #}
+
+{# SECTION: ROLE [EVOLVABLE] #}
+{{ load_agent_config(agent_id, "role") }}
+{# END SECTION: ROLE #}
+
+{# SECTION: FORMAT [STATIC_SKILL] #}
+{{ load_skill("static/output_format") }}
+{# END SECTION: FORMAT #}
+
+{# SECTION: TASK #}
+# Task: Genetic Crossover
+
+You are performing **genetic crossover** to create a child solution by combining gene blocks from two parent solutions.
+
+## Parent A
+
+**Fitness**: {{ parent_a.metric_value if parent_a.metric_value else "N/A" }}
+
+### Code
+```python
+{{ parent_a.code }}
+```
+
+{% if parent_a.term_out %}
+### Execution Result (Parent A)
+```
+{{ parent_a.term_out[:1000] }}{% if parent_a.term_out|length > 1000 %}... (truncated){% endif %}
+```
+{% endif %}
+
+---
+
+## Parent B
+
+**Fitness**: {{ parent_b.metric_value if parent_b.metric_value else "N/A" }}
+
+### Code
+```python
+{{ parent_b.code }}
+```
+
+{% if parent_b.term_out %}
+### Execution Result (Parent B)
+```
+{{ parent_b.term_out[:1000] }}{% if parent_b.term_out|length > 1000 %}... (truncated){% endif %}
+```
+{% endif %}
+
+---
+
+## Gene Plan
+
+The following plan specifies which parent to use for each gene block:
+
+```
+{{ gene_plan }}
+```
+
+**Your Task**: Create a child solution that:
+1. Uses the gene block from the specified parent for each section (DATA, MODEL, LOSS, etc.)
+2. Resolves any conflicts between incompatible blocks
+3. Ensures the merged solution is executable and coherent
+{# END SECTION: TASK #}
+
+{# SECTION: STRATEGY [HYBRID] #}
+{{ load_skill("by_task_type/merge/crossover_strategies") }}
+
+{{ load_skill("by_task_type/merge/conflict_resolution") }}
+
+{{ load_agent_config(agent_id, "strategy_merge") }}
+{# END SECTION: STRATEGY #}
+
+{# SECTION: EXAMPLES [DYNAMIC_SKILL] #}
+{% if dynamic_skills %}
+{{ dynamic_skills }}
+{% endif %}
+{# END SECTION: EXAMPLES #}
+
+{# SECTION: GUIDELINES #}
+{{ load_skill("static/workspace_rules") }}
+
+{{ load_skill("static/code_style") }}
+
+## Validation Checklist
+
+After merging, ensure:
+- [ ] All 7 gene blocks are present (DATA, MODEL, LOSS, OPTIMIZER, REGULARIZATION, INITIALIZATION, TRAINING_TRICKS)
+- [ ] Gene plan is followed strictly (unless conflicts require adaptation)
+- [ ] Conflicts are documented and resolved
+- [ ] Code is syntactically correct and executable
+- [ ] Model input/output shapes are compatible
+- [ ] Validation metric is printed
+- [ ] Predictions are saved to `./submission/submission.csv`
+{# END SECTION: GUIDELINES #}

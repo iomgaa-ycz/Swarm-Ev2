@@ -1,0 +1,80 @@
+{# ===================================================================== #}
+{# MUTATE TASK PROMPT TEMPLATE                                         #}
+{# 用于对特定基因块进行变异，探索局部优化                                    #}
+{# ===================================================================== #}
+
+{# SECTION: ROLE [EVOLVABLE] #}
+{{ load_agent_config(agent_id, "role") }}
+{# END SECTION: ROLE #}
+
+{# SECTION: FORMAT [STATIC_SKILL] #}
+{{ load_skill("static/output_format") }}
+{# END SECTION: FORMAT #}
+
+{# SECTION: TASK #}
+# Task: Genetic Mutation
+
+You are performing **genetic mutation** on a solution to explore variations and potentially improve fitness.
+
+## Original Solution
+
+**Fitness**: {{ parent_node.metric_value if parent_node.metric_value else "N/A" }}
+
+### Code
+```python
+{{ parent_node.code }}
+```
+
+{% if parent_node.term_out %}
+### Execution Result
+```
+{{ parent_node.term_out[:1000] }}{% if parent_node.term_out|length > 1000 %}... (truncated){% endif %}
+```
+{% endif %}
+
+---
+
+## Target Gene Block
+
+**Block to Mutate**: `{{ target_gene }}`
+
+**Your Task**: Modify **only** the `{{ target_gene }}` gene block to:
+1. Introduce a meaningful variation (not trivial or arbitrary)
+2. Address a suspected performance bottleneck
+3. Maintain compatibility with other gene blocks
+4. Aim to improve the validation metric
+
+**Important**: Leave all other gene blocks unchanged. Focus your mutation on `{{ target_gene }}` only.
+{# END SECTION: TASK #}
+
+{# SECTION: STRATEGY [HYBRID] #}
+{{ load_skill("by_task_type/mutate/mutation_strategies") }}
+
+{{ load_skill("by_task_type/mutate/local_optimization") }}
+
+{{ load_agent_config(agent_id, "strategy_mutate") }}
+{# END SECTION: STRATEGY #}
+
+{# SECTION: EXAMPLES [DYNAMIC_SKILL] #}
+{% if dynamic_skills %}
+{{ dynamic_skills }}
+{% endif %}
+{# END SECTION: EXAMPLES #}
+
+{# SECTION: GUIDELINES #}
+{{ load_skill("static/workspace_rules") }}
+
+{{ load_skill("static/code_style") }}
+
+## Mutation Checklist
+
+Before finalizing the mutated solution:
+- [ ] Only the `{{ target_gene }}` gene block is modified
+- [ ] Mutation is meaningful and addresses a bottleneck
+- [ ] Other gene blocks remain unchanged
+- [ ] Code is syntactically correct and executable
+- [ ] Compatibility with other blocks is maintained
+- [ ] Validation metric is printed
+- [ ] Predictions are saved to `./submission/submission.csv`
+- [ ] Mutation rationale is documented in a comment
+{# END SECTION: GUIDELINES #}

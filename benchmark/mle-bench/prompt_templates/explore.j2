@@ -1,0 +1,86 @@
+{# ===================================================================== #}
+{# EXPLORE TASK PROMPT TEMPLATE                                        #}
+{# 用于生成新解决方案或改进/修复现有方案                                     #}
+{# ===================================================================== #}
+
+{# SECTION: ROLE [EVOLVABLE] #}
+{{ load_agent_config(agent_id, "role") }}
+{# END SECTION: ROLE #}
+
+{# SECTION: FORMAT [STATIC_SKILL] #}
+{{ load_skill("static/output_format") }}
+{# END SECTION: FORMAT #}
+
+{# SECTION: TASK #}
+# Task Description
+
+{{ task_desc }}
+{# END SECTION: TASK #}
+
+{# SECTION: CONTEXT #}
+{% if parent_node %}
+# Previous Attempt
+
+{% if parent_node.is_buggy %}
+**Status**: ❌ This solution encountered an error during execution.
+{% else %}
+**Status**: ✅ This solution executed successfully.
+**Validation Metric**: {{ parent_node.metric_value if parent_node.metric_value else "N/A" }}
+{% endif %}
+
+## Code
+```python
+{{ parent_node.code }}
+```
+
+## Execution Result
+```
+{{ parent_node.term_out }}
+```
+
+{% if parent_node.is_buggy %}
+**Your Task**: Fix the bug and ensure the code executes successfully.
+{% else %}
+**Your Task**: Improve the solution to achieve better validation performance.
+{% endif %}
+{% endif %}
+
+{% if memory %}
+# Memory
+
+The following is a summary of past solution attempts:
+
+{{ memory }}
+{% endif %}
+
+{% if data_preview %}
+# Data Overview
+
+{{ data_preview }}
+{% endif %}
+{# END SECTION: CONTEXT #}
+
+{# SECTION: STRATEGY [HYBRID] #}
+{{ load_skill("static/ml_best_practices") }}
+
+{{ load_agent_config(agent_id, "strategy_explore") }}
+{# END SECTION: STRATEGY #}
+
+{# SECTION: EXAMPLES [DYNAMIC_SKILL] #}
+{% if dynamic_skills %}
+{{ dynamic_skills }}
+{% endif %}
+{# END SECTION: EXAMPLES #}
+
+{# SECTION: GUIDELINES #}
+{{ load_skill("static/workspace_rules") }}
+
+{{ load_skill("static/code_style") }}
+
+## Time and Resource Constraints
+
+- **Total Time Remaining**: {{ time_str }}
+- **Total Steps Remaining**: {{ steps_remaining }}
+
+**Note**: Use time and steps efficiently. Prioritize solutions with high expected value.
+{# END SECTION: GUIDELINES #}
