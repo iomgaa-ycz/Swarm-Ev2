@@ -1,30 +1,30 @@
 # 数据流与配置管理
 
-**Last Updated:** 2026-01-31
-**模块范围:** config/, .env, utils/config.py, utils/logger_system.py, core/executor/, core/orchestrator.py, core/evolution/, search/
+**Last Updated:** 2026-02-01
+**模块范围:** config/, .env, utils/config.py, utils/logger_system.py, core/executor/, core/orchestrator.py, core/evolution/, search/, utils/prompt_manager.py, benchmark/
 
 ---
 
 ## 1. 配置优先级
 
 ```
-高 ────────────────────────────── 低
+高 ---------------------------------------- 低
 
   CLI 参数          环境变量            YAML 配置
   --key=value       export VAR=val     config/default.yaml
-       │               │                    │
-       │    ┌──────────┤                    │
-       │    │ 系统环境变量                    │
-       │    │ (export VAR=val)              │
-       │    │    ↑                          │
-       │    │  .env 文件                     │
-       │    │  (override=False)             │
-       │    └──────────┘                    │
-       │               │                    │
-       └───────────────┼────────────────────┘
-                       ↓
+       |               |                    |
+       |    +----------+                    |
+       |    | 系统环境变量                    |
+       |    | (export VAR=val)              |
+       |    |    ^                          |
+       |    |  .env 文件                     |
+       |    |  (override=False)             |
+       |    +----------+                    |
+       |               |                    |
+       +---------------+--------------------+
+                       |
                 OmegaConf.merge()
-                       ↓
+                       |
                 Config 对象
 ```
 
@@ -107,12 +107,12 @@ llm:
     api_key: ${env:OPENAI_API_KEY}
     base_url: ${env:OPENAI_BASE_URL, "https://api.openai.com/v1"}
     max_tokens: ${env:MAX_TOKENS, null}
-  feedback:                   # ★ Feedback Agent 的 LLM（Review 评估）
+  feedback:                   # Feedback Agent 的 LLM（Review 评估）
     provider: ${env:LLM_PROVIDER, "openai"}
-    model: ${env:LLM_MODEL, "glm-4.6"}  # ★ 默认 GLM-4.6（支持 Function Calling）
+    model: ${env:LLM_MODEL, "glm-4.6"}  # 默认 GLM-4.6（支持 Function Calling）
     temperature: 0.5
     api_key: ${env:OPENAI_API_KEY}
-    base_url: ${env:OPENAI_BASE_URL, "https://open.bigmodel.cn/api/coding/paas/v4"}  # ★ 智谱 API
+    base_url: ${env:OPENAI_BASE_URL, "https://open.bigmodel.cn/api/coding/paas/v4"}
     max_tokens: ${env:MAX_TOKENS, null}
 
 execution:
@@ -122,7 +122,7 @@ execution:
 
 agent:
   max_steps: 50               # 最大迭代步数
-  time_limit: 43200           # ★ 总时间限制 (秒, 12 小时)
+  time_limit: 43200           # 总时间限制 (秒, 12 小时)
   k_fold_validation: 5        # K-fold 折数
   expose_prediction: false
   data_preview: true
@@ -131,8 +131,8 @@ agent:
 search:                       # Orchestrator 使用
   strategy: "mcts"            # mcts | genetic
   max_debug_depth: 3
-  debug_prob: 0.5             # ★ 修复模式触发概率
-  num_drafts: 5               # ★ 初稿数量
+  debug_prob: 0.5             # 修复模式触发概率
+  num_drafts: 5               # 初稿数量
   parallel_num: 3             # 并行执行数量
 
 logging:
@@ -140,7 +140,7 @@ logging:
   console_output: true
   file_output: true
 
-# ★ Phase 3 新增: 进化算法配置
+# Phase 3: 进化算法配置
 evolution:
   experience_pool:
     max_records: 10000        # 最大记录数
@@ -203,37 +203,73 @@ OmegaConf.register_new_resolver("env", lambda var: os.getenv(var, ""))
 
 ```
 workspace/                    # project.workspace_dir
-├── input/                    # 输入数据（只读）
-│   ├── train.csv            # symlink -> data_dir/train.csv
-│   ├── test.csv             # symlink -> data_dir/test.csv
-│   └── ...
-├── working/                  # Agent 临时工作目录
-│   └── _temp_script.py      # 临时执行文件（Interpreter 自动创建）
-├── submission/               # 提交文件目录
-│   ├── submission_{node_id}.csv  # 各节点的提交文件
-│   └── ...
-├── archives/                 # 归档文件目录
-│   ├── node_{node_id}.zip   # 每个节点的归档文件（solution.py + submission.csv）
-│   └── ...
-├── evolution/                # ★ Phase 3 新增: 进化数据目录
-│   └── experience_pool.json # ExperiencePool JSON 持久化文件
-└── best_solution/            # 最佳解决方案（Orchestrator 维护）
-    ├── solution.py           # 最佳方案代码
-    └── submission.csv        # 最佳方案的提交文件
++-- input/                    # 输入数据（只读）
+|   +-- train.csv            # symlink -> data_dir/train.csv
+|   +-- test.csv             # symlink -> data_dir/test.csv
+|   +-- ...
++-- working/                  # Agent 临时工作目录
+|   +-- _temp_script.py      # 临时执行文件（Interpreter 自动创建）
++-- submission/               # 提交文件目录
+|   +-- submission_{node_id}.csv  # 各节点的提交文件
+|   +-- ...
++-- archives/                 # 归档文件目录
+|   +-- node_{node_id}.zip   # 每个节点的归档文件（solution.py + submission.csv）
+|   +-- ...
++-- evolution/                # Phase 3: 进化数据目录
+|   +-- experience_pool.json # ExperiencePool JSON 持久化文件
++-- best_solution/            # 最佳解决方案（Orchestrator 维护）
+    +-- solution.py           # 最佳方案代码
+    +-- submission.csv        # 最佳方案的提交文件
 ```
 
-### 4.2 数据准备模式
+### 4.2 Benchmark 资源目录 [NEW]
+
+```
+benchmark/mle-bench/          # MLE-Bench 特定资源
++-- prompt_templates/         # Jinja2 模板
+|   +-- explore.j2            # 探索任务模板
+|   +-- merge.j2              # 合并任务模板
+|   +-- mutate.j2             # 变异任务模板
++-- skills/                   # Skill 文件
+|   +-- static/               # 静态 Skill（所有任务通用）
+|   |   +-- output_format.md
+|   |   +-- workspace_rules.md
+|   |   +-- ml_best_practices.md
+|   |   +-- code_style.md
+|   +-- by_task_type/         # 任务特定 Skill
+|   |   +-- merge/
+|   |   |   +-- crossover_strategies.md
+|   |   |   +-- conflict_resolution.md
+|   |   +-- mutate/
+|   |       +-- mutation_strategies.md
+|   |       +-- local_optimization.md
+|   +-- meta/                 # 元数据
+|       +-- skill_index.json
+|       +-- skill_lineage.json
+|       +-- update_history.json
++-- agent_configs/            # Agent 配置（4 个差异化 Agent）
+    +-- agent_0/
+    |   +-- role.md           # 角色定位
+    |   +-- strategy_explore.md
+    |   +-- strategy_merge.md
+    |   +-- strategy_mutate.md
+    +-- agent_1/
+    +-- agent_2/
+    +-- agent_3/
+```
+
+### 4.3 数据准备模式
 
 ```
 copy_data: false (默认)
-─────────────────────────────
+-----------------------------
 workspace/input/ -> symlink -> data_dir/
   - 节省磁盘空间
   - 只读保护（防止误修改源数据）
   - macOS/Linux 完全支持
 
 copy_data: true
-─────────────────────────────
+-----------------------------
 workspace/input/ <- shutil.copytree <- data_dir/
   - 完全隔离，不影响原数据
   - 占用额外磁盘空间
@@ -249,23 +285,23 @@ workspace/input/ <- shutil.copytree <- data_dir/
 
 ```
 logs/                        # project.log_dir
-├── system.log               # 文本日志（追加写入）
-└── metrics.json             # 结构化 JSON 日志（完整重写）
++-- system.log               # 文本日志（追加写入）
++-- metrics.json             # 结构化 JSON 日志（完整重写）
 ```
 
 ### 5.2 system.log 格式
 
 ```
-[2026-01-30 20:30:00] [INFO] 加载环境变量文件: .env
-[2026-01-30 20:30:00] [INFO] 加载配置文件: config/default.yaml
-[2026-01-30 20:30:00] [INFO] 配置加载并验证成功
-[2026-01-30 20:30:01] [INFO] Orchestrator 初始化完成: task=..., max_steps=50
-[2026-01-30 20:30:01] [INFO] === Step 1/50 ===
-[2026-01-30 20:30:01] [INFO] [search_policy] 初稿模式
-[2026-01-30 20:30:02] [INFO] 查询 LLM: model=gpt-4-turbo, provider=openai
-[2026-01-30 20:30:10] [INFO] Function Calling 响应: submit_review, 234 字符
-[2026-01-30 20:30:10] [INFO] Review 完成: 节点 abc12345, metric=0.85, lower_is_better=false
-[2026-01-30 20:30:10] [INFO] 新的最佳节点: abc12345, metric=0.85 ↑
+[2026-02-01 10:30:00] [INFO] 加载环境变量文件: .env
+[2026-02-01 10:30:00] [INFO] 加载配置文件: config/default.yaml
+[2026-02-01 10:30:00] [INFO] 配置加载并验证成功
+[2026-02-01 10:30:01] [INFO] Orchestrator 初始化完成: task=..., max_steps=50
+[2026-02-01 10:30:01] [INFO] === Step 1/50 ===
+[2026-02-01 10:30:01] [INFO] [search_policy] 初稿模式
+[2026-02-01 10:30:02] [INFO] 查询 LLM: model=gpt-4-turbo, provider=openai
+[2026-02-01 10:30:10] [INFO] Function Calling 响应: submit_review, 234 字符
+[2026-02-01 10:30:10] [INFO] Review 完成: 节点 abc12345, metric=0.85, lower_is_better=false
+[2026-02-01 10:30:10] [INFO] 新的最佳节点: abc12345, metric=0.85
 ```
 
 ### 5.3 metrics.json 格式
@@ -297,97 +333,167 @@ logs/                        # project.log_dir
 
 ```
 用户输入                       系统输出
-───────                       ───────
-data_dir/ ──→ workspace/input/    (只读数据，symlink)
-                    ↓
-config.yaml ──→ Config 对象 ──→ Agent 配置
-                    ↓
-.env ──→ API Keys ──→ LLM Backend
-                    ↓
-        ┌── Orchestrator.run() ───────────────────┐
-        │                                          │
-        │  _select_parent_node()                   │
-        │       ↓                                  │
-        │  AgentContext → CoderAgent.generate()     │
-        │       ↓                                  │
-        │  PromptBuilder → LLM → 代码              │
-        │       ↓                                  │
-        │  WorkspaceManager 重写路径               │
-        │       ↓                                  │
-        │  Interpreter 执行代码 (subprocess)       │
-        │       ↓                                  │
-        │  workspace/submission/ → submission_{id}  │
-        │       ↓                                  │
-        │  _review_node() (Function Calling)       │
-        │       ↓                                  │
-        │  _update_best_node() (lower_is_better)   │
-        │       ↓                                  │
-        │  Journal.append(node)                    │
-        │                                          │
-        └──────────────────────────────────────────┘
-                    ↓
-    workspace/best_solution/ ──→ 最终结果
-                    ↓
-    logs/system.log ──→ 文本日志
-    logs/metrics.json ──→ 结构化日志
+-------                       -------
+data_dir/ --> workspace/input/    (只读数据，symlink)
+                    |
+config.yaml --> Config 对象 --> Agent 配置
+                    |
+.env --> API Keys --> LLM Backend
+                    |
+        +-- Orchestrator.run() -------------------+
+        |                                          |
+        |  _select_parent_node()                   |
+        |       |                                  |
+        |  AgentContext -> CoderAgent.generate()   |
+        |       |                                  |
+        |  PromptBuilder/PromptManager -> LLM      |
+        |       |                                  |
+        |  WorkspaceManager 重写路径               |
+        |       |                                  |
+        |  Interpreter 执行代码 (subprocess)       |
+        |       |                                  |
+        |  workspace/submission/ -> submission_{id} |
+        |       |                                  |
+        |  _review_node() (Function Calling)       |
+        |       |                                  |
+        |  _update_best_node() (lower_is_better)   |
+        |       |                                  |
+        |  Journal.append(node)                    |
+        |                                          |
+        +------------------------------------------+
+                    |
+    workspace/best_solution/ --> 最终结果
+                    |
+    logs/system.log --> 文本日志
+    logs/metrics.json --> 结构化日志
 ```
 
-### 6.2 配置系统数据流
+### 6.2 Prompt 系统数据流 [NEW]
+
+```
+PromptManager 初始化
+        |
+        v
++-----------------------------------------------+
+|  template_dir: benchmark/mle-bench/prompt_templates/
+|  skills_dir: benchmark/mle-bench/skills/
+|  agent_configs_dir: benchmark/mle-bench/agent_configs/
++-----------------------------------------------+
+        |
+        v
+build_prompt(task_type, agent_id, context)
+        |
+        +-- 加载 Jinja2 模板 ({task_type}.j2)
+        |
+        +-- 加载 Agent 角色 (role.md)
+        |
+        +-- 加载策略 (strategy_{task_type}.md)
+        |
+        +-- 加载静态 Skill (static/*.md)
+        |
+        +-- 注入动态 Skill (inject_top_k_skills)
+        |       |
+        |       v
+        |   ExperiencePool.query(task_type, k=5)
+        |       |
+        |       v
+        |   格式化 Top-K 成功案例
+        |
+        +-- 渲染模板
+        |
+        v
+完整 Prompt 字符串 (7 层结构)
+```
+
+### 6.3 配置系统数据流
 
 ```
 .env 文件
-    ↓ load_dotenv(override=False)
+    | load_dotenv(override=False)
 os.environ
-    ↓ OmegaConf resolver: ${env:VAR} / ${env:VAR, default}
+    | OmegaConf resolver: ${env:VAR} / ${env:VAR, default}
 config/default.yaml
-    ↓ OmegaConf.load()
+    | OmegaConf.load()
 DictConfig (base)
-    ↓ OmegaConf.merge(base, cli)
+    | OmegaConf.merge(base, cli)
 DictConfig (merged)
-    ↓ validate_config()
-    ├── 必填字段检查 (data_dir, desc/goal)
-    ├── Provider 验证 (llm.*.provider ∈ {openai, anthropic})
-    ├── 路径解析 (resolve)
-    ├── 目录创建 (mkdir)
-    ├── exp_name 生成
-    └── API Key 检查
-    ↓ OmegaConf.to_container()
+    | validate_config()
+    +-- 必填字段检查 (data_dir, desc/goal)
+    +-- Provider 验证 (llm.*.provider in {openai, anthropic})
+    +-- 路径解析 (resolve)
+    +-- 目录创建 (mkdir)
+    +-- exp_name 生成
+    +-- API Key 检查
+    | OmegaConf.to_container()
 Config(@dataclass)
 ```
 
-### 6.3 Orchestrator 单步数据流
+### 6.4 Orchestrator 单步数据流
 
 ```
 Step N 开始
-    ↓
+    |
 _prepare_step()
     清空 submission/ 目录
-    ↓
+    |
 _select_parent_node()
-    ├── draft 不足 → None (初稿)
-    ├── random < debug_prob → buggy_leaf (修复)
-    └── 默认 → best_node (改进)
-    ↓
+    +-- draft 不足 -> None (初稿)
+    +-- random < debug_prob -> buggy_leaf (修复)
+    +-- 默认 -> best_node (改进)
+    |
 AgentContext(task_type, parent_node, journal, ...)
-    ↓
-agent.generate(context) → AgentResult(node)
-    ↓
+    |
+agent.generate(context) -> AgentResult(node)
+    |
 _execute_code(node.code, node.id)
-    ├── workspace.rewrite_submission_path()
-    └── interpreter.run()
-    ↓
-_review_node(node) ← Function Calling (GLM-4.6)
-    ├── 构建 review 消息
-    ├── backend.query(tools=[submit_review])
-    └── 解析 JSON → 更新 node 字段
-    ↓
+    +-- workspace.rewrite_submission_path()
+    +-- interpreter.run()
+    |
+_review_node(node) <- Function Calling (GLM-4.6)
+    +-- 构建 review 消息
+    +-- backend.query(tools=[submit_review])
+    +-- 解析 JSON -> 更新 node 字段
+    |
 journal.append(node)
-    ↓
+    |
 _update_best_node(node)
-    ├── lower_is_better=True:  new < old → 更新
-    └── lower_is_better=False: new > old → 更新
-    ↓
-_save_best_solution() → workspace/best_solution/
+    +-- lower_is_better=True:  new < old -> 更新
+    +-- lower_is_better=False: new > old -> 更新
+    |
+_save_best_solution() -> workspace/best_solution/
+```
+
+### 6.5 进化层数据流 [Phase 3]
+
+```
+ExperiencePool 数据流
+----------------------
+
+Agent 执行完成
+    |
+    v
+TaskRecord 创建
+    - agent_id: "agent_0"
+    - task_type: "explore" | "merge" | "mutate"
+    - input_hash: hashlib.md5(...)
+    - output_quality: normalize_fitness(metric, lower_is_better)
+    - strategy_summary: node.plan
+    - timestamp: time.time()
+    |
+    v
+ExperiencePool.add(record)
+    +-- 线程安全 (threading.Lock)
+    +-- FIFO 淘汰 (max_records=10000)
+    +-- JSON 持久化 (save_path)
+    |
+    v
+PromptManager.inject_top_k_skills()
+    +-- ExperiencePool.query(task_type, k=5)
+    +-- 过滤: output_quality > 0.5
+    +-- 格式化为 Markdown
+    |
+    v
+注入到 Prompt 的 EXAMPLES 层
 ```
 
 ---
@@ -426,18 +532,18 @@ _save_best_solution() → workspace/best_solution/
 
 ```
 llm.code: 代码生成 Agent (CoderAgent)
-├── model: gpt-4-turbo (默认)
-├── 用途: 生成 ML 代码
-└── 调用方: CoderAgent._call_llm_with_retry()
++-- model: gpt-4-turbo (默认)
++-- 用途: 生成 ML 代码
++-- 调用方: CoderAgent._call_llm_with_retry()
 
 llm.feedback: Review 评估 (Orchestrator)
-├── model: glm-4.6 (默认)  ★ 支持 Function Calling
-├── 用途: 评估代码执行结果
-├── 调用方: Orchestrator._review_node()
-└── base_url: https://open.bigmodel.cn/api/coding/paas/v4
++-- model: glm-4.6 (默认) - 支持 Function Calling
++-- 用途: 评估代码执行结果
++-- 调用方: Orchestrator._review_node()
++-- base_url: https://open.bigmodel.cn/api/coding/paas/v4
 ```
 
-### 8.3 进化算法配置 (Phase 3 NEW)
+### 8.3 进化算法配置 (Phase 3)
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
@@ -467,6 +573,7 @@ llm.feedback: Review 评估 (Orchestrator)
 from pathlib import Path
 from utils.config import load_config, setup_workspace, print_config
 from utils.logger_system import init_logger, log_msg
+from utils.prompt_manager import PromptManager  # NEW
 from agents.coder_agent import CoderAgent
 from core.state import Journal
 from core.executor.interpreter import Interpreter
@@ -483,7 +590,14 @@ init_logger(cfg.project.log_dir)
 # 3. 设置工作空间
 setup_workspace(cfg)
 
-# 4. 初始化 Agent
+# 4. 初始化 Prompt 系统 (可选，用于高级场景)
+prompt_manager = PromptManager(
+    template_dir=Path("benchmark/mle-bench/prompt_templates"),
+    skills_dir=Path("benchmark/mle-bench/skills"),
+    agent_configs_dir=Path("benchmark/mle-bench/agent_configs"),
+)
+
+# 5. 初始化 Agent
 prompt_builder = PromptBuilder()
 interpreter = Interpreter(
     working_dir=cfg.project.workspace_dir / "working",
@@ -496,7 +610,7 @@ agent = CoderAgent(
     interpreter=interpreter,
 )
 
-# 5. 初始化 Orchestrator
+# 6. 初始化 Orchestrator
 journal = Journal()
 task_desc = open(cfg.data.desc_file).read()
 
@@ -507,13 +621,52 @@ orchestrator = Orchestrator(
     task_desc=task_desc,
 )
 
-# 6. 运行主循环
+# 7. 运行主循环
 best_node = orchestrator.run()
 if best_node:
     print(f"最佳方案: metric={best_node.metric_value}")
 ```
 
-### 9.2 CLI 参数覆盖示例
+### 9.2 使用 PromptManager 构建 Prompt [NEW]
+
+```python
+from pathlib import Path
+from utils.prompt_manager import PromptManager
+from core.evolution.experience_pool import ExperiencePool
+from utils.config import load_config
+
+# 初始化
+cfg = load_config()
+pool = ExperiencePool(cfg)
+
+pm = PromptManager(
+    template_dir=Path("benchmark/mle-bench/prompt_templates"),
+    skills_dir=Path("benchmark/mle-bench/skills"),
+    agent_configs_dir=Path("benchmark/mle-bench/agent_configs"),
+)
+
+# 构建探索任务 Prompt
+context = {
+    "task_desc": "Predict house prices using the given features.",
+    "parent_node": None,
+    "memory": "",
+    "data_preview": "train.csv: 1000 rows, 10 columns...",
+    "time_remaining": 36000,
+    "steps_remaining": 45,
+    "experience_pool": pool,  # 注入经验池
+    "top_k": 5,
+}
+
+prompt = pm.build_prompt(
+    task_type="explore",
+    agent_id="agent_0",
+    context=context,
+)
+
+print(prompt)  # 7 层结构化 Prompt
+```
+
+### 9.3 CLI 参数覆盖示例
 
 ```bash
 # 基础用法
@@ -529,7 +682,8 @@ conda run -n Swarm-Evo python main.py \
   --agent.max_steps=30 \
   --agent.time_limit=7200 \
   --search.num_drafts=3 \
-  --search.debug_prob=0.3
+  --search.debug_prob=0.3 \
+  --evolution.experience_pool.max_records=5000
 ```
 
 ---
@@ -542,3 +696,4 @@ conda run -n Swarm-Evo python main.py \
 | 后端模块详情 | `docs/CODEMAPS/backend.md` |
 | Phase 1 详细计划 | `docs/plans/phase1_infrastructure.md` |
 | 配置管理规范 | `CLAUDE.md` 4.2 节 |
+| 差异报告 | `.reports/codemap-diff.txt` |
