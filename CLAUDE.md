@@ -18,25 +18,33 @@
 ## 2. 常用命令 (Commands)
 
 ### 2.1 Conda 环境管理
+
+> [!CRITICAL]
+> **所有 Python 相关命令必须在 Swarm-Evo 环境中执行**
+> - 使用 `conda run -n Swarm-Evo <command>` 确保命令在正确环境中运行
+> - 或在命令前显式添加 `source activate Swarm-Evo &&`
+> - 如果需要使用llm可以依据 '.env'环境变量文件使用
+
 ```bash
-# 激活项目环境
+# 激活项目环境（交互式 shell）
 conda activate Swarm-Evo
 
-# 安装依赖
-pip install -r requirements.txt
+# 推荐：使用 conda run 执行命令（自动使用正确环境）
+conda run -n Swarm-Evo pip install -r requirements.txt
+conda run -n Swarm-Evo pytest tests/unit/ -v
+conda run -n Swarm-Evo python main.py
 
-# 运行测试
-pytest tests/unit/ -v
-pytest tests/unit/ --cov=utils --cov-report=term-missing
+# 或者：在命令前激活环境
+source activate Swarm-Evo && pip install package_name
 ```
 
 ### 2.2 代码质量检查
 ```bash
 # 代码格式化
-ruff format utils/ tests/
+conda run -n Swarm-Evo ruff format utils/ tests/
 
 # 代码检查并自动修复
-ruff check utils/ tests/ --fix
+conda run -n Swarm-Evo ruff check utils/ tests/ --fix
 ```
 
 
@@ -60,9 +68,11 @@ ruff check utils/ tests/ --fix
 
 ### Phase 2: 执行与验证 (Execution & Verification)
 1. **编码 (Coding)**: 审核通过后，开始编写代码。
-2. **验证 (Verify)**: 运行验证命令。
-   - *失败*: 回到编码阶段修复，直到通过。
-   - *成功*: 进入下一步。
+2. **验证 (Verify)**:
+   - **环境检查**: 确保所有命令在 Swarm-Evo 环境中执行（使用 `conda run -n Swarm-Evo`）
+   - **运行验证命令**:
+     - *失败*: 回到编码阶段修复，直到通过。
+     - *成功*: 进入下一步。
 
 ### Phase 3: 收尾与交付 (Finalization)
 1. **文档同步 (Docs Sync)**: **关键步骤**。
@@ -88,129 +98,70 @@ ruff check utils/ tests/ --fix
 - **命名与依赖**:
   - 类名 `PascalCase`，变量描述性命名，私有变量前缀 `_`。
   - 导入顺序：标准库 → 第三方库 → 项目内部。
-- **日志与错误处理** (Phase 1 重构后):
-  - **必须**使用 `utils/logger_system.py` 提供的 `log_msg()` 和 `log_json()` 函数进行日志记录和错误处理。
-  - 禁止直接使用 `print()` 进行调试或日志输出（除非在 logger 未初始化的 fallback 代码中）。
-  - **重要变更**: `log_msg("ERROR", "...")` **不再自动抛出异常**，需要显式处理。
-  - 使用 `ensure(condition, error_msg)` 进行断言，失败时自动记录并抛出 AssertionError。
-  - 使用 `log_exception(exc, context)` 记录异常堆栈跟踪。
-  - 结构化数据（如Agent调用信息、任务状态）应使用 `log_json()` 记录到 JSON 日志文件。
-  - 双通道输出: `logs/system.log` (文本) + `logs/metrics.json` (结构化)
-  - 示例：
-    ```python
-    from utils.logger_system import log_msg, log_json, ensure, log_exception
-
-    # 文本日志
-    log_msg("INFO", "Agent 开始执行任务")
-    log_msg("WARNING", "检测到潜在问题")
-    log_msg("ERROR", "任务失败")  # Phase 1: 只记录，不抛出
-
-    # 断言工具
-    ensure(config.is_valid(), "配置无效")  # 失败时抛出 AssertionError
-
-    # 异常记录
-    try:
-        risky_operation()
-    except Exception as e:
-        log_exception(e, "执行风险操作时")
-        raise  # 需要显式 raise
-
-    # JSON 日志
-    log_json({"agent_name": "Agent1", "step": 3, "action": "tool_call"})
-    ```
+- **日志与错误处理**: 使用 `utils/logger_system.py` 的 `log_msg()`, `log_json()`, `ensure()`, `log_exception()`
+  - 禁用 `print()`，`log_msg("ERROR")` 不自动抛出异常，输出到 `logs/system.log` + `logs/metrics.json`
 - **功能修改**:
   - **必须** 不考虑向后兼容，直接修改原文件。代码简洁性优先。
 
 ### 4.2 配置管理规范
-
-#### 配置优先级（从高到低）
-1. **CLI 参数** (`--key=value`) - 最高优先级
-2. **系统环境变量** (`export VAR=value`)
-3. **.env 文件** (`VAR=value`)
-4. **YAML 配置文件** (`key: value`) - 最低优先级
-
-#### 配置文件组织
-- **config/default.yaml**: 项目配置（提交到 Git）
-  - 项目基础配置、LLM 模型配置、超参数等
-  - 使用 `${env:VAR}` 语法引用环境变量
-- **.env**: 敏感信息（不提交到 Git，已在 .gitignore）
-  - API Keys、密钥、凭证等
-- **.env.example**: 环境变量模板（提交到 Git）
-  - 提供给团队成员参考
-
-#### 示例
-```yaml
-# config/default.yaml
-llm:
-  code:
-    model: "gpt-4-turbo"
-    api_key: ${env:OPENAI_API_KEY}  # 从环境变量读取
-```
-
-```bash
-# .env
-OPENAI_API_KEY=sk-your-actual-key
-```
-
-```bash
-# 覆盖配置
-python main.py --llm.code.model=gpt-3.5-turbo  # CLI 优先级最高
-```
+- **优先级**: CLI 参数 > 环境变量 > .env > YAML（使用 `${env:VAR}` 引用环境变量）
+- **文件**: `config/default.yaml`（项目配置）, `.env`（敏感信息，不提交）, `.env.example`（模板）
 
 ### 4.3 测试组织规范
+- **目录**: `tests/{unit,integration,e2e}/test_*.py`，最低覆盖率 80%
+- **运行**: `conda run -n Swarm-Evo pytest tests/unit/ --cov=utils --cov-report=term-missing`
 
-#### 目录结构
+#### Agent 测试输出规范
+
+> **除了使用pytest进行单元测试，还必须构建一个完善的main.py文件将所有过程串联起来，并必须将完整执行过程保存为 Markdown 文件，供 Claude Code 智能分析，以消除格式输出正确但是逻辑错误的误差或者实际输出质量低低问题。**
+
+| 要素 | 规范 |
+|------|------|
+| **输出位置** | `tests/outputs/<test_module>/<test_name>_<timestamp>.md` |
+| **触发时机** | 所有涉及 Agent 执行的测试 |
+| **内容要求** | 任务描述、每步 Agent 输入/输出/推理过程、工具调用、最终结果 |
+| **格式要求** | 结构化 Markdown（标题、代码块、列表），人类可读 |
+| **分析方式** | Claude Code 读取 MD 文件，评估推理质量、任务完成度、代码正确性 |
+
+**示例结构**:
+```markdown
+# Agent 测试: <test_name>
+## 任务: <task>
+## Step 1: <AgentName>
+- 输入: ...
+- 输出: ...
+- 推理: ...
+## Step 2: ...
+## 最终结果: ...
 ```
-tests/
-├── __init__.py
-├── unit/              # 单元测试
-│   ├── test_config.py
-│   ├── test_file_utils.py
-│   └── test_*.py
-├── integration/       # 集成测试
-│   └── test_*.py
-└── e2e/              # 端到端测试（未来）
-    └── test_*.py
-```
 
-#### 测试覆盖率要求
-- **最低覆盖率**: 80%
-- **优先级**: 核心功能 > 工具函数 > 边缘情况
-- **测试类型**: 单元测试 + 集成测试
+**pytest 集成**: 使用 fixture 或工具类自动保存，测试结束后输出文件路径。
 
-#### 运行测试
-```bash
-# 运行所有测试
-pytest tests/unit/ -v
+### 4.4 环境管理规范
 
-# 运行并查看覆盖率
-pytest tests/unit/ --cov=utils --cov-report=term-missing
+> **强制要求：所有 Python 相关操作必须在 Swarm-Evo 环境中执行**
 
-# 运行特定测试
-pytest tests/unit/test_config.py -v
-```
+#### 命令执行规范
+
+| 操作类型 | 正确示例 | 错误示例 |
+|---------|---------|---------|
+| 安装依赖 | `conda run -n Swarm-Evo pip install <pkg>` | `pip install <pkg>` |
+| 运行测试 | `conda run -n Swarm-Evo pytest tests/` | `pytest tests/` |
+| 执行脚本 | `conda run -n Swarm-Evo python main.py` | `python main.py` |
+| 代码检查 | `conda run -n Swarm-Evo ruff check .` | `ruff check .` |
+
+#### 验证与故障排查
+- **验证**: `conda run -n Swarm-Evo python --version` 应显示 Python 3.10.19
+- **排查**: `conda env list` → `which python` → `conda run -n Swarm-Evo pip install -r requirements.txt --force-reinstall`
 
 ## 5. 上下文获取与迷途指南 (Context & Navigation)
-> **当如果你感到困惑或需要更多信息时，请参考以下路径：**
 
-- **想要了解项目整体目标与背景？**
-  - -> 请阅读 `README.md`。
-  - *注意*: 这里包含核心业务逻辑与项目定性。
-
-- **想要了解项目架构与模块设计？**
-  - -> 请查阅 `docs/CODEMAPS/` 目录下的架构文档：
-    - `architecture.md` - 整体架构、分层设计、模块依赖
-    - `backend.md` - 后端模块详解（配置、日志、测试系统）
-    - `data.md` - 数据流与配置管理
-  - *注意*: 这些文档是代码的"地图"，提供高层次视角。
-
-- **想要了解具体的实施细节或技术规范？**
-  - -> 请查阅 `docs/plans/` 目录下的实施计划或者 `.claude` 中的记忆。
-  - *注意*: 这里包含特定模块的详细设计与 API 说明。
-
-- **觉得当前任务复杂，需要梳理思路？**
-  - -> 请立即使用 `draft.md`。
-  - *行动*: 在此文件中列出你的思考过程、待办事项和草稿代码，清理工作记忆。
+| 需求 | 文档路径 | 说明 |
+|------|----------|------|
+| 项目目标与背景 | `README.md` | 核心业务逻辑与项目定性 |
+| 架构与模块设计 | `docs/CODEMAPS/{architecture,backend,data}.md` | 整体架构、分层设计、模块依赖 |
+| 实施细节与规范 | `docs/plans/`, `.claude/` | 特定模块的详细设计与 API 说明 |
+| 思路梳理草稿 | `draft.md` | 复杂任务的思考过程、待办事项 |
 
 ## 6. 输出规范
 
