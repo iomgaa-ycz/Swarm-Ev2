@@ -179,6 +179,70 @@ class Journal(DataClassJsonMixin):
                 if parent is not None and node.id not in parent.children_ids:
                     parent.children_ids.append(node.id)
 
+    def generate_summary(self, include_code: bool = False) -> str:
+        """生成 Journal 摘要用于 Memory 机制。
+
+        包含所有节点（good + buggy），因为对错误的反思也是有价值的学习模式。
+
+        Args:
+            include_code: 是否包含完整代码（默认 False，减少 token 消耗）
+
+        Returns:
+            格式化的摘要字符串，可直接插入 prompt
+
+        时间复杂度: O(n)
+
+        示例输出:
+            >>> journal = Journal()
+            >>> node1 = Node(code="x = 1", plan="Use RF", analysis="Good", metric_value=0.85)
+            >>> node2 = Node(code="x = 2", plan="Try NN", is_buggy=True, analysis="NaN loss")
+            >>> journal.append(node1)
+            >>> journal.append(node2)
+            >>> summary = journal.generate_summary()
+            >>> print(summary)
+            Design: Use RF
+            Results: Good
+            Validation Metric: 0.85
+
+            -------------------------------
+
+            [BUGGY] Design: Try NN
+            Results: NaN loss
+            Validation Metric: None
+        """
+        if not self.nodes:
+            return "No previous solutions."
+
+        summaries = []
+        for node in self.nodes:
+            parts = []
+
+            # 添加 [BUGGY] 标记
+            prefix = "[BUGGY] " if node.is_buggy else ""
+
+            # 设计方案
+            if node.plan:
+                parts.append(f"{prefix}Design: {node.plan}")
+
+            # 完整代码（可选）
+            if include_code and node.code:
+                parts.append(f"Code:\n```python\n{node.code}\n```")
+
+            # 分析结果
+            if node.analysis:
+                parts.append(f"Results: {node.analysis}")
+
+            # 评估指标
+            metric_str = (
+                str(node.metric_value) if node.metric_value is not None else "None"
+            )
+            parts.append(f"Validation Metric: {metric_str}")
+
+            if parts:
+                summaries.append("\n".join(parts))
+
+        return "\n\n-------------------------------\n\n".join(summaries)
+
 
 def parse_solution_genes(code: str) -> Dict[str, str]:
     """解析解决方案代码中的基因标记（Swarm-Evo 简单格式）。
