@@ -1,8 +1,8 @@
 # 后端模块详细说明
 
-**Last Updated:** 2026-02-01 21:30
+**Last Updated:** 2026-02-01 23:30
 **模块范围:** utils/, core/state/, core/backend/, core/executor/, core/evolution/, agents/, search/, config/, tests/, benchmark/
-**当前阶段:** Phase 3.4 Solution层遗传算法（已完成）
+**当前阶段:** Phase 3.5 Skill 进化（已完成）
 
 ---
 
@@ -49,7 +49,11 @@
 | **基因选择器** | **`core/evolution/gene_selector.py`** | **314** | **信息素驱动的确定性基因选择** | **完成 (P3.4)** |
 | **信息素机制** | **`core/evolution/pheromone.py`** | **104** | **节点级信息素计算 + 时间衰减** | **完成 (P3.4)** |
 | **Solution 层 GA** | **`core/evolution/solution_evolution.py`** | **420** | **完整 GA 流程（精英+锦标赛+交叉+变异）** | **完成 (P3.4)** |
-| **并行评估器** | **`search/parallel_evaluator.py`** | **171** | **多线程并发执行和评估** | **完成 (P3.4)** |
+| **并行评估器** | **`search/parallel_evaluator.py`** | **245** | **多线程并发执行和评估** | **完成 (P3.4)** |
+| **Phase 3.5 Skill 进化** |||||
+| **代码嵌入管理器** | **`core/evolution/code_embedding_manager.py`** | **127** | **bge-m3 文本向量化 + 缓存** | **完成 (P3.5)** |
+| **Skill 提取器** | **`core/evolution/skill_extractor.py`** | **302** | **HDBSCAN 聚类 + LLM 总结** | **完成 (P3.5)** |
+| **Skill 管理器** | **`core/evolution/skill_manager.py`** | **371** | **Skill 质量评估、演化、元数据** | **完成 (P3.5)** |
 | **配置文件** |||||
 | YAML 配置 | `config/default.yaml` | 111 | 项目主配置 (+agent进化配置) | 完成 |
 | 环境变量 | `.env.example` | 36 | API Keys 模板 | 完成 |
@@ -1125,6 +1129,9 @@ tests/
 |   +-- test_gene_selector.py          # 基因选择器测试 [P3.4]
 |   +-- test_pheromone.py              # 信息素机制测试 [P3.4]
 |   +-- test_solution_evolution.py     # Solution 层 GA 测试 [P3.4]
+|   +-- test_code_embedding_manager.py # 嵌入管理器测试 [P3.5]
+|   +-- test_skill_extractor.py        # Skill 提取器测试 [P3.5]
+|   +-- test_skill_manager.py          # Skill 管理器测试 [P3.5]
 +-- test_search/                       # Phase 3 搜索模块测试
 |   +-- __init__.py
 |   +-- test_fitness.py                # 适应度计算测试
@@ -1294,10 +1301,145 @@ graph TD
 7. Agent 层: `base_agent`, `coder_agent` (依赖配置层 + 数据层 + 工具层 + 执行层 + 后端层)
 8. **编排层**: **`orchestrator`** (依赖 Agent 层 + 数据层 + 执行层 + 后端层)
 9. **进化层**: `gene_parser`, `experience_pool`, `fitness`, **`task_dispatcher`**, **`agent_evolution`** (依赖配置层 + 基础层 + Agent层 + 后端层)
+10. **Skill 进化层**: `code_embedding_manager`, `skill_extractor`, `skill_manager` (依赖进化层 + 后端层)
 
 ---
 
-## 13. 关联文档
+## 13. Skill 进化模块 (`core/evolution/`) [NEW - P3.5]
+
+### 13.1 代码嵌入管理器 (`code_embedding_manager.py`) - 127 行
+
+**职责**: 基于 bge-m3 模型的文本向量化工具。
+
+```python
+class CodeEmbeddingManager:
+    """代码嵌入管理器（懒加载 + 缓存）。
+
+    Attributes:
+        _model_name: str - 模型名称（BAAI/bge-m3）
+        _model: SentenceTransformer - 模型实例（类级别单例）
+        _cache: Dict[str, np.ndarray] - 文本缓存
+    """
+```
+
+| 方法 | 签名 | 说明 |
+|------|------|------|
+| `embed_texts` | `(texts: List[str]) -> np.ndarray` | 批量文本向量化（L2 归一化） |
+| `_ensure_model` | `() -> None` | 懒加载 bge-m3 模型 |
+
+**核心特性**:
+- 懒加载：首次调用时才加载模型
+- 缓存机制：相同文本不重复向量化
+- L2 归一化：适用于余弦相似度计算
+- 本地模型优先：从 `LOCAL_MODEL_PATH` 环境变量读取
+
+### 13.2 Skill 提取器 (`skill_extractor.py`) - 302 行
+
+**职责**: 从经验池中提取成功策略模式。
+
+```python
+class SkillExtractor:
+    """Skill 提取器。
+
+    工作流程:
+        1. 从经验池查询成功记录（output_quality > 0）
+        2. 提取 strategy_summary 并使用 bge-m3 向量化
+        3. HDBSCAN 聚类（min_cluster_size=5）
+        4. 每个簇调用 LLM 总结生成 Skill Markdown
+        5. 返回 Skill 列表
+    """
+```
+
+| 方法 | 签名 | 说明 |
+|------|------|------|
+| `extract_skills` | `(task_type: str, min_cluster_size: int) -> List[Dict]` | 提取 Skill |
+| `_embed_texts` | `(texts: List[str]) -> np.ndarray` | 文本向量化 |
+| `_cluster` | `(embeddings, min_cluster_size) -> Dict[int, List[int]]` | HDBSCAN 聚类 |
+| `_summarize_cluster` | `(strategies: List[str], task_type: str) -> str` | LLM 总结 |
+| `_calc_avg_accuracy` | `(indices, records) -> float` | 计算簇平均准确率 |
+| `_calc_generation_rate` | `(indices, records) -> float` | 计算簇平均生成率 |
+
+**Skill 输出格式**:
+```python
+{
+    "id": "skill_explore_0_1738443200",
+    "task_type": "explore",
+    "content": "## Explore Skill: ...",  # Markdown
+    "coverage": 15,                        # 覆盖记录数
+    "avg_accuracy": 0.75,                  # 平均准确率
+    "avg_generation_rate": 0.90,           # 平均生成率
+    "composite_score": 0.81,               # 综合评分
+    "status": "candidate"
+}
+```
+
+### 13.3 Skill 管理器 (`skill_manager.py`) - 371 行
+
+**职责**: Skill 池管理（质量评估、演化、元数据维护）。
+
+```python
+class SkillManager:
+    """Skill 池管理器。
+
+    核心功能:
+        - 添加新 Skill（检测重复）
+        - 评估 Skill 质量（综合评分）
+        - 演化 Skill 池（新增/合并/淘汰）
+        - 获取 Top-K Skill
+    """
+```
+
+| 方法 | 签名 | 说明 |
+|------|------|------|
+| `add_skill` | `(skill: Dict) -> bool` | 添加新 Skill（检测重复） |
+| `evaluate_skill` | `(skill_id: str) -> float` | 计算综合评分 |
+| `evolve_skills` | `(experience_pool, extractor) -> None` | Skill 池演化 |
+| `get_top_k_skills` | `(task_type: str, k: int) -> List[str]` | 获取 Top-K |
+| `reload_index` | `() -> None` | 重新加载索引 |
+| `_is_duplicate` | `(skill: Dict, threshold: float) -> bool` | 检测重复 |
+| `_merge_similar_skills` | `(threshold: float) -> None` | 合并相似 |
+| `_deprecate_low_quality_skills` | `() -> None` | 淘汰低质量 |
+
+**综合评分公式**:
+```python
+composite_score = 0.6 × avg_accuracy + 0.4 × avg_generation_rate
+```
+
+**演化条件**:
+- **新增**: `composite_score >= 0.5` 且未重复（相似度 < 0.85）
+- **淘汰**: 连续 5 Epoch 未使用 **或** `composite_score < 0.4`
+- **合并**: 语义相似度 > 0.85 时合并为更通用的 Skill
+
+### 13.4 配置项 (`config/default.yaml`)
+
+```yaml
+evolution:
+  skill:
+    min_cluster_size: 5          # HDBSCAN 最小簇大小
+    duplicate_threshold: 0.85    # 语义相似度阈值（去重）
+    min_composite_score: 0.5     # 新增 Skill 的最低综合评分
+    deprecate_threshold: 0.4     # 淘汰 Skill 的综合评分阈值
+    unused_epochs: 5             # 连续未使用 Epoch 数（淘汰条件）
+    embedding_model_path: "./embedding-models/bge-m3"
+```
+
+### 13.5 依赖关系
+
+```
+SkillManager
++-- CodeEmbeddingManager (bge-m3)
++-- SkillExtractor
+    +-- HDBSCAN
+    +-- CodeEmbeddingManager
+    +-- core.backend.query (LLM 总结)
++-- ExperiencePool
++-- utils.config.Config
++-- utils.logger_system.log_msg, log_json
+```
+
+---
+
+## 14. 关联文档
 
 | 文档 | 路径 |
 |------|------|

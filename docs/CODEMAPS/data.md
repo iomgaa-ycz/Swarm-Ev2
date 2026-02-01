@@ -1,8 +1,8 @@
 # 数据流与配置管理
 
-**Last Updated:** 2026-02-01 21:30
+**Last Updated:** 2026-02-01 23:30
 **模块范围:** config/, .env, utils/config.py, utils/logger_system.py, core/executor/, core/orchestrator.py, core/evolution/, search/, utils/prompt_manager.py, benchmark/
-**当前阶段:** Phase 3.4 Solution层遗传算法（已完成）
+**当前阶段:** Phase 3.5 Skill 进化（已完成）
 
 ---
 
@@ -227,6 +227,7 @@ workspace/                    # project.workspace_dir
 +-- evolution/                # Phase 3: 进化数据目录
 |   +-- experience_pool.json # ExperiencePool JSON 持久化文件
 |   +-- gene_registry.json   # GeneRegistry 信息素数据 [P3.4]
+|   +-- skill_index.json     # SkillManager Skill 索引 [P3.5]
 +-- best_solution/            # 最佳解决方案（Orchestrator 维护）
     +-- solution.py           # 最佳方案代码
     +-- submission.csv        # 最佳方案的提交文件
@@ -253,10 +254,10 @@ benchmark/mle-bench/          # MLE-Bench 特定资源
 |   |   +-- mutate/
 |   |       +-- mutation_strategies.md
 |   |       +-- local_optimization.md
-|   +-- meta/                 # 元数据
-|       +-- skill_index.json
-|       +-- skill_lineage.json
-|       +-- update_history.json
+|   +-- meta/                 # 元数据 [P3.5 扩展]
+|       +-- skill_index.json  # Skill 索引（ID -> 元数据）
+|       +-- skill_lineage.json # Skill 血统（合并历史）
+|       +-- update_history.json # 更新历史
 +-- agent_configs/            # Agent 配置（4 个差异化 Agent）
     +-- agent_0/
     |   +-- role.md           # 角色定位
@@ -571,6 +572,79 @@ SolutionEvolution.evolve_epoch(epoch)
 - **节点级**: 基于节点得分、成功率和时间衰减
 - **基因级**: 基于适应度差值（fitness - baseline）
 - **全局衰减**: 每个 Epoch 结束后所有基因信息素衰减 10%
+
+### 6.7 Skill 进化数据流 [Phase 3.5 NEW]
+
+```
+Skill 进化流程
+--------------
+
+AgentEvolution.evolve(epoch)
+    |
+    +-- [检查进化条件]
+    |   条件: epoch % interval == 0 且 epoch != 0
+    |
+    v
+[1] Agent 层变异（已有逻辑）
+    +-- 评估 Agent 表现
+    +-- 识别精英和弱者
+    +-- 对弱者变异 Role + Strategy
+    |
+    v
+[2] Skill 池更新（P3.5 新增）
+    |
+    +-- SkillExtractor.extract_skills(task_type)
+    |   |
+    |   +-- ExperiencePool.query(output_quality > 0)
+    |   |   获取成功记录
+    |   |
+    |   +-- CodeEmbeddingManager.embed_texts()
+    |   |   bge-m3 向量化
+    |   |
+    |   +-- HDBSCAN 聚类
+    |   |   min_cluster_size=5
+    |   |
+    |   +-- LLM 总结每个簇
+    |   |   生成 Skill Markdown
+    |   |
+    |   v
+    |   返回 Skill 列表
+    |
+    +-- SkillManager.evolve_skills()
+        |
+        +-- [新增] 质量过滤
+        |   条件: composite_score >= 0.5
+        |
+        +-- [新增] 重复检测
+        |   条件: 余弦相似度 < 0.85
+        |
+        +-- [合并] 检测相似 Skill
+        |   TODO: LLM 驱动合并
+        |
+        +-- [淘汰] 移除低质量 Skill
+        |   条件: composite_score < 0.4 或
+        |         连续 5 Epoch 未使用
+        |
+        v
+    更新 skill_index.json
+    |
+    v
+[3] 重新加载 Skill 池
+    SkillManager.reload_index()
+    |
+    v
+通知 PromptManager 更新
+```
+
+**Skill 质量评估公式**:
+```python
+composite_score = 0.6 × avg_accuracy + 0.4 × avg_generation_rate
+```
+
+**Skill 生命周期**:
+```
+candidate (提取) → active (添加) → deprecated (淘汰)
+```
 
 ---
 

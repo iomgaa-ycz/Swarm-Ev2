@@ -1,8 +1,8 @@
 # Swarm-Ev2 项目架构概览
 
-**Last Updated:** 2026-02-01 21:30
-**项目版本:** 0.2.0
-**当前阶段:** Phase 3.4 Solution层遗传算法（已完成）
+**Last Updated:** 2026-02-01 23:30
+**项目版本:** 0.3.0
+**当前阶段:** Phase 3.5 Skill 进化（已完成）
 
 ---
 
@@ -16,8 +16,8 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 | 架构 | 纯后端，asyncio + 多线程 |
 | 配置 | OmegaConf + YAML |
 | 日志 | 双通道（文本 + JSON） |
-| 测试 | pytest + pytest-asyncio (33 测试文件, 7166 行) |
-| 代码行数 | ~8313 行核心代码（44 模块） + 7166 行测试 |
+| 测试 | pytest + pytest-asyncio (36 测试文件, ~7936 行) |
+| 代码行数 | ~9100 行核心代码（47 模块） + 7936 行测试 |
 
 ---
 
@@ -37,15 +37,18 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 |   PromptManager (252行) [NEW]                            |  <- Phase 3+
 +---------------------------------------------------------+
 |                进化层 (Evolution)                         |
-|   GeneParser (163行)                                     |  <- P3.1
-|   ExperiencePool (320行)                                 |  <- P3.2
-|   Fitness (82行)                                         |  <- P3.2
+|   GeneParser (162行)                                     |  <- P3.1
+|   ExperiencePool (319行)                                 |  <- P3.2
+|   Fitness (81行)                                         |  <- P3.2
 |   TaskDispatcher (157行)                                 |  <- P3.3
-|   AgentEvolution (392行)                                 |  <- P3.3
-|   GeneRegistry (199行) [NEW]                             |  <- P3.4
-|   GeneSelector (314行) [NEW]                             |  <- P3.4
-|   Pheromone (104行) [NEW]                                |  <- P3.4
-|   SolutionEvolution (420行) [NEW]                        |  <- P3.4
+|   AgentEvolution (439行)                                 |  <- P3.3 (+Skill)
+|   GeneRegistry (199行)                                   |  <- P3.4
+|   GeneSelector (314行)                                   |  <- P3.4
+|   Pheromone (104行)                                      |  <- P3.4
+|   SolutionEvolution (420行)                              |  <- P3.4
+|   CodeEmbeddingManager (127行) [NEW]                     |  <- P3.5
+|   SkillExtractor (302行) [NEW]                           |  <- P3.5
+|   SkillManager (371行) [NEW]                             |  <- P3.5
 +---------------------------------------------------------+
 |                  执行层 (Execution)                       |
 |   Interpreter + WorkspaceManager                         |  <- Phase 2
@@ -203,7 +206,8 @@ graph TD
 | **3.2** | **经验池+适应度** | **完成** | **experience_pool.py (313行), fitness.py (82行)** |
 | **3+** | **PromptManager** | **完成** | **prompt_manager.py (252行) + benchmark/** |
 | **3.3** | **Agent 层群体智能** | **完成** | **task_dispatcher.py (157行) + agent_evolution.py (392行)** |
-| **3.4** | **Solution 层 GA** | **完成** | **solution_evolution.py (420行) + gene_selector.py (314行) + gene_registry.py (199行) + pheromone.py (104行) + parallel_evaluator.py (171行)** |
+| **3.4** | **Solution 层 GA** | **完成** | **solution_evolution.py (420行) + gene_selector.py (314行) + gene_registry.py (199行) + pheromone.py (104行) + parallel_evaluator.py (245行)** |
+| **3.5** | **Skill 进化** | **完成** | **skill_extractor.py (302行) + skill_manager.py (371行) + code_embedding_manager.py (127行)** |
 | 4 | 扩展功能 | 待实现 | Memory, ToolRegistry |
 | 5 | 测试与文档 | 进行中 | 80%+ 覆盖率 |
 
@@ -243,14 +247,18 @@ graph TD
 | **基因选择器** | **`core/evolution/gene_selector.py`** | **314** | **完成 (P3.4)** |
 | **信息素机制** | **`core/evolution/pheromone.py`** | **104** | **完成 (P3.4)** |
 | **Solution 层 GA** | **`core/evolution/solution_evolution.py`** | **420** | **完成 (P3.4)** |
-| **并行评估器** | **`search/parallel_evaluator.py`** | **171** | **完成 (P3.4)** |
-| **Phase 3+: Prompt 系统 (NEW)** ||||
+| **并行评估器** | **`search/parallel_evaluator.py`** | **245** | **完成 (P3.4)** |
+| **Phase 3.5: Skill 进化 (NEW)** ||||
+| **代码嵌入管理器** | **`core/evolution/code_embedding_manager.py`** | **127** | **完成 (P3.5)** |
+| **Skill 提取器** | **`core/evolution/skill_extractor.py`** | **302** | **完成 (P3.5)** |
+| **Skill 管理器** | **`core/evolution/skill_manager.py`** | **371** | **完成 (P3.5)** |
+| **Phase 3+: Prompt 系统** ||||
 | **Prompt 管理器** | **`utils/prompt_manager.py`** | **252** | **完成** |
 | **Benchmark 资源** | **`benchmark/mle-bench/`** | **-** | **完成** |
 | **配置文件** ||||
 | YAML 配置 | `config/default.yaml` | 111 | 完成 (+agent进化配置) |
 
-**总计**: 44 个核心模块 | ~8313 行核心代码 + 33 个测试文件（7166 行测试代码）
+**总计**: 47 个核心模块 | ~9100 行核心代码 + 36 个测试文件（~7936 行测试代码）
 
 ---
 
@@ -308,7 +316,10 @@ Swarm-Ev2/
 │       ├── gene_registry.py       # 基因注册表 (199行)         Phase 3.4
 │       ├── gene_selector.py       # 基因选择器 (314行)         Phase 3.4
 │       ├── pheromone.py           # 信息素机制 (104行)         Phase 3.4
-│       └── solution_evolution.py  # Solution 层 GA (420行)     Phase 3.4
+│       ├── solution_evolution.py  # Solution 层 GA (420行)     Phase 3.4
+│       ├── code_embedding_manager.py # 文本嵌入 (127行)        Phase 3.5
+│       ├── skill_extractor.py     # Skill 提取器 (302行)       Phase 3.5
+│       └── skill_manager.py       # Skill 管理器 (371行)       Phase 3.5
 ├── search/                        # 搜索与评估
 │   ├── __init__.py                # 模块导出
 │   ├── fitness.py                 # 适应度计算 (82行)
@@ -575,7 +586,7 @@ class SolutionEvolution:
 5. 并行评估新种群
 6. 更新基因注册表信息素
 
-### 6.11 并行评估器 (`search/parallel_evaluator.py`) [NEW - P3.4]
+### 6.11 并行评估器 (`search/parallel_evaluator.py`) [P3.4]
 
 **职责**: 使用多线程并发执行和评估多个 Solution，提高效率。
 
@@ -604,6 +615,98 @@ class ParallelEvaluator:
 3. 提取 metric_value 并计算适应度
 4. 更新节点信息素
 5. 更新基因注册表
+
+---
+
+### 6.12 代码嵌入管理器 (`core/evolution/code_embedding_manager.py`) [NEW - P3.5]
+
+**职责**: 基于 bge-m3 模型的文本向量化工具，支持懒加载和缓存机制。
+
+```python
+class CodeEmbeddingManager:
+    """代码嵌入管理器（懒加载 + 缓存）。
+
+    Attributes:
+        _model_name: str - 模型名称（BAAI/bge-m3）
+        _model: SentenceTransformer - 模型实例（类级别单例）
+        _cache: Dict[str, np.ndarray] - 文本缓存
+    """
+```
+
+| 方法 | 签名 | 说明 |
+|------|------|------|
+| `embed_texts` | `(texts: List[str]) -> np.ndarray` | 批量文本向量化（L2 归一化） |
+| `_ensure_model` | `() -> None` | 懒加载 bge-m3 模型 |
+
+**核心特性**:
+- 懒加载：首次调用 `embed_texts` 时才加载模型
+- 缓存机制：相同文本不重复向量化
+- L2 归一化：适用于余弦相似度计算
+
+### 6.13 Skill 提取器 (`core/evolution/skill_extractor.py`) [NEW - P3.5]
+
+**职责**: 从经验池中提取成功策略模式，使用 HDBSCAN 聚类 + LLM 总结生成 Skill。
+
+```python
+class SkillExtractor:
+    """Skill 提取器。
+
+    Attributes:
+        experience_pool: ExperiencePool - 共享经验池
+        embedding_manager: CodeEmbeddingManager - 文本嵌入管理器
+        config: Config - 全局配置
+        min_cluster_size: int - HDBSCAN 最小簇大小
+    """
+```
+
+| 方法 | 签名 | 说明 |
+|------|------|------|
+| `extract_skills` | `(task_type: str, min_cluster_size: int) -> List[Dict]` | 提取 Skill（聚类 + LLM 总结） |
+| `_embed_texts` | `(texts: List[str]) -> np.ndarray` | 文本向量化（bge-m3） |
+| `_cluster` | `(embeddings, min_cluster_size) -> Dict[int, List[int]]` | HDBSCAN 聚类 |
+| `_summarize_cluster` | `(strategies: List[str], task_type: str) -> str` | LLM 总结策略簇为 Skill |
+| `_calc_avg_accuracy` | `(indices, records) -> float` | 计算簇平均准确率 |
+| `_calc_generation_rate` | `(indices, records) -> float` | 计算簇平均生成率 |
+
+**核心流程**:
+1. 从经验池查询 `output_quality > 0` 的记录
+2. 提取 `strategy_summary` 并使用 bge-m3 向量化
+3. HDBSCAN 聚类（`min_cluster_size=5`）
+4. 每个簇调用 LLM 总结生成 Skill Markdown
+5. 返回 Skill 列表（包含 id, task_type, content, coverage, composite_score）
+
+### 6.14 Skill 管理器 (`core/evolution/skill_manager.py`) [NEW - P3.5]
+
+**职责**: Skill 池管理（质量评估、演化、元数据维护）。
+
+```python
+class SkillManager:
+    """Skill 池管理器。
+
+    Attributes:
+        skills_dir: Path - Skill 文件根目录
+        meta_dir: Path - 元数据目录
+        config: Config - 全局配置
+        embedding_manager: CodeEmbeddingManager - 文本嵌入管理器
+        skill_index: Dict[str, Dict] - Skill 索引（skill_id -> 元数据）
+    """
+```
+
+| 方法 | 签名 | 说明 |
+|------|------|------|
+| `add_skill` | `(skill: Dict) -> bool` | 添加新 Skill（检测重复） |
+| `evaluate_skill` | `(skill_id: str) -> float` | 计算 Skill 综合评分 |
+| `evolve_skills` | `(experience_pool, extractor) -> None` | Skill 池演化（新增/合并/淘汰） |
+| `get_top_k_skills` | `(task_type: str, k: int) -> List[str]` | 获取 Top-K Skill 内容 |
+| `reload_index` | `() -> None` | 重新加载 Skill 索引 |
+| `_is_duplicate` | `(skill: Dict, threshold: float) -> bool` | 检测重复（余弦相似度） |
+| `_merge_similar_skills` | `(threshold: float) -> None` | 合并相似 Skill |
+| `_deprecate_low_quality_skills` | `() -> None` | 淘汰低质量 Skill |
+
+**综合评分公式**:
+```python
+composite_score = 0.6 × avg_accuracy + 0.4 × avg_generation_rate
+```
 
 ---
 
@@ -711,7 +814,7 @@ AgentResult (输出)
 
 ---
 
-## 9. 双层群体智能架构概览 [Phase 3 完成]
+## 9. 双层群体智能架构概览 [Phase 3.5 完成]
 
 ```
 +----------------------------------------------+
@@ -724,7 +827,7 @@ AgentResult (输出)
 |     AgentEvolution (每 N Epoch 进化)          |
 |              | 生成 Solution                  |
 +----------------------------------------------+
-|        Solution 层（遗传算法） [P3.4 完成]     |
+|        Solution 层（遗传算法） [P3.4]         |
 |  种群: 12 个 Solution                         |
 |  基因: DATA | MODEL | LOSS | OPTIMIZER |     |
 |        REGULARIZATION | INITIALIZATION |     |
@@ -732,13 +835,19 @@ AgentResult (输出)
 |  操作: 精英保留(top-3) + 锦标赛(k=3) +       |
 |        交叉(随机/信息素) + 变异(20%)          |
 |  引擎: SolutionEvolution (420行)             |
-|        ParallelEvaluator (171行, 多线程)      |
+|        ParallelEvaluator (245行, 多线程)      |
 +----------------------------------------------+
-|      信息素系统 (Pheromone System) [NEW]      |
+|      信息素系统 (Pheromone System)            |
 |  - 节点级信息素 (pheromone.py, 104行)         |
 |  - 基因级信息素 (gene_registry.py, 199行)     |
 |  - 信息素驱动基因选择 (gene_selector.py, 314行)|
 |  - 时间衰减 + 质量更新                        |
++----------------------------------------------+
+|         Skill 进化系统 [P3.5 NEW]             |
+|  - CodeEmbeddingManager (127行, bge-m3)      |
+|  - SkillExtractor (302行, HDBSCAN + LLM)     |
+|  - SkillManager (371行, 新增/合并/淘汰)       |
+|  - 综合评分: 0.6×accuracy + 0.4×gen_rate     |
 +----------------------------------------------+
 |         共享经验池 (ExperiencePool)           |
 |  - 存储 Agent 执行记录 (319行)                |
@@ -747,10 +856,10 @@ AgentResult (输出)
 |  - Agent 表现 <-> Solution 评估结果           |
 +----------------------------------------------+
 |         Prompt 系统 [P3+]                     |
-|  - PromptManager (Jinja2 模板, 252行)        |
+|  - PromptManager (Jinja2 模板, 295行)        |
 |  - benchmark/mle-bench/ 资源文件             |
 |  - 7 层结构化 Prompt                          |
-|  - 动态 Skill 注入 (Top-K 经验)              |
+|  - 动态 Skill 注入 (Top-K Skill 池)           |
 +----------------------------------------------+
 ```
 
