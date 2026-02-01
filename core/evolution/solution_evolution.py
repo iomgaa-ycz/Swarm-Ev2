@@ -25,36 +25,26 @@ class SolutionEvolution:
     """Solution 层遗传算法。
 
     实现基于遗传算法的 Solution 进化，支持随机交叉和信息素驱动交叉两种策略。
+
+    注意：MVP 阶段简化实现，使用 Orchestrator 执行任务而非直接调用 Evaluator。
     """
 
     def __init__(
         self,
-        agents: List[BaseAgent],
-        task_dispatcher: TaskDispatcher,
-        evaluator: ParallelEvaluator,
-        experience_pool: ExperiencePool,
-        journal: Journal,
-        gene_registry: GeneRegistry,
         config: Config,
+        journal: Journal,
+        orchestrator=None,
     ):
-        """初始化遗传算法。
+        """初始化遗传算法（MVP 简化版）。
 
         Args:
-            agents: Agent 列表
-            task_dispatcher: 任务分发器
-            evaluator: 并行评估器
-            experience_pool: 经验池
-            journal: 节点历史记录
-            gene_registry: 基因注册表
             config: 全局配置
+            journal: 节点历史记录
+            orchestrator: Orchestrator 实例（用于执行任务）
         """
-        self.agents = agents
-        self.task_dispatcher = task_dispatcher
-        self.evaluator = evaluator
-        self.experience_pool = experience_pool
-        self.journal = journal
-        self.gene_registry = gene_registry
         self.config = config
+        self.journal = journal
+        self.orchestrator = orchestrator
 
         # GA 参数
         self.population_size = config.evolution.solution.population_size
@@ -62,17 +52,99 @@ class SolutionEvolution:
         self.crossover_rate = config.evolution.solution.crossover_rate
         self.mutation_rate = config.evolution.solution.mutation_rate
         self.tournament_k = config.evolution.solution.tournament_k
-        self.crossover_strategy = config.evolution.solution.crossover_strategy
 
-        # 当前种群和步数
+        # 当前种群
         self.population: List[Node] = []
-        self.current_step = 0
 
         log_msg(
             "INFO",
-            f"SolutionEvolution 初始化: population_size={self.population_size}, "
-            f"crossover_strategy={self.crossover_strategy}",
+            f"SolutionEvolution 初始化（MVP）: population_size={self.population_size}",
         )
+
+    def run_epoch(self, steps_per_epoch: int) -> Optional[Node]:
+        """运行单个 Epoch 的 Solution 层进化（MVP 主入口）。
+
+        流程:
+        1. 获取当前种群（从 Journal 的 good_nodes）
+        2. 精英保留
+        3. 锦标赛选择 + 交叉（merge）
+        4. 变异（mutate）
+        5. 返回最佳节点
+
+        Args:
+            steps_per_epoch: 每个 Epoch 的步数
+
+        Returns:
+            本 Epoch 最佳节点
+        """
+        log_msg("INFO", f"===== SolutionEvolution: run_epoch 开始 =====")
+
+        # [1] 获取当前种群（从 Journal）
+        good_nodes = [n for n in self.journal.nodes if not n.is_buggy]
+
+        if len(good_nodes) < self.population_size:
+            log_msg(
+                "WARNING",
+                f"当前 good_nodes 数量不足 ({len(good_nodes)}/{self.population_size})，"
+                f"跳过进化，继续探索",
+            )
+            return None
+
+        # 取最近的 population_size 个节点作为当前种群
+        self.population = good_nodes[-self.population_size :]
+        log_msg("INFO", f"当前种群: {len(self.population)} 个节点")
+
+        # [2] 精英保留
+        elites = self._select_elites()
+        log_msg("INFO", f"精英保留: {len(elites)} 个节点")
+
+        # [3] 交叉：生成 (population_size - elite_size) 个子代
+        num_offspring = self.population_size - self.elite_size
+        offspring_count = 0
+
+        for _ in range(num_offspring):
+            # 锦标赛选择父代对
+            parent_a = self._tournament_select()
+            parent_b = self._tournament_select()
+
+            # 概率触发交叉
+            if random.random() < self.crossover_rate:
+                child = self._crossover_mvp(parent_a, parent_b)
+                if child:
+                    offspring_count += 1
+            else:
+                log_msg("DEBUG", "跳过交叉（概率未触发）")
+
+        log_msg("INFO", f"交叉完成: {offspring_count} 个子代")
+
+        # [4] 变异：对 Journal 中最后 num_offspring 个节点进行变异
+        mutation_count = 0
+        recent_nodes = [n for n in self.journal.nodes if not n.is_buggy][
+            -num_offspring:
+        ]
+
+        for node in recent_nodes:
+            if random.random() < self.mutation_rate:
+                self._mutate_mvp(node)
+                mutation_count += 1
+
+        log_msg("INFO", f"变异完成: {mutation_count} 个节点")
+
+        # [5] 返回最佳节点
+        best_node = self.journal.get_best_node(only_good=True)
+
+        if best_node:
+            log_msg(
+                "INFO",
+                f"===== SolutionEvolution: run_epoch 完成 | 最佳 metric: {best_node.metric_value} =====",
+            )
+        else:
+            log_msg(
+                "WARNING",
+                "===== SolutionEvolution: run_epoch 完成 | 未找到有效节点 =====",
+            )
+
+        return best_node
 
     def initialize_population(self, start_time: float, task_desc: str) -> None:
         """初始化种群（并行生成初始 Solution）。
@@ -418,3 +490,52 @@ class SolutionEvolution:
         )
 
         self.experience_pool.add(record)
+
+    def _crossover_mvp(self, parent_a: Node, parent_b: Node) -> Optional[Node]:
+        """基因交叉（MVP 简化版，调用 Orchestrator）。
+
+        Args:
+            parent_a: 父代 A
+            parent_b: 父代 B
+
+        Returns:
+            子代节点（失败时返回 None）
+        """
+        if not self.orchestrator:
+            log_msg("WARNING", "Orchestrator 未初始化，跳过交叉")
+            return None
+
+        # 生成随机交叉计划（MVP: 50% 概率选 A 或 B）
+        gene_plan = {}
+        for gene in REQUIRED_GENES:
+            gene_plan[gene] = random.choice(["A", "B"])
+
+        log_msg("INFO", f"交叉计划: {gene_plan}")
+
+        # 调用 Orchestrator 执行 merge 任务
+        child = self.orchestrator.execute_merge_task(parent_a, parent_b, gene_plan)
+
+        return child
+
+    def _mutate_mvp(self, node: Node) -> None:
+        """基因变异（MVP 简化版，调用 Orchestrator）。
+
+        Args:
+            node: 待变异的节点（原地修改）
+        """
+        if not self.orchestrator:
+            log_msg("WARNING", "Orchestrator 未初始化，跳过变异")
+            return
+
+        # 随机选择一个基因块进行变异
+        target_gene = random.choice(REQUIRED_GENES)
+
+        log_msg("INFO", f"变异目标基因: {target_gene}")
+
+        # 调用 Orchestrator 执行 mutate 任务
+        mutated_node = self.orchestrator.execute_mutate_task(node, target_gene)
+
+        if mutated_node:
+            log_msg("DEBUG", f"变异成功: {mutated_node.id[:8]}")
+        else:
+            log_msg("WARNING", "变异失败")
