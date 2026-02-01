@@ -10,6 +10,8 @@ from .gene_parser import (
     REQUIRED_GENES,
 )
 from .experience_pool import ExperiencePool, TaskRecord
+from .task_dispatcher import TaskDispatcher
+from .agent_evolution import AgentEvolution
 
 __all__ = [
     "parse_solution_genes",
@@ -18,4 +20,6 @@ __all__ = [
     "REQUIRED_GENES",
     "ExperiencePool",
     "TaskRecord",
+    "TaskDispatcher",
+    "AgentEvolution",
 ]
