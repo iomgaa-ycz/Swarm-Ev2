@@ -34,6 +34,7 @@ class PromptManager:
         template_dir: Path,
         skills_dir: Path,
         agent_configs_dir: Path,
+        skill_manager: Optional[Any] = None,
     ):
         """初始化 PromptManager。
 
@@ -41,9 +42,11 @@ class PromptManager:
             template_dir: Jinja2 模板目录（如 benchmark/mle-bench/prompt_templates）
             skills_dir: Skill 文件根目录（如 benchmark/mle-bench/skills）
             agent_configs_dir: Agent 配置文件根目录（如 benchmark/mle-bench/agent_configs）
+            skill_manager: Skill 池管理器（可选，P3.5 使用）
         """
         self.skills_dir = Path(skills_dir)
         self.agent_configs_dir = Path(agent_configs_dir)
+        self.skill_manager = skill_manager
 
         # 初始化 Jinja2 环境
         self.env = Environment(
@@ -115,24 +118,36 @@ class PromptManager:
         k: int = 5,
         experience_pool: Optional[ExperiencePool] = None,
     ) -> str:
-        """从经验池提取 Top-K 成功案例，格式化为动态 Skill。
+        """注入 Top-K 动态 Skill（从 SkillManager 或经验池）。
+
+        优先从 SkillManager 获取 Top-K Skill，
+        如果 SkillManager 不可用，则从经验池提取成功案例。
 
         Args:
             task_type: 任务类型（"explore" / "merge" / "mutate"）
-            k: 提取 Top-K 记录数量
-            experience_pool: 经验池实例（None 时返回空字符串）
+            k: 提取 Top-K 数量
+            experience_pool: 经验池实例（Fallback 使用）
 
         Returns:
-            格式化的 Markdown 字符串（包含 Top-K 成功案例）
+            格式化的 Markdown 字符串
         """
+        # [1] 优先从 SkillManager 获取（P3.5）
+        if self.skill_manager:
+            skills = self.skill_manager.get_top_k_skills(task_type, k)
+            if skills:
+                return self._format_skill_examples(skills)
+
+        # [2] Fallback: 从经验池提取成功案例
         if experience_pool is None:
+            log_msg(
+                "WARNING", "未提供 skill_manager 或 experience_pool，跳过 Skill 注入"
+            )
             return ""
 
-        # 从经验池查询高质量记录
         records = experience_pool.query(
             task_type=task_type,
             k=k,
-            filters={"output_quality": (">", 0.5)},  # 只取质量 > 0.5 的记录
+            filters={"output_quality": (">", 0.5)},
         )
 
         if not records:
@@ -249,3 +264,32 @@ class PromptManager:
             )
 
         return " ".join(parts) if parts else "0 seconds"
+
+    def update_skill_pool(self, skill_manager: Any) -> None:
+        """更新 Skill 池引用（Agent 进化后调用）。
+
+        Args:
+            skill_manager: 新的 SkillManager 实例
+        """
+        self.skill_manager = skill_manager
+        log_msg("INFO", "PromptManager Skill 池已更新")
+
+    def _format_skill_examples(self, skills: list) -> str:
+        """格式化 Skill 为 Markdown 列表。
+
+        Args:
+            skills: Skill 内容列表
+
+        Returns:
+            Markdown 格式字符串
+        """
+        if not skills:
+            return "无可用的成功案例。"
+
+        formatted = "# 成功案例（Top-K Skill）\n\n"
+        formatted += f"以下是 {len(skills)} 个经过验证的高质量策略模式：\n\n"
+
+        for i, skill in enumerate(skills, 1):
+            formatted += f"## 示例 {i}\n{skill}\n\n"
+
+        return formatted

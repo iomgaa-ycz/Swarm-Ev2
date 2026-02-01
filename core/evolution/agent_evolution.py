@@ -5,7 +5,7 @@
 
 import random
 from pathlib import Path
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 
 from agents.base_agent import BaseAgent
 from core.backend import query
@@ -23,6 +23,7 @@ class AgentEvolution:
     Attributes:
         agents: Agent 列表
         experience_pool: 共享经验池
+        skill_manager: Skill 池管理器（可选）
         config: 全局配置
         configs_dir: Agent 配置文件根目录
         evolution_interval: 进化间隔（每 N 个 Epoch）
@@ -34,6 +35,7 @@ class AgentEvolution:
         agents: List[BaseAgent],
         experience_pool: ExperiencePool,
         config: Config,
+        skill_manager: Optional[Any] = None,
     ):
         """初始化 Agent 进化器。
 
@@ -41,9 +43,11 @@ class AgentEvolution:
             agents: Agent 列表
             experience_pool: 共享经验池
             config: 全局配置
+            skill_manager: Skill 池管理器（可选，P3.5 使用）
         """
         self.agents = agents
         self.experience_pool = experience_pool
+        self.skill_manager = skill_manager
         self.config = config
 
         # 加载配置
@@ -95,6 +99,10 @@ class AgentEvolution:
 
         # [5] 对弱者进行变异
         self._mutate_weak_agents(weak_ids, elite_ids)
+
+        # [6] Skill 池更新（P3.5 新增）
+        if self.skill_manager:
+            self._update_skill_pool()
 
         log_msg("INFO", f"===== Agent 层进化完成（Epoch {epoch}） =====")
 
@@ -390,3 +398,42 @@ class AgentEvolution:
         config_path.write_text(content, encoding="utf-8")
 
         log_msg("DEBUG", f"配置文件已保存: {config_path}")
+
+    def _update_skill_pool(self) -> None:
+        """更新 Skill 池（P3.5 新增）。
+
+        从经验池提取新 Skill 并演化 Skill 池。
+        """
+        if not self.skill_manager:
+            return
+
+        log_msg("INFO", "开始 Skill 池更新...")
+
+        try:
+            # 导入 SkillExtractor（避免循环导入）
+            from core.evolution.skill_extractor import SkillExtractor
+
+            # 创建提取器
+            extractor = SkillExtractor(self.experience_pool, self.config)
+
+            # 演化 Skill 池
+            self.skill_manager.evolve_skills(self.experience_pool, extractor)
+
+            # 重新加载 Skill 池
+            self._reload_skills()
+
+            log_msg("INFO", "Skill 池更新完成")
+
+        except Exception as e:
+            log_msg("ERROR", f"Skill 池更新失败: {e}")
+
+    def _reload_skills(self) -> None:
+        """重新加载 Skill 池（P3.5 新增）。
+
+        通知 SkillManager 重新加载索引。
+        """
+        if not self.skill_manager:
+            return
+
+        self.skill_manager.reload_index()
+        log_msg("INFO", "Skill 池已重新加载")

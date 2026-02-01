@@ -1,13 +1,14 @@
 """Orchestrator 任务编排器模块。
 
 负责控制主循环、选择父节点、协调 Agent 生成代码、执行代码、Review 评估、更新最佳节点等核心流程。
+支持双层进化：Solution 层（Step 循环）+ Agent 层（Epoch 循环）。
 """
 
 import time
 import random
 import json
 import shutil
-from typing import Optional, Dict
+from typing import Optional, Dict, TYPE_CHECKING
 
 from agents.base_agent import BaseAgent, AgentContext
 from core.state import Node, Journal
@@ -17,19 +18,27 @@ from core.backend import query as backend_query
 from utils.config import Config
 from utils.logger_system import log_msg, log_exception
 
+if TYPE_CHECKING:
+    from core.evolution.agent_evolution import AgentEvolution
+
 
 class Orchestrator:
-    """任务编排器。
+    """任务编排器（双层进化模式）。
 
     控制主循环与搜索流程，协调 Agent、Interpreter、Review 等模块。
+    支持双层进化：
+        - Solution 层：每个 Epoch 内多个 Step，生成/评估/更新节点
+        - Agent 层：每 N 个 Epoch 触发 Agent 进化（Role/Strategy 变异 + Skill 池更新）
 
     Attributes:
         agent: 代码生成 Agent 实例
         config: 全局配置对象
         journal: 历史节点记录
         task_desc: 任务描述字符串
+        agent_evolution: Agent 层进化器（可选，P3.5 使用）
         start_time: 任务开始时间（用于计算剩余时间）
         current_step: 当前步数
+        current_epoch: 当前 Epoch 编号
         best_node: 当前最佳节点
         workspace: 工作空间管理器
         interpreter: 代码执行器
@@ -41,6 +50,7 @@ class Orchestrator:
         config: Config,
         journal: Journal,
         task_desc: str,
+        agent_evolution: Optional["AgentEvolution"] = None,
     ):
         """初始化 Orchestrator。
 
@@ -49,14 +59,17 @@ class Orchestrator:
             config: 全局配置对象
             journal: 历史节点记录
             task_desc: 任务描述字符串
+            agent_evolution: Agent 层进化器（可选，P3.5 使用）
         """
         self.agent = agent
         self.config = config
         self.journal = journal
         self.task_desc = task_desc
+        self.agent_evolution = agent_evolution
 
         self.start_time = time.time()
         self.current_step = 0
+        self.current_epoch = 0
         self.best_node: Optional[Node] = None
 
         # 初始化工作空间管理器
@@ -70,11 +83,83 @@ class Orchestrator:
 
         log_msg(
             "INFO",
-            f"Orchestrator 初始化完成: task={task_desc[:50]}..., max_steps={config.agent.max_steps}",
+            f"Orchestrator 初始化完成: task={task_desc[:50]}..., "
+            f"agent_evolution={'启用' if agent_evolution else '禁用'}",
         )
 
-    def run(self, max_steps: Optional[int] = None) -> Optional[Node]:
-        """主循环入口。
+    def run(
+        self,
+        num_epochs: int = 1,
+        steps_per_epoch: Optional[int] = None,
+    ) -> Optional[Node]:
+        """主循环入口（双层进化模式）。
+
+        双层循环结构：
+            - 外层：Epoch 循环，每个 Epoch 结束时触发 Agent 层进化
+            - 内层：Step 循环，每个 Step 执行 Solution 层进化（生成/评估/更新节点）
+
+        Args:
+            num_epochs: Epoch 数量（默认 1，兼容原有逻辑）
+            steps_per_epoch: 每个 Epoch 的步数（默认使用 config.evolution.solution.steps_per_epoch
+                            或 config.agent.max_steps）
+
+        Returns:
+            最佳节点对象（可能为 None）
+        """
+        # 确定每个 Epoch 的步数
+        if steps_per_epoch is None:
+            # 优先使用 evolution.solution.steps_per_epoch，否则使用 agent.max_steps
+            if hasattr(self.config, "evolution") and hasattr(
+                self.config.evolution, "solution"
+            ):
+                steps_per_epoch = self.config.evolution.solution.steps_per_epoch
+            else:
+                steps_per_epoch = self.config.agent.max_steps
+
+        total_steps = num_epochs * steps_per_epoch
+        log_msg(
+            "INFO",
+            f"Orchestrator 开始运行: num_epochs={num_epochs}, "
+            f"steps_per_epoch={steps_per_epoch}, total_steps={total_steps}",
+        )
+
+        # Epoch 循环
+        for epoch in range(num_epochs):
+            self.current_epoch = epoch
+
+            # 检查时间限制
+            if self._check_time_limit():
+                break
+
+            log_msg("INFO", f"===== Epoch {epoch + 1}/{num_epochs} 开始 =====")
+
+            # Step 循环（Solution 层进化）
+            epoch_completed = self._run_single_epoch(steps_per_epoch)
+
+            if not epoch_completed:
+                # 时间限制触发，提前退出
+                break
+
+            # Agent 层进化（每个 Epoch 结束时）
+            if self.agent_evolution:
+                self.agent_evolution.evolve(epoch)
+
+            # Epoch 结束日志
+            best = self.journal.get_best_node()
+            log_msg(
+                "INFO",
+                f"===== Epoch {epoch + 1}/{num_epochs} 完成 | "
+                f"最佳 metric: {best.metric_value if best else 'N/A'} =====",
+            )
+
+        log_msg(
+            "INFO",
+            f"Orchestrator 运行完成: best_node={'存在' if self.best_node else '不存在'}",
+        )
+        return self.best_node
+
+    def run_legacy(self, max_steps: Optional[int] = None) -> Optional[Node]:
+        """原有主循环入口（兼容旧接口）。
 
         Args:
             max_steps: 最大步数，默认使用 config.agent.max_steps
@@ -83,29 +168,47 @@ class Orchestrator:
             最佳节点对象（可能为 None）
         """
         steps = max_steps or self.config.agent.max_steps
+        return self.run(num_epochs=1, steps_per_epoch=steps)
 
-        log_msg("INFO", f"Orchestrator 开始运行: max_steps={steps}")
+    def _run_single_epoch(self, steps_per_epoch: int) -> bool:
+        """运行单个 Epoch（Solution 层进化）。
 
-        for step in range(steps):
-            self.current_step = step
+        Args:
+            steps_per_epoch: 该 Epoch 的步数
+
+        Returns:
+            是否正常完成（False 表示因时间限制提前退出）
+        """
+        for step in range(steps_per_epoch):
+            self.current_step = self.current_epoch * steps_per_epoch + step
 
             # 检查时间限制
-            elapsed_time = time.time() - self.start_time
-            if elapsed_time >= self.config.agent.time_limit:
-                log_msg(
-                    "INFO",
-                    f"已达时间限制 {self.config.agent.time_limit}s，停止运行",
-                )
-                break
+            if self._check_time_limit():
+                return False
 
-            log_msg("INFO", f"=== Step {step + 1}/{steps} ===")
+            log_msg(
+                "INFO",
+                f"=== Epoch {self.current_epoch + 1} | "
+                f"Step {step + 1}/{steps_per_epoch} ===",
+            )
             self.step()
 
-        log_msg(
-            "INFO",
-            f"Orchestrator 运行完成: best_node={'存在' if self.best_node else '不存在'}",
-        )
-        return self.best_node
+        return True
+
+    def _check_time_limit(self) -> bool:
+        """检查是否达到时间限制。
+
+        Returns:
+            是否已达时间限制
+        """
+        elapsed_time = time.time() - self.start_time
+        if elapsed_time >= self.config.agent.time_limit:
+            log_msg(
+                "INFO",
+                f"已达时间限制 {self.config.agent.time_limit}s，停止运行",
+            )
+            return True
+        return False
 
     def step(self) -> None:
         """单步执行流程。
