@@ -21,6 +21,7 @@ from core.executor.workspace import WorkspaceManager
 from core.backend import query as backend_query
 from utils.config import Config
 from utils.logger_system import log_msg, log_exception
+from utils.system_info import get_hardware_description, get_conda_packages
 
 if TYPE_CHECKING:
     from core.evolution.agent_evolution import AgentEvolution
@@ -56,6 +57,8 @@ class Orchestrator:
         journal: Journal,
         task_desc: str,
         agent_evolution: Optional["AgentEvolution"] = None,
+        task_dispatcher=None,
+        experience_pool=None,
     ):
         """初始化 Orchestrator。
 
@@ -65,12 +68,16 @@ class Orchestrator:
             journal: 历史节点记录
             task_desc: 任务描述字符串
             agent_evolution: Agent 层进化器（可选）
+            task_dispatcher: 任务分发器（Phase 3）
+            experience_pool: 经验池（Phase 3）
         """
         self.agents = agents
         self.config = config
         self.journal = journal
         self.task_desc = task_desc
         self.agent_evolution = agent_evolution
+        self.task_dispatcher = task_dispatcher
+        self.experience_pool = experience_pool
 
         self.start_time = time.time()
         self.current_epoch = 0
@@ -94,6 +101,15 @@ class Orchestrator:
             timeout=config.execution.timeout,
             max_parallel_run=self.max_workers,
         )
+
+        # 获取并缓存环境信息（一次性，启动时获取）
+        self.device_info = get_hardware_description()
+        self.conda_env_name = getattr(
+            getattr(config, "environment", None), "conda_env_name", "Swarm-Evo"
+        )
+        self.conda_packages = get_conda_packages(self.conda_env_name)
+
+        log_msg("INFO", f"环境信息: {self.device_info}")
 
         log_msg(
             "INFO",
@@ -254,8 +270,14 @@ class Orchestrator:
             生成的节点
         """
         try:
-            # Phase 1: 选择 Agent（随机选择）
-            agent = random.choice(self.agents)
+            # Phase 1: 选择 Agent（优先使用 TaskDispatcher，否则随机选择）
+            task_type = "explore"  # 默认任务类型
+
+            if self.task_dispatcher:
+                agent = self.task_dispatcher.select_agent(task_type)
+            else:
+                agent = random.choice(self.agents)
+
             log_msg(
                 "INFO",
                 f"{agent.name} 开始 {'explore' if parent_node is None else 'improve'} (parent_id={parent_node.id[:8] if parent_node else None})",
@@ -269,13 +291,16 @@ class Orchestrator:
                 current_step = len(self.journal.nodes)
 
             context = AgentContext(
-                task_type="explore" if parent_node is None else "improve",
+                task_type="explore",  # 统一使用 explore，PromptBuilder 根据 parent_node 自动适配
                 parent_node=parent_node,
                 journal=self.journal,
                 config=self.config,
                 start_time=self.start_time,
                 current_step=current_step,
                 task_desc=self.task_desc,
+                device_info=self.device_info,
+                conda_packages=self.conda_packages,
+                conda_env_name=self.conda_env_name,
             )
 
             result = agent.generate(context)
@@ -305,7 +330,11 @@ class Orchestrator:
                 self.journal.append(node)
                 self._update_best_node(node)
 
-            # Phase 8: 打印结果
+            # Phase 8: 写入经验池
+            if self.experience_pool:
+                self._write_experience_pool(agent.name, task_type, node)
+
+            # Phase 9: 打印结果
             self._print_node_summary(node)
 
             log_msg(
@@ -898,6 +927,216 @@ Please analyze the execution results and call the `submit_review` function with 
             return node.metric_value < best_node.metric_value
         else:
             return node.metric_value > best_node.metric_value
+
+    def _write_experience_pool(self, agent_id: str, task_type: str, node: Node) -> None:
+        """写入经验池（Phase 3）。
+
+        Args:
+            agent_id: Agent ID
+            task_type: 任务类型
+            node: 生成的节点
+        """
+        try:
+            import hashlib
+            import time
+            from core.evolution.experience_pool import TaskRecord
+
+            # 计算输入哈希
+            input_hash = hashlib.sha256(f"{task_type}_{node.id}".encode()).hexdigest()[
+                :16
+            ]
+
+            # 计算输出质量（基于 metric_value）
+            output_quality = float(node.metric_value or 0.0)
+
+            # 提取策略摘要（从 plan）
+            strategy_summary = node.plan[:200] if node.plan else "No plan"
+
+            record = TaskRecord(
+                agent_id=agent_id,
+                task_type=task_type,
+                input_hash=input_hash,
+                output_quality=output_quality,
+                strategy_summary=strategy_summary,
+                timestamp=time.time(),
+            )
+
+            self.experience_pool.add(record)
+            log_msg("DEBUG", f"经验池记录已添加: agent={agent_id}, task={task_type}")
+
+        except Exception as e:
+            log_msg("WARNING", f"写入经验池失败: {e}")
+
+    def execute_merge_task(
+        self, parent_a: Node, parent_b: Node, gene_plan: Dict
+    ) -> Optional[Node]:
+        """执行 merge 任务（基因交叉）。
+
+        Args:
+            parent_a: 父代 A
+            parent_b: 父代 B
+            gene_plan: 基因交叉计划
+
+        Returns:
+            合成的子代节点（失败时返回 None）
+        """
+        try:
+            # 选择 Agent
+            if self.task_dispatcher:
+                agent = self.task_dispatcher.select_agent("merge")
+            else:
+                agent = random.choice(self.agents)
+
+            log_msg(
+                "INFO",
+                f"{agent.name} 开始 merge (parent_a={parent_a.id[:8]}, parent_b={parent_b.id[:8]})",
+            )
+
+            # 构建上下文
+            with self.journal_lock:
+                current_step = len(self.journal.nodes)
+
+            context = AgentContext(
+                task_type="merge",
+                parent_node=None,  # merge 不使用 parent_node
+                journal=self.journal,
+                config=self.config,
+                start_time=self.start_time,
+                current_step=current_step,
+                task_desc=self.task_desc,
+                device_info=self.device_info,
+                conda_packages=self.conda_packages,
+                conda_env_name=self.conda_env_name,
+                parent_a=parent_a,
+                parent_b=parent_b,
+                gene_plan=gene_plan,
+            )
+
+            # 生成代码
+            result = agent.generate(context)
+
+            if not result.success or result.node is None:
+                log_msg("WARNING", f"{agent.name} merge 失败: {result.error}")
+                return None
+
+            node = result.node
+
+            # 执行代码
+            exec_result = self._execute_code(node.code, node.id)
+            node.term_out = "\n".join(exec_result.term_out)
+            node.exec_time = exec_result.exec_time
+            node.exc_type = exec_result.exc_type
+            node.exc_info = str(exec_result.exc_info) if exec_result.exc_info else None
+
+            # Review 评估
+            self._review_node(node)
+
+            # 保存节点
+            with self.save_lock:
+                self._save_node_solution(node)
+
+            # 追加到 Journal
+            with self.journal_lock:
+                self.journal.append(node)
+                self._update_best_node(node)
+
+            # 写入经验池
+            if self.experience_pool:
+                self._write_experience_pool(agent.name, "merge", node)
+
+            log_msg(
+                "INFO",
+                f"{agent.name} merge 完成: is_buggy={node.is_buggy}, exec_time={node.exec_time:.2f}s",
+            )
+
+            return node
+
+        except Exception as e:
+            log_exception(e, "execute_merge_task() 失败")
+            return None
+
+    def execute_mutate_task(self, parent: Node, target_gene: str) -> Optional[Node]:
+        """执行 mutate 任务（基因变异）。
+
+        Args:
+            parent: 父代节点
+            target_gene: 目标基因块名称
+
+        Returns:
+            变异后的节点（失败时返回 None）
+        """
+        try:
+            # 选择 Agent
+            if self.task_dispatcher:
+                agent = self.task_dispatcher.select_agent("mutate")
+            else:
+                agent = random.choice(self.agents)
+
+            log_msg(
+                "INFO",
+                f"{agent.name} 开始 mutate (parent={parent.id[:8]}, gene={target_gene})",
+            )
+
+            # 构建上下文
+            with self.journal_lock:
+                current_step = len(self.journal.nodes)
+
+            context = AgentContext(
+                task_type="mutate",
+                parent_node=parent,
+                journal=self.journal,
+                config=self.config,
+                start_time=self.start_time,
+                current_step=current_step,
+                task_desc=self.task_desc,
+                device_info=self.device_info,
+                conda_packages=self.conda_packages,
+                conda_env_name=self.conda_env_name,
+                target_gene=target_gene,
+            )
+
+            # 生成代码
+            result = agent.generate(context)
+
+            if not result.success or result.node is None:
+                log_msg("WARNING", f"{agent.name} mutate 失败: {result.error}")
+                return None
+
+            node = result.node
+
+            # 执行代码
+            exec_result = self._execute_code(node.code, node.id)
+            node.term_out = "\n".join(exec_result.term_out)
+            node.exec_time = exec_result.exec_time
+            node.exc_type = exec_result.exc_type
+            node.exc_info = str(exec_result.exc_info) if exec_result.exc_info else None
+
+            # Review 评估
+            self._review_node(node)
+
+            # 保存节点
+            with self.save_lock:
+                self._save_node_solution(node)
+
+            # 追加到 Journal
+            with self.journal_lock:
+                self.journal.append(node)
+                self._update_best_node(node)
+
+            # 写入经验池
+            if self.experience_pool:
+                self._write_experience_pool(agent.name, "mutate", node)
+
+            log_msg(
+                "INFO",
+                f"{agent.name} mutate 完成: is_buggy={node.is_buggy}, exec_time={node.exec_time:.2f}s",
+            )
+
+            return node
+
+        except Exception as e:
+            log_exception(e, "execute_mutate_task() 失败")
+            return None
 
 
 # 兼容旧接口的工厂函数
