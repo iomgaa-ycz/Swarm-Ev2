@@ -109,3 +109,12 @@ evolution:
     learning_rate: 0.3  # EMA 更新学习率（α）
     configs_dir: "benchmark/mle-bench/agent_configs"  # Agent 配置文件根目录
     min_records_for_evolution: 20  # 进化前最小经验池记录数
+
+  # Skill 池配置（P3.5 使用）
+  skill:
+    min_cluster_size: 5  # HDBSCAN 最小簇大小
+    duplicate_threshold: 0.85  # 语义相似度阈值（去重）
+    min_composite_score: 0.5  # 新增 Skill 的最低综合评分
+    deprecate_threshold: 0.4  # 淘汰 Skill 的综合评分阈值
+    unused_epochs: 5  # 连续未使用 Epoch 数（淘汰条件）
+    embedding_model_path: "./embedding-models/bge-m3"  # bge-m3 本地路径

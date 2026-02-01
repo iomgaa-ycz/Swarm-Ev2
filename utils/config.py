@@ -134,6 +134,21 @@ class AgentEvolutionConfig:
     num_agents: int
     evolution_interval: int
     epsilon: float
+    learning_rate: float
+    configs_dir: str
+    min_records_for_evolution: int
+
+
+@dataclass
+class SkillEvolutionConfig:
+    """Skill 池配置（P3.5 使用）。"""
+
+    min_cluster_size: int
+    duplicate_threshold: float
+    min_composite_score: float
+    deprecate_threshold: float
+    unused_epochs: int
+    embedding_model_path: str
 
 
 @dataclass
@@ -143,6 +158,7 @@ class EvolutionConfig:
     experience_pool: ExperiencePoolConfig
     solution: SolutionEvolutionConfig
     agent: AgentEvolutionConfig
+    skill: SkillEvolutionConfig
 
 
 @dataclass
