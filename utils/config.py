@@ -125,6 +125,7 @@ class SolutionEvolutionConfig:
     mutation_rate: float
     tournament_k: int
     steps_per_epoch: int
+    crossover_strategy: str = "random"  # "random" 或 "pheromone"
 
 
 @dataclass
@@ -413,11 +414,23 @@ def validate_config(cfg: DictConfig) -> Config:
                     mutation_rate=0.0,
                     tournament_k=0,
                     steps_per_epoch=0,
+                    crossover_strategy="random",
                 ),
                 agent=AgentEvolutionConfig(
                     num_agents=0,
                     evolution_interval=0,
                     epsilon=0.0,
+                    learning_rate=0.3,
+                    configs_dir="",
+                    min_records_for_evolution=0,
+                ),
+                skill=SkillEvolutionConfig(
+                    min_cluster_size=5,
+                    duplicate_threshold=0.85,
+                    min_composite_score=0.5,
+                    deprecate_threshold=0.4,
+                    unused_epochs=5,
+                    embedding_model_path="",
                 ),
             ),
         )
@@ -441,6 +454,14 @@ def validate_config(cfg: DictConfig) -> Config:
         agent=AgentConfig(**cfg_dict["agent"]),
         search=SearchConfig(**cfg_dict["search"]),
         logging=LoggingConfig(**cfg_dict["logging"]),
+        evolution=EvolutionConfig(
+            experience_pool=ExperiencePoolConfig(
+                **cfg_dict["evolution"]["experience_pool"]
+            ),
+            solution=SolutionEvolutionConfig(**cfg_dict["evolution"]["solution"]),
+            agent=AgentEvolutionConfig(**cfg_dict["evolution"]["agent"]),
+            skill=SkillEvolutionConfig(**cfg_dict["evolution"]["skill"]),
+        ),
     )
 
 
