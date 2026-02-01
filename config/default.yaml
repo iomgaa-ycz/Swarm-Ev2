@@ -99,6 +99,7 @@ evolution:
     mutation_rate: 0.2  # 变异概率
     tournament_k: 3  # 锦标赛选择 k 值
     steps_per_epoch: 10  # 每个 Epoch 的进化步数
+    crossover_strategy: "random"  # 交叉策略: "random" 或 "pheromone"
 
   # Agent 层进化配置（P3.3 使用）
   agent:

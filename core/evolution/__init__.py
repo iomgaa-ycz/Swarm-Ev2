@@ -12,6 +12,10 @@ from .gene_parser import (
 from .experience_pool import ExperiencePool, TaskRecord
 from .task_dispatcher import TaskDispatcher
 from .agent_evolution import AgentEvolution
+from .gene_registry import GeneRegistry
+from .gene_selector import select_gene_plan
+from .pheromone import compute_node_pheromone, ensure_node_stats
+from .solution_evolution import SolutionEvolution
 
 __all__ = [
     "parse_solution_genes",
@@ -22,4 +26,9 @@ __all__ = [
     "TaskRecord",
     "TaskDispatcher",
     "AgentEvolution",
+    "GeneRegistry",
+    "select_gene_plan",
+    "compute_node_pheromone",
+    "ensure_node_stats",
+    "SolutionEvolution",
 ]

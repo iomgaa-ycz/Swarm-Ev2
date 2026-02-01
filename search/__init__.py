@@ -4,5 +4,6 @@
 """
 
 from .fitness import normalize_fitness
+from .parallel_evaluator import ParallelEvaluator
 
-__all__ = ["normalize_fitness"]
+__all__ = ["normalize_fitness", "ParallelEvaluator"]
