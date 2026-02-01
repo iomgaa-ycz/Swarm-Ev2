@@ -7,7 +7,6 @@ import time
 from typing import Optional, Tuple
 
 from core.backend import query as backend_query
-from core.executor.interpreter import Interpreter
 from core.state import Node
 from utils.logger_system import log_msg, log_exception
 from utils.response import extract_code, extract_text_up_to_code
@@ -18,13 +17,13 @@ from .base_agent import BaseAgent, AgentContext, AgentResult
 class CoderAgent(BaseAgent):
     """代码生成 Agent。
 
-    负责调用 LLM 生成代码、执行代码并创建 Node 对象。
+    负责调用 LLM 生成代码并创建 Node 对象。
+    代码执行由 Orchestrator 负责，以支持并行执行。
 
     Attributes:
         name: Agent 名称
         config: 全局配置
         prompt_builder: Prompt 构建器
-        interpreter: 代码执行器
     """
 
     def __init__(
@@ -32,7 +31,7 @@ class CoderAgent(BaseAgent):
         name: str,
         config,
         prompt_builder,
-        interpreter: Interpreter,
+        interpreter=None,  # 保留参数以兼容，但不再使用
     ):
         """初始化 CoderAgent。
 
@@ -40,10 +39,10 @@ class CoderAgent(BaseAgent):
             name: Agent 名称
             config: 全局配置对象
             prompt_builder: Prompt 构建器实例
-            interpreter: 代码执行器实例
+            interpreter: 已废弃，保留以兼容旧代码
         """
         super().__init__(name, config, prompt_builder)
-        self.interpreter = interpreter
+        # interpreter 不再在 Agent 内部使用，由 Orchestrator 统一管理
 
     def generate(self, context: AgentContext) -> AgentResult:
         """主入口：根据 task_type 分发到具体实现。
@@ -118,25 +117,17 @@ class CoderAgent(BaseAgent):
         # Phase 4: 解析响应（带重试）
         plan, code = self._parse_response_with_retry(response, max_retries=5)
 
-        # Phase 5: 执行代码
-        exec_result = self.interpreter.run(code, reset_session=True)
-
-        # Phase 6: 创建 Node 对象
+        # Phase 5: 创建 Node 对象（代码执行由 Orchestrator 负责）
         node = Node(
             code=code,
             plan=plan,
             parent_id=context.parent_node.id if context.parent_node else None,
             task_type=context.task_type,
-            term_out="\n".join(exec_result.term_out),
-            exec_time=exec_result.exec_time,
-            exc_type=exec_result.exc_type,
-            exc_info=str(exec_result.exc_info) if exec_result.exc_info else None,
-            is_buggy=not exec_result.success,
         )
 
         log_msg(
             "INFO",
-            f"{self.name} 完成 explore: is_buggy={node.is_buggy}, exec_time={node.exec_time:.2f}s",
+            f"{self.name} 代码生成完成: plan={len(plan)} chars, code={len(code)} chars",
         )
 
         return node
@@ -230,23 +221,26 @@ class CoderAgent(BaseAgent):
         return plan, code
 
     def _generate_data_preview(self) -> Optional[str]:
-        """生成数据预览。
+        """生成数据预览（与 AIDE 一致的实现）。
+
+        自动探测 workspace/input/ 目录下的文件结构，
+        生成目录树 + CSV 列摘要，供 LLM 理解可用数据。
 
         Returns:
-            数据预览字符串，如果失败或未启用则返回 None
+            数据预览字符串，如果失败则返回 None
         """
-        # Phase 2 简化实现：暂不生成数据预览
-        # 原因：data_preview.generate_preview() 需要知道数据路径
-        # Phase 2.4 Orchestrator 实现时会提供完整的数据路径
-        if not getattr(self.config.agent, "data_preview", False):
-            return None
-
         try:
-            # TODO: Phase 2.4 实现
-            # from utils.data_preview import generate_preview
-            # return generate_preview(self.config.project.data_dir)
-            log_msg("INFO", f"{self.name} 数据预览生成已启用，但 Phase 2.3 暂不实现")
-            return None
+            from utils.data_preview import generate
+
+            input_dir = self.config.project.workspace_dir / "input"
+            if not input_dir.exists():
+                log_msg("WARNING", f"输入目录不存在: {input_dir}")
+                return None
+
+            preview = generate(input_dir)
+            log_msg("INFO", f"{self.name} 数据预览生成完成 ({len(preview)} chars)")
+            return preview
+
         except Exception as e:
             log_msg("WARNING", f"{self.name} 数据预览生成失败: {e}")
             return None

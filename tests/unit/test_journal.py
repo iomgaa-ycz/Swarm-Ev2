@@ -289,3 +289,89 @@ model.fit(X_train, y_train)
         top_k = journal.get_best_k(k=5)
 
         assert len(top_k) == 0
+
+    def test_get_best_node_lower_is_better_true(self):
+        """测试 lower_is_better=True 时返回最小值（如 RMSE）。"""
+        journal = Journal()
+
+        # RMSE: 越小越好
+        node1 = Node(code="n1", metric_value=0.5, is_buggy=False, lower_is_better=True)
+        node2 = Node(code="n2", metric_value=0.3, is_buggy=False, lower_is_better=True)
+        node3 = Node(code="n3", metric_value=0.8, is_buggy=False, lower_is_better=True)
+
+        journal.append(node1)
+        journal.append(node2)
+        journal.append(node3)
+
+        best = journal.get_best_node(only_good=True)
+        assert best == node2  # 0.3 是最小值
+        assert best.metric_value == 0.3
+
+    def test_get_best_node_lower_is_better_false(self):
+        """测试 lower_is_better=False 时返回最大值（如 Accuracy）。"""
+        journal = Journal()
+
+        # Accuracy: 越大越好
+        node1 = Node(
+            code="n1", metric_value=0.85, is_buggy=False, lower_is_better=False
+        )
+        node2 = Node(
+            code="n2", metric_value=0.92, is_buggy=False, lower_is_better=False
+        )
+        node3 = Node(
+            code="n3", metric_value=0.78, is_buggy=False, lower_is_better=False
+        )
+
+        journal.append(node1)
+        journal.append(node2)
+        journal.append(node3)
+
+        best = journal.get_best_node(only_good=True)
+        assert best == node2  # 0.92 是最大值
+        assert best.metric_value == 0.92
+
+    def test_get_best_k_lower_is_better_true(self):
+        """测试 lower_is_better=True 时 Top-K 按升序排列。"""
+        journal = Journal()
+
+        # RMSE: 越小越好，Top-K 应该按升序排列
+        values = [0.5, 0.2, 0.8, 0.1, 0.6]
+        for i, val in enumerate(values):
+            node = Node(
+                code=f"code_{i}",
+                metric_value=val,
+                is_buggy=False,
+                lower_is_better=True,
+            )
+            journal.append(node)
+
+        top_3 = journal.get_best_k(k=3)
+
+        # 最佳的是最小的: 0.1, 0.2, 0.5
+        assert len(top_3) == 3
+        assert top_3[0].metric_value == 0.1
+        assert top_3[1].metric_value == 0.2
+        assert top_3[2].metric_value == 0.5
+
+    def test_get_best_k_lower_is_better_false(self):
+        """测试 lower_is_better=False 时 Top-K 按降序排列。"""
+        journal = Journal()
+
+        # Accuracy: 越大越好，Top-K 应该按降序排列
+        values = [0.7, 0.9, 0.6, 0.95, 0.8]
+        for i, val in enumerate(values):
+            node = Node(
+                code=f"code_{i}",
+                metric_value=val,
+                is_buggy=False,
+                lower_is_better=False,
+            )
+            journal.append(node)
+
+        top_3 = journal.get_best_k(k=3)
+
+        # 最佳的是最大的: 0.95, 0.9, 0.8
+        assert len(top_3) == 3
+        assert top_3[0].metric_value == 0.95
+        assert top_3[1].metric_value == 0.9
+        assert top_3[2].metric_value == 0.8

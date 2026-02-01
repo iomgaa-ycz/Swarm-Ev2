@@ -1,14 +1,18 @@
-"""Orchestrator 任务编排器模块。
+"""Orchestrator 任务编排器模块（并行版本）。
 
-负责控制主循环、选择父节点、协调 Agent 生成代码、执行代码、Review 评估、更新最佳节点等核心流程。
+负责控制主循环、选择父节点、协调多个 Agent 并行生成代码、执行代码、Review 评估、更新最佳节点等核心流程。
 支持双层进化：Solution 层（Step 循环）+ Agent 层（Epoch 循环）。
+
+参考: Reference/ML-Master-main/main_mcts.py
 """
 
-import time
 import random
 import json
 import shutil
-from typing import Optional, Dict, TYPE_CHECKING
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
+from typing import Optional, Dict, List, TYPE_CHECKING
 
 from agents.base_agent import BaseAgent, AgentContext
 from core.state import Node, Journal
@@ -23,30 +27,31 @@ if TYPE_CHECKING:
 
 
 class Orchestrator:
-    """任务编排器（双层进化模式）。
+    """任务编排器（并行执行模式）。
 
-    控制主循环与搜索流程，协调 Agent、Interpreter、Review 等模块。
+    控制主循环与搜索流程，协调多个 Agent 并行工作。
     支持双层进化：
-        - Solution 层：每个 Epoch 内多个 Step，生成/评估/更新节点
-        - Agent 层：每 N 个 Epoch 触发 Agent 进化（Role/Strategy 变异 + Skill 池更新）
+        - Solution 层：每个 Epoch 内多个 Step 并行执行
+        - Agent 层：每 N 个 Epoch 触发 Agent 进化
 
     Attributes:
-        agent: 代码生成 Agent 实例
+        agents: Agent 列表（多个 Agent 并行工作）
         config: 全局配置对象
         journal: 历史节点记录
         task_desc: 任务描述字符串
-        agent_evolution: Agent 层进化器（可选，P3.5 使用）
-        start_time: 任务开始时间（用于计算剩余时间）
-        current_step: 当前步数
-        current_epoch: 当前 Epoch 编号
+        agent_evolution: Agent 层进化器（可选）
+        start_time: 任务开始时间
         best_node: 当前最佳节点
         workspace: 工作空间管理器
-        interpreter: 代码执行器
+        interpreter: 代码执行器（支持并行）
+        max_workers: 最大并行工作线程数
+        journal_lock: Journal 访问锁
+        save_lock: 文件保存锁
     """
 
     def __init__(
         self,
-        agent: BaseAgent,
+        agents: List[BaseAgent],
         config: Config,
         journal: Journal,
         task_desc: str,
@@ -55,35 +60,45 @@ class Orchestrator:
         """初始化 Orchestrator。
 
         Args:
-            agent: 代码生成 Agent 实例
+            agents: Agent 列表（支持多 Agent 并行）
             config: 全局配置对象
             journal: 历史节点记录
             task_desc: 任务描述字符串
-            agent_evolution: Agent 层进化器（可选，P3.5 使用）
+            agent_evolution: Agent 层进化器（可选）
         """
-        self.agent = agent
+        self.agents = agents
         self.config = config
         self.journal = journal
         self.task_desc = task_desc
         self.agent_evolution = agent_evolution
 
         self.start_time = time.time()
-        self.current_step = 0
         self.current_epoch = 0
         self.best_node: Optional[Node] = None
+
+        # 并行配置
+        self.max_workers = config.search.parallel_num
+
+        # 线程安全锁
+        self.journal_lock = threading.Lock()
+        self.save_lock = threading.Lock()
 
         # 初始化工作空间管理器
         self.workspace = WorkspaceManager(config)
 
-        # 初始化代码执行器
+        # 初始化代码执行器（修复路径 + 支持并行）
         self.interpreter = Interpreter(
-            working_dir=str(config.project.workspace_dir / "working"),
+            working_dir=str(
+                config.project.workspace_dir
+            ),  # 修复: 使用 workspace 根目录
             timeout=config.execution.timeout,
+            max_parallel_run=self.max_workers,
         )
 
         log_msg(
             "INFO",
             f"Orchestrator 初始化完成: task={task_desc[:50]}..., "
+            f"agents={len(agents)}, parallel={self.max_workers}, "
             f"agent_evolution={'启用' if agent_evolution else '禁用'}",
         )
 
@@ -92,23 +107,21 @@ class Orchestrator:
         num_epochs: int = 1,
         steps_per_epoch: Optional[int] = None,
     ) -> Optional[Node]:
-        """主循环入口（双层进化模式）。
+        """主循环入口（并行执行模式）。
 
         双层循环结构：
             - 外层：Epoch 循环，每个 Epoch 结束时触发 Agent 层进化
-            - 内层：Step 循环，每个 Step 执行 Solution 层进化（生成/评估/更新节点）
+            - 内层：Step 循环，并行执行多个任务
 
         Args:
-            num_epochs: Epoch 数量（默认 1，兼容原有逻辑）
-            steps_per_epoch: 每个 Epoch 的步数（默认使用 config.evolution.solution.steps_per_epoch
-                            或 config.agent.max_steps）
+            num_epochs: Epoch 数量（默认 1）
+            steps_per_epoch: 每个 Epoch 的步数
 
         Returns:
             最佳节点对象（可能为 None）
         """
         # 确定每个 Epoch 的步数
         if steps_per_epoch is None:
-            # 优先使用 evolution.solution.steps_per_epoch，否则使用 agent.max_steps
             if hasattr(self.config, "evolution") and hasattr(
                 self.config.evolution, "solution"
             ):
@@ -133,14 +146,13 @@ class Orchestrator:
 
             log_msg("INFO", f"===== Epoch {epoch + 1}/{num_epochs} 开始 =====")
 
-            # Step 循环（Solution 层进化）
+            # Step 循环（并行执行）
             epoch_completed = self._run_single_epoch(steps_per_epoch)
 
             if not epoch_completed:
-                # 时间限制触发，提前退出
                 break
 
-            # Agent 层进化（每个 Epoch 结束时）
+            # Agent 层进化
             if self.agent_evolution:
                 self.agent_evolution.evolve(epoch)
 
@@ -156,22 +168,28 @@ class Orchestrator:
             "INFO",
             f"Orchestrator 运行完成: best_node={'存在' if self.best_node else '不存在'}",
         )
+
+        # 清理所有进程
+        self.interpreter.cleanup_session(-1)
+
         return self.best_node
 
     def run_legacy(self, max_steps: Optional[int] = None) -> Optional[Node]:
         """原有主循环入口（兼容旧接口）。
 
         Args:
-            max_steps: 最大步数，默认使用 config.agent.max_steps
+            max_steps: 最大步数
 
         Returns:
-            最佳节点对象（可能为 None）
+            最佳节点对象
         """
         steps = max_steps or self.config.agent.max_steps
         return self.run(num_epochs=1, steps_per_epoch=steps)
 
     def _run_single_epoch(self, steps_per_epoch: int) -> bool:
-        """运行单个 Epoch（Solution 层进化）。
+        """运行单个 Epoch（并行执行）。
+
+        使用 ThreadPoolExecutor 并行提交任务，完成一个后立即提交新任务。
 
         Args:
             steps_per_epoch: 该 Epoch 的步数
@@ -179,75 +197,96 @@ class Orchestrator:
         Returns:
             是否正常完成（False 表示因时间限制提前退出）
         """
-        for step in range(steps_per_epoch):
-            self.current_step = self.current_epoch * steps_per_epoch + step
+        completed = 0
 
-            # 检查时间限制
-            if self._check_time_limit():
-                return False
+        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            # 初始提交任务
+            initial_count = min(self.max_workers, steps_per_epoch)
+            futures = {
+                executor.submit(self._step_task, None) for _ in range(initial_count)
+            }
 
-            log_msg(
-                "INFO",
-                f"=== Epoch {self.current_epoch + 1} | "
-                f"Step {step + 1}/{steps_per_epoch} ===",
-            )
-            self.step()
+            log_msg("INFO", f"初始提交 {initial_count} 个并行任务")
+
+            while completed < steps_per_epoch:
+                # 检查时间限制
+                if self._check_time_limit():
+                    for fut in futures:
+                        fut.cancel()
+                    return False
+
+                # 等待任意任务完成
+                done, _ = wait(futures, timeout=5.0, return_when=FIRST_COMPLETED)
+
+                for fut in done:
+                    futures.remove(fut)
+
+                    try:
+                        fut.result()  # 获取结果以触发异常传播
+                    except Exception as e:
+                        log_msg("WARNING", f"任务执行失败: {e}")
+
+                    # 更新完成计数
+                    with self.journal_lock:
+                        completed = len(self.journal.nodes)
+
+                    log_msg(
+                        "INFO",
+                        f"=== Epoch {self.current_epoch + 1} | "
+                        f"Step {completed}/{steps_per_epoch} 完成 ===",
+                    )
+
+                    # 提交新任务
+                    remaining = steps_per_epoch - completed - len(futures)
+                    if remaining > 0:
+                        parent = self._select_parent_node()
+                        futures.add(executor.submit(self._step_task, parent))
 
         return True
 
-    def _check_time_limit(self) -> bool:
-        """检查是否达到时间限制。
+    def _step_task(self, parent_node: Optional[Node]) -> Optional[Node]:
+        """执行单个搜索任务（线程安全）。
+
+        Args:
+            parent_node: 父节点（None 表示初稿模式）
 
         Returns:
-            是否已达时间限制
-        """
-        elapsed_time = time.time() - self.start_time
-        if elapsed_time >= self.config.agent.time_limit:
-            log_msg(
-                "INFO",
-                f"已达时间限制 {self.config.agent.time_limit}s，停止运行",
-            )
-            return True
-        return False
-
-    def step(self) -> None:
-        """单步执行流程。
-
-        流程：
-        1. 清理 submission 目录
-        2. 选择父节点
-        3. 调用 Agent 生成代码
-        4. 执行代码
-        5. Review 评估
-        6. 保存节点代码和输出
-        7. 更新 Journal 和 best_node
+            生成的节点
         """
         try:
-            # Phase 1: 准备环境
+            # Phase 1: 选择 Agent（随机选择）
+            agent = random.choice(self.agents)
+            log_msg(
+                "INFO",
+                f"{agent.name} 开始 {'explore' if parent_node is None else 'improve'} (parent_id={parent_node.id[:8] if parent_node else None})",
+            )
+
+            # Phase 2: 准备环境
             self._prepare_step()
 
-            # Phase 2: 选择父节点
-            parent_node = self._select_parent_node()
-
             # Phase 3: 生成代码
+            with self.journal_lock:
+                current_step = len(self.journal.nodes)
+
             context = AgentContext(
-                task_type="explore",
+                task_type="explore" if parent_node is None else "improve",
                 parent_node=parent_node,
                 journal=self.journal,
                 config=self.config,
                 start_time=self.start_time,
-                current_step=self.current_step,
+                current_step=current_step,
                 task_desc=self.task_desc,
             )
-            result = self.agent.generate(context)
+
+            result = agent.generate(context)
 
             if not result.success or result.node is None:
-                log_msg("WARNING", f"Agent 生成失败: {result.error}")
-                return
+                log_msg("WARNING", f"{agent.name} 生成失败: {result.error}")
+                return None
 
             node = result.node
 
-            # Phase 4: 执行代码
+            # Phase 4: 执行代码（并行安全）
             exec_result = self._execute_code(node.code, node.id)
             node.term_out = "\n".join(exec_result.term_out)
             node.exec_time = exec_result.exec_time
@@ -257,18 +296,40 @@ class Orchestrator:
             # Phase 5: Review 评估
             self._review_node(node)
 
-            # Phase 6: 保存节点代码和输出
-            self._save_node_solution(node)
+            # Phase 6: 保存节点
+            with self.save_lock:
+                self._save_node_solution(node)
 
-            # Phase 7: 更新状态
-            self.journal.append(node)
-            self._update_best_node(node)
+            # Phase 7: 线程安全追加到 Journal
+            with self.journal_lock:
+                self.journal.append(node)
+                self._update_best_node(node)
 
-            # Phase 8: 打印评估结果
+            # Phase 8: 打印结果
             self._print_node_summary(node)
 
+            log_msg(
+                "INFO",
+                f"{agent.name} 完成 {'explore' if parent_node is None else 'improve'}: is_buggy={node.is_buggy}, exec_time={node.exec_time:.2f}s",
+            )
+
+            return node
+
         except Exception as e:
-            log_exception(e, "Orchestrator step() 执行失败")
+            log_exception(e, "Orchestrator _step_task() 执行失败")
+            return None
+
+    def _check_time_limit(self) -> bool:
+        """检查是否达到时间限制。
+
+        Returns:
+            是否已达时间限制
+        """
+        elapsed_time = time.time() - self.start_time
+        if elapsed_time >= self.config.agent.time_limit:
+            log_msg("INFO", f"已达时间限制 {self.config.agent.time_limit}s，停止运行")
+            return True
+        return False
 
     def _select_parent_node(self) -> Optional[Node]:
         """选择父节点（搜索策略）。
@@ -283,53 +344,48 @@ class Orchestrator:
             - buggy node: 修复模式
             - best node: 改进模式
         """
-        # Phase 1: 初稿模式（draft 数量不足）
-        if len(self.journal.draft_nodes) < self.config.search.num_drafts:
-            log_msg("INFO", "[search_policy] 初稿模式")
-            return None
+        with self.journal_lock:
+            # Phase 1: 初稿模式
+            if len(self.journal.draft_nodes) < self.config.search.num_drafts:
+                log_msg("INFO", "[search_policy] 初稿模式")
+                return None
 
-        # Phase 2: 修复模式（概率触发，优先修复 buggy 叶子节点）
-        if random.random() < self.config.search.debug_prob:
-            # 构建 DAG 以获取 children_ids
-            self.journal.build_dag()
+            # Phase 2: 修复模式
+            if random.random() < self.config.search.debug_prob:
+                self.journal.build_dag()
+                buggy_leaves = [
+                    n for n in self.journal.buggy_nodes if not n.children_ids
+                ]
 
-            # 查找 buggy 叶子节点
-            buggy_leaves = [n for n in self.journal.buggy_nodes if not n.children_ids]
+                if buggy_leaves:
+                    node = random.choice(buggy_leaves)
+                    log_msg("INFO", f"[search_policy] 修复模式: 节点 {node.id[:8]}")
+                    return node
 
-            if buggy_leaves:
-                node = random.choice(buggy_leaves)
-                log_msg("INFO", f"[search_policy] 修复模式: 节点 {node.id[:8]}")
-                return node
-
-        # Phase 3: 改进模式（选择 best_node）
-        best = self.journal.get_best_node(only_good=True)
-        if best:
-            log_msg("INFO", f"[search_policy] 改进模式: 节点 {best.id[:8]}")
-            return best
-        else:
-            log_msg("INFO", "[search_policy] 初稿模式（无可用节点）")
-            return None
+            # Phase 3: 改进模式
+            best = self.journal.get_best_node(only_good=True)
+            if best:
+                log_msg("INFO", f"[search_policy] 改进模式: 节点 {best.id[:8]}")
+                return best
+            else:
+                log_msg("INFO", "[search_policy] 初稿模式（无可用节点）")
+                return None
 
     def _prepare_step(self) -> None:
-        """准备单步执行环境。
+        """准备单步执行环境（线程安全）。
 
-        清理 submission 目录，避免文件冲突。
+        Note: submission 目录不再清空，因为每个节点使用独立的 submission_{node_id}.csv
         """
+        # submission 目录确保存在
         submission_dir = self.config.project.workspace_dir / "submission"
-        if submission_dir.exists():
-            # 清空目录（保留目录本身）
-            for item in submission_dir.iterdir():
-                if item.is_file():
-                    item.unlink()
-                elif item.is_dir():
-                    shutil.rmtree(item)
+        submission_dir.mkdir(exist_ok=True)
 
     def _execute_code(self, code: str, node_id: str) -> ExecutionResult:
         """执行代码。
 
         Args:
             code: Python 代码字符串
-            node_id: 节点 ID（用于重写 submission 路径）
+            node_id: 节点 ID
 
         Returns:
             ExecutionResult 对象
@@ -337,66 +393,295 @@ class Orchestrator:
         # 使用 WorkspaceManager 重写 submission 路径
         modified_code = self.workspace.rewrite_submission_path(code, node_id)
 
-        # 执行代码（reset_session=True 确保每次独立执行）
-        return self.interpreter.run(modified_code, reset_session=True)
+        # 执行代码（并行安全）
+        return self.interpreter.run(modified_code, node_id=node_id, reset_session=True)
 
     def _review_node(self, node: Node) -> None:
-        """Review 评估节点（使用 Function Calling）。
+        """Review 评估节点（多层验证 + 回退机制）。
+
+        流程:
+        1. 检查 submission 文件是否存在
+        2. 调用 LLM Function Calling
+        3. 失败时回退到无 Tool 方案
+        4. 验证 LLM 响应
+        5. 检测异常指标值
+        6. 综合判断 is_buggy
+        7. 强耦合：is_buggy=True 时 metric_value=None
 
         Args:
             node: 待评估的节点对象
-
-        Side effects:
-            更新 node 的 analysis, is_buggy, metric_value, lower_is_better 字段
         """
+        # Phase 1: 文件存在检查
+        has_submission = self._check_submission_exists(node.id)
+
+        # Phase 2: LLM Function Calling
+        review_data = None
         try:
-            # 构建 messages
-            messages_content = self._build_review_messages(node)
-
-            # 获取 tool schema
-            tool_schema = self._get_review_tool_schema()
-
-            # 调用 LLM（Function Calling）
-            response = backend_query(
-                system_message=None,
-                user_message=messages_content,
-                model=self.config.llm.feedback.model,
-                provider=self.config.llm.feedback.provider,
-                temperature=self.config.llm.feedback.temperature,
-                api_key=self.config.llm.feedback.api_key,
-                base_url=getattr(self.config.llm.feedback, "base_url", None),
-                tools=[{"type": "function", "function": tool_schema}],
-                tool_choice={
-                    "type": "function",
-                    "function": {"name": "submit_review"},
-                },
-            )
-
-            # 解析 Function Calling 响应（已经是 JSON 字符串）
-            review_data = json.loads(response)
-
-            # 更新节点信息
-            node.analysis = review_data.get("summary", "")
-            node.is_buggy = (
-                review_data.get("is_bug", False) or node.exc_type is not None
-            )
-            node.metric_value = review_data.get("metric")
-            node.lower_is_better = review_data.get("lower_is_better", False)
-
-            log_msg(
-                "INFO",
-                f"Review 完成: 节点 {node.id[:8]}, metric={node.metric_value}, lower_is_better={node.lower_is_better}",
-            )
-
+            review_data = self._call_review_with_tool(node)
         except Exception as e:
-            log_exception(e, "Review 评估失败")
-            node.analysis = f"Review 失败: {str(e)}"
-            node.is_buggy = True
+            log_msg("WARNING", f"Function Calling 失败: {e}，尝试回退方案")
+
+        # Phase 3: 回退到无 Tool 方案
+        if review_data is None:
+            try:
+                review_data = self._review_node_without_tool(node)
+            except Exception as e:
+                log_exception(e, "回退方案也失败")
+                review_data = {
+                    "is_bug": True,
+                    "metric": None,
+                    "summary": f"Review 完全失败: {str(e)}",
+                    "lower_is_better": False,
+                    "has_csv_submission": False,
+                }
+
+        # Phase 4: 验证响应
+        review_data = self._validate_review_response(review_data, node, has_submission)
+
+        # Phase 5: 异常值检测
+        metric_value = review_data.get("metric")
+        is_metric_plausible = True
+        if metric_value is not None and self.best_node is not None:
+            is_metric_plausible = self._check_metric_plausibility(metric_value)
+            if not is_metric_plausible:
+                log_msg(
+                    "WARNING",
+                    f"节点 {node.id[:8]} 指标值异常 ({metric_value})，标记为 buggy",
+                )
+
+        # Phase 6: 综合判断 is_buggy（5 条件 OR）
+        node.is_buggy = (
+            review_data.get("is_bug", False)  # 条件 1: LLM 判断
+            or node.exc_type is not None  # 条件 2: 执行异常
+            or metric_value is None  # 条件 3: 指标缺失
+            or not has_submission  # 条件 4: 文件不存在
+            or not is_metric_plausible  # 条件 5: 指标异常
+        )
+
+        # Phase 7: 强耦合 - is_buggy=True 时 metric_value=None
+        if node.is_buggy:
             node.metric_value = None
-            node.lower_is_better = False
+            log_msg("INFO", f"节点 {node.id[:8]} 标记为 BUGGY，metric_value 设为 None")
+        else:
+            node.metric_value = metric_value
+
+        node.lower_is_better = review_data.get("lower_is_better", False)
+        node.analysis = review_data.get("summary", "")
+
+        log_msg(
+            "INFO",
+            f"Review 完成: 节点 {node.id[:8]}, is_buggy={node.is_buggy}, "
+            f"metric={node.metric_value}, lower_is_better={node.lower_is_better}",
+        )
+
+    def _call_review_with_tool(self, node: Node) -> Dict:
+        """使用 Function Calling 调用 Review LLM。
+
+        Args:
+            node: 待评估的节点
+
+        Returns:
+            LLM 返回的 review 数据 dict
+
+        Raises:
+            Exception: LLM 调用或解析失败
+        """
+        messages_content = self._build_review_messages(node)
+        tool_schema = self._get_review_tool_schema()
+
+        response = backend_query(
+            system_message=None,
+            user_message=messages_content,
+            model=self.config.llm.feedback.model,
+            provider=self.config.llm.feedback.provider,
+            temperature=self.config.llm.feedback.temperature,
+            api_key=self.config.llm.feedback.api_key,
+            base_url=getattr(self.config.llm.feedback, "base_url", None),
+            tools=[{"type": "function", "function": tool_schema}],
+            tool_choice={
+                "type": "function",
+                "function": {"name": "submit_review"},
+            },
+        )
+
+        return json.loads(response)
+
+    def _review_node_without_tool(self, node: Node) -> Dict:
+        """回退方案：无 Tool 的 LLM 调用 + JSON 提取。
+
+        参考: ML-Master parse_exec_result_without_tool()
+
+        Args:
+            node: 待评估的节点
+
+        Returns:
+            解析后的 review 数据 dict
+        """
+        from utils.response import extract_review
+
+        prompt = self._build_review_prompt_without_tool(node)
+
+        response_text = backend_query(
+            system_message=None,
+            user_message=prompt,
+            model=self.config.llm.feedback.model,
+            provider=self.config.llm.feedback.provider,
+            temperature=self.config.llm.feedback.temperature,
+            api_key=self.config.llm.feedback.api_key,
+            base_url=getattr(self.config.llm.feedback, "base_url", None),
+            tools=None,  # 无 Tool
+            tool_choice=None,
+        )
+
+        return extract_review(response_text)
+
+    def _build_review_prompt_without_tool(self, node: Node) -> str:
+        """构建回退方案的 Prompt（要求 LLM 输出 JSON）。
+
+        参考: ML-Master parse_exec_result_without_tool()
+
+        Args:
+            node: 节点对象
+
+        Returns:
+            Prompt 字符串
+        """
+        return f"""You are evaluating a machine learning solution.
+
+**Task Description:**
+{self.task_desc}
+
+**Code:**
+```python
+{node.code}
+```
+
+**Execution Output:**
+```
+{node.term_out}
+```
+
+**Execution Status:**
+- Execution Time: {node.exec_time:.2f}s
+- Exception: {node.exc_type or "None"}
+
+---
+
+# Evaluation Instructions
+
+You must evaluate the output and submit your review in the following JSON format wrapped in ```json ... ```:
+
+```json
+{{
+    "is_bug": true,
+    "has_csv_submission": false,
+    "summary": "The code encountered an error during execution. The CSV file was not generated.",
+    "metric": null,
+    "lower_is_better": true
+}}
+```
+
+**Field Descriptions:**
+- **is_bug** (boolean): true if execution failed or has bugs, otherwise false.
+- **has_csv_submission** (boolean): true if submission.csv was saved in ./submission/ directory.
+- **summary** (string): 2-3 sentences describing the results. If buggy, explain the error.
+- **metric** (number or null): The validation metric value. Set to null if execution failed.
+- **lower_is_better** (boolean): true if lower metric is better (e.g., RMSE), false otherwise (e.g., Accuracy).
+
+Please analyze and provide your JSON review:
+"""
+
+    def _validate_review_response(
+        self, response: Dict, node: Node, has_submission: bool
+    ) -> Dict:
+        """验证 LLM 返回的 review 数据。
+
+        验证规则:
+        1. metric 必须是 float/int/None
+        2. is_bug=True 时，metric 应为 None
+        3. has_csv_submission 与实际文件存在性交叉验证
+
+        Args:
+            response: LLM 返回的原始 response
+            node: 节点对象
+            has_submission: 实际文件是否存在
+
+        Returns:
+            验证/修正后的 response dict
+        """
+        validated = dict(response)
+
+        # 规则 1: 类型检查
+        metric = validated.get("metric")
+        if metric is not None and not isinstance(metric, (float, int)):
+            log_msg("WARNING", f"metric 类型无效: {type(metric)}，设为 None")
+            validated["metric"] = None
+        elif isinstance(metric, (float, int)):
+            validated["metric"] = float(metric)
+
+        # 规则 2: is_bug 与 metric 一致性
+        if validated.get("is_bug", False) and validated.get("metric") is not None:
+            log_msg("WARNING", "is_bug=True 但 metric 非空，强制设为 None")
+            validated["metric"] = None
+
+        # 规则 3: 文件存在交叉验证
+        llm_says_has_csv = validated.get("has_csv_submission", False)
+        if llm_says_has_csv and not has_submission:
+            log_msg("WARNING", "LLM 声称有 submission 但文件不存在，覆盖为 False")
+            validated["has_csv_submission"] = False
+
+        return validated
+
+    def _check_submission_exists(self, node_id: str) -> bool:
+        """检查 submission 文件是否存在。
+
+        Args:
+            node_id: 节点 ID
+
+        Returns:
+            文件是否存在
+        """
+        submission_path = (
+            self.config.project.workspace_dir
+            / "submission"
+            / f"submission_{node_id}.csv"
+        )
+        exists = submission_path.exists()
+        if not exists:
+            log_msg("DEBUG", f"submission_{node_id}.csv 不存在")
+        return exists
+
+    def _check_metric_plausibility(self, metric: float) -> bool:
+        """检测指标是否在合理范围内（防止 LLM 幻觉）。
+
+        参考: ML-Master check_metric_valid()
+
+        规则: 如果新指标与 best_node 指标相差超过 upper_bound 倍，视为异常。
+
+        Args:
+            metric: 待检测的指标值
+
+        Returns:
+            True 如果在合理范围内，False 如果异常
+        """
+        if self.best_node is None or self.best_node.metric_value is None:
+            return True  # 无参考值，默认通过
+
+        best_value = self.best_node.metric_value
+
+        # 获取阈值（默认 50，支持配置覆盖）
+        upper_bound = getattr(self.config.search, "invalid_metric_upper_bound", 50)
+
+        # 避免除零
+        if best_value == 0 or metric == 0:
+            return abs(best_value - metric) <= upper_bound
+
+        # 相对比率检查
+        ratio = max(abs(best_value), abs(metric)) / min(abs(best_value), abs(metric))
+        return ratio <= upper_bound
 
     def _build_review_messages(self, node: Node) -> str:
-        """构建 Review 消息（用于 Function Calling）。
+        """构建 Review 消息。
 
         Args:
             node: 节点对象
@@ -467,53 +752,46 @@ Please analyze the execution results and call the `submit_review` function with 
         }
 
     def _update_best_node(self, node: Node) -> None:
-        """更新最佳节点（支持 lower_is_better）。
+        """更新最佳节点（线程安全，需在 journal_lock 内调用）。
 
-        策略：
-        1. 优先选择非 buggy 节点
-        2. 如果都是 buggy，选择指标最好的（作为参考）
-        3. 如果没有指标，不更新
+        修改点：
+        1. 跳过 metric_value=None 的节点
+        2. 跳过 buggy 节点
+        3. 使用 _is_better() 比较
 
         Args:
             node: 候选节点对象
         """
-        # 跳过无指标节点
+        # 跳过无效指标
         if node.metric_value is None:
             return
 
-        # 初始化 best_node（即使是 buggy）
+        # 跳过 buggy 节点（双重保险，因为 is_buggy=True 时 metric_value 应为 None）
+        if node.is_buggy:
+            return
+
         if self.best_node is None:
             log_msg(
                 "INFO",
-                f"初始化最佳节点: {node.id[:8]}, metric={node.metric_value}, buggy={node.is_buggy}",
+                f"初始化最佳节点: {node.id[:8]}, metric={node.metric_value}",
             )
             self.best_node = node
             self._save_best_solution(node)
             return
 
-        # 优先级：非buggy > buggy
-        current_is_good = not node.is_buggy
-        best_is_good = not self.best_node.is_buggy
+        # best_node 也应该是 good 节点
+        if self.best_node.is_buggy or self.best_node.metric_value is None:
+            log_msg("INFO", f"替换无效的 best_node: {node.id[:8]}")
+            self.best_node = node
+            self._save_best_solution(node)
+            return
 
-        should_update = False
-
-        if current_is_good and not best_is_good:
-            # 当前节点成功，最佳节点失败 -> 必须更新
-            should_update = True
-        elif not current_is_good and best_is_good:
-            # 当前节点失败，最佳节点成功 -> 不更新
-            should_update = False
-        else:
-            # 都成功 或 都失败 -> 比较指标
-            if self._is_better(node, self.best_node):
-                should_update = True
-
-        if should_update:
+        # 正常比较
+        if self._is_better(node, self.best_node):
             direction = "↓" if node.lower_is_better else "↑"
-            status = "✅ 成功" if current_is_good else "⚠️  失败（参考）"
             log_msg(
                 "INFO",
-                f"新的最佳节点: {node.id[:8]}, metric={node.metric_value} {direction}, {status}",
+                f"新的最佳节点: {node.id[:8]}, metric={node.metric_value} {direction}",
             )
             self.best_node = node
             self._save_best_solution(node)
@@ -528,11 +806,9 @@ Please analyze the execution results and call the `submit_review` function with 
             best_dir = self.config.project.workspace_dir / "best_solution"
             best_dir.mkdir(exist_ok=True, parents=True)
 
-            # 保存代码
             with open(best_dir / "solution.py", "w", encoding="utf-8") as f:
                 f.write(node.code)
 
-            # 复制 submission 文件（如果存在）
             submission_src = (
                 self.config.project.workspace_dir
                 / "submission"
@@ -553,7 +829,6 @@ Please analyze the execution results and call the `submit_review` function with 
             node: 节点对象
         """
         try:
-            # 创建节点专属目录
             node_dir = (
                 self.config.project.workspace_dir
                 / "working"
@@ -561,11 +836,9 @@ Please analyze the execution results and call the `submit_review` function with 
             )
             node_dir.mkdir(exist_ok=True, parents=True)
 
-            # 保存代码
             with open(node_dir / "solution.py", "w", encoding="utf-8") as f:
                 f.write(node.code)
 
-            # 保存执行输出
             with open(node_dir / "output.txt", "w", encoding="utf-8") as f:
                 f.write(f"执行时间: {node.exec_time:.2f}s\n")
                 f.write(f"异常类型: {node.exc_type or 'None'}\n")
@@ -577,7 +850,6 @@ Please analyze the execution results and call the `submit_review` function with 
                     f.write("\n\n=== 异常信息 ===\n")
                     f.write(node.exc_info)
 
-            # 复制 submission 文件（如果存在）
             submission_src = (
                 self.config.project.workspace_dir
                 / "submission"
@@ -592,12 +864,11 @@ Please analyze the execution results and call the `submit_review` function with 
             log_exception(e, f"保存节点 {node.id[:8]} 失败")
 
     def _print_node_summary(self, node: Node) -> None:
-        """打印节点评估摘要（日志+控制台）。
+        """打印节点评估摘要。
 
         Args:
             node: 节点对象
         """
-        # 构建评估信息
         status = "❌ BUGGY" if node.is_buggy else "✅ SUCCESS"
         metric_str = f"{node.metric_value}" if node.metric_value is not None else "N/A"
         direction = "↓ (越小越好)" if node.lower_is_better else "↑ (越大越好)"
@@ -608,15 +879,7 @@ Please analyze the execution results and call the `submit_review` function with 
             f"执行: {node.exec_time:.2f}s"
         )
 
-        # 打印到日志和控制台
         log_msg("INFO", f"[评估] {summary}")
-        print(f"\n  {summary}")
-
-        # 如果是最佳节点，额外高亮
-        if not node.is_buggy and node.metric_value is not None:
-            if self.best_node is None or self._is_better(node, self.best_node):
-                print("  🎉 新的最佳节点！")
-                log_msg("INFO", f"[最佳] 节点 {node.id[:8]} 成为新的最佳方案")
 
     def _is_better(self, node: Node, best_node: Node) -> bool:
         """判断节点是否优于最佳节点。
@@ -635,3 +898,32 @@ Please analyze the execution results and call the `submit_review` function with 
             return node.metric_value < best_node.metric_value
         else:
             return node.metric_value > best_node.metric_value
+
+
+# 兼容旧接口的工厂函数
+def create_orchestrator(
+    agent: BaseAgent,
+    config: Config,
+    journal: Journal,
+    task_desc: str,
+    agent_evolution: Optional["AgentEvolution"] = None,
+) -> Orchestrator:
+    """兼容旧接口的工厂函数（单 Agent）。
+
+    Args:
+        agent: 单个 Agent
+        config: 配置
+        journal: Journal
+        task_desc: 任务描述
+        agent_evolution: Agent 进化器
+
+    Returns:
+        Orchestrator 实例
+    """
+    return Orchestrator(
+        agents=[agent],
+        config=config,
+        journal=journal,
+        task_desc=task_desc,
+        agent_evolution=agent_evolution,
+    )

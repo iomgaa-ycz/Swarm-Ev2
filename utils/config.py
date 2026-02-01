@@ -95,6 +95,7 @@ class SearchConfig:
     debug_prob: float
     num_drafts: int
     parallel_num: int
+    invalid_metric_upper_bound: int = 50  # 异常值检测阈值（默认 50 倍）
 
 
 @dataclass
@@ -399,6 +400,7 @@ def validate_config(cfg: DictConfig) -> Config:
                 debug_prob=0.0,
                 num_drafts=0,
                 parallel_num=0,
+                invalid_metric_upper_bound=50,
             ),
             logging=LoggingConfig(level="", console_output=False, file_output=False),
             evolution=EvolutionConfig(

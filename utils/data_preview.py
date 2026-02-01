@@ -121,13 +121,17 @@ def preview_csv(p: Path, file_name: str, simple: bool = True) -> str:
           - 字符串列：唯一值数量 + 前 4 个常见值
     """
     try:
-        df = pd.read_csv(p)
+        # 先获取总行数（快速方法）
+        total_rows = get_file_len_size(p)[0]
+
+        # 只读取前 1000 行用于预览（避免大文件超时）
+        df = pd.read_csv(p, nrows=1000)
     except Exception as e:
         log_msg("WARNING", f"读取 CSV 文件 {file_name} 失败: {e}")
         return f"-> {file_name} (无法读取: {e})"
 
     out = []
-    out.append(f"-> {file_name} has {df.shape[0]} rows and {df.shape[1]} columns.")
+    out.append(f"-> {file_name} has {total_rows} rows and {df.shape[1]} columns.")
 
     if simple:
         # 简化模式：只显示列名

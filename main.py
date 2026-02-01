@@ -17,7 +17,8 @@ from utils.workspace_builder import build_workspace, validate_dataset
 from utils.prompt_builder import PromptBuilder
 from agents.coder_agent import CoderAgent
 from agents.base_agent import BaseAgent
-from core.executor.interpreter import Interpreter
+
+# Interpreter 由 Orchestrator 内部创建和管理
 from core.executor.workspace import WorkspaceManager
 from core.state import Journal, Node
 from core.orchestrator import Orchestrator
@@ -29,18 +30,15 @@ from core.evolution import (
 )
 
 
-def initialize_agents(
-    config: Config, prompt_builder: PromptBuilder, interpreter: Interpreter
-) -> List[BaseAgent]:
+def initialize_agents(config: Config, prompt_builder: PromptBuilder) -> List[BaseAgent]:
     """初始化 Agent 种群。
 
     Args:
         config: 全局配置
         prompt_builder: Prompt 构建器
-        interpreter: 代码执行器
 
     Returns:
-        Agent 列表（4 个 Agent）
+        Agent 列表
     """
     num_agents = config.evolution.agent.num_agents
     agents = []
@@ -50,7 +48,6 @@ def initialize_agents(
             name=f"agent_{i}",
             config=config,
             prompt_builder=prompt_builder,
-            interpreter=interpreter,
         )
         agents.append(agent)
 
@@ -62,7 +59,6 @@ def initialize_evolution_components(
     agents: List[BaseAgent],
     config: Config,
     workspace: WorkspaceManager,
-    interpreter: Interpreter,
 ) -> Tuple[ExperiencePool, TaskDispatcher, GeneRegistry, Optional[AgentEvolution]]:
     """初始化进化算法组件。
 
@@ -70,7 +66,6 @@ def initialize_evolution_components(
         agents: Agent 列表
         config: 全局配置
         workspace: 工作空间管理器
-        interpreter: 代码执行器
 
     Returns:
         (experience_pool, task_dispatcher, gene_registry, agent_evolution)
@@ -385,22 +380,16 @@ def main() -> None:
         init_logger(str(log_dir))
         log_msg("INFO", "日志系统初始化完成")
 
-        # 初始化 Interpreter
-        interpreter = Interpreter(
-            working_dir=str(config.project.workspace_dir / "working"),
-            timeout=config.execution.timeout,
-        )
-        log_msg("INFO", "代码执行器初始化完成")
-
         # 工作空间管理器已在 Phase 2 初始化
+        # Interpreter 由 Orchestrator 内部创建和管理
         log_msg("INFO", "工作空间管理器已就绪")
 
         # 初始化 PromptBuilder
         prompt_builder = PromptBuilder(obfuscate=False)
         log_msg("INFO", "Prompt 构建器初始化完成")
 
-        # 初始化 Agent 种群
-        agents = initialize_agents(config, prompt_builder, interpreter)
+        # 初始化 Agent 种群（不再需要 interpreter，由 Orchestrator 管理）
+        agents = initialize_agents(config, prompt_builder)
 
         # 初始化进化组件
         experience_pool, task_dispatcher, gene_registry, agent_evolution = (
@@ -408,7 +397,6 @@ def main() -> None:
                 agents=agents,
                 config=config,
                 workspace=workspace,
-                interpreter=interpreter,
             )
         )
 
@@ -416,18 +404,15 @@ def main() -> None:
         journal = Journal()
         log_msg("INFO", "Journal 初始化完成")
 
-        # 选择主 Agent（用于 Orchestrator）
-        main_agent = agents[0]
-
-        # 初始化 Orchestrator（使用双层进化模式）
+        # 初始化 Orchestrator（使用双层进化模式 + 多 Agent 并行）
         orchestrator = Orchestrator(
-            agent=main_agent,
+            agents=agents,  # 传递所有 Agent，支持并行执行
             config=config,
             journal=journal,
             task_desc=task_description,
             agent_evolution=agent_evolution,
         )
-        log_msg("INFO", "Orchestrator 初始化完成（双层进化模式）")
+        log_msg("INFO", "Orchestrator 初始化完成（双层进化模式 + 并行执行）")
 
         print("✅ 所有组件初始化完成")
 

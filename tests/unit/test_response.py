@@ -2,7 +2,13 @@
 utils/response.py 的单元测试。
 """
 
-from utils.response import extract_code, extract_text_up_to_code, trim_long_string
+import pytest
+from utils.response import (
+    extract_code,
+    extract_text_up_to_code,
+    trim_long_string,
+    extract_review,
+)
 
 
 class TestExtractCode:
@@ -82,3 +88,81 @@ class TestTrimLongString:
         text = "a" * 100
         result = trim_long_string(text, max_length=100)
         assert result == text
+
+
+class TestExtractReview:
+    """测试 extract_review 函数。"""
+
+    def test_extract_review_json_block(self):
+        """测试从 ```json ``` 代码块提取。"""
+        text = """分析结果如下：
+```json
+{"is_bug": false, "metric": 0.85, "summary": "模型训练成功"}
+```
+"""
+        result = extract_review(text)
+        assert result["is_bug"] is False
+        assert result["metric"] == 0.85
+        assert result["summary"] == "模型训练成功"
+
+    def test_extract_review_generic_block(self):
+        """测试从无语言标记的代码块提取。"""
+        text = """结果：
+```
+{"is_bug": true, "metric": null, "summary": "执行失败"}
+```
+"""
+        result = extract_review(text)
+        assert result["is_bug"] is True
+        assert result["metric"] is None
+        assert result["summary"] == "执行失败"
+
+    def test_extract_review_bare_json(self):
+        """测试提取裸 JSON 对象。"""
+        text = '结果: {"is_bug": false, "metric": 0.92, "lower_is_better": false}'
+        result = extract_review(text)
+        assert result["is_bug"] is False
+        assert result["metric"] == 0.92
+        assert result["lower_is_better"] is False
+
+    def test_extract_review_multiple_candidates(self):
+        """测试多个候选时选择第一个有效的。"""
+        text = """
+```json
+invalid json here
+```
+
+```json
+{"is_bug": false, "metric": 0.75}
+```
+"""
+        result = extract_review(text)
+        assert result["metric"] == 0.75
+
+    def test_extract_review_no_json_raises(self):
+        """测试无 JSON 时抛出 ValueError。"""
+        text = "这是一段没有 JSON 的文本"
+        with pytest.raises(ValueError, match="无法从文本中提取 JSON"):
+            extract_review(text)
+
+    def test_extract_review_invalid_json_raises(self):
+        """测试 JSON 解析失败时抛出 ValueError。"""
+        text = """
+```json
+{invalid: json, syntax}
+```
+"""
+        with pytest.raises(ValueError, match="JSON 解析失败"):
+            extract_review(text)
+
+    def test_extract_review_with_nested_braces(self):
+        """测试包含嵌套大括号的 JSON。"""
+        text = """
+```json
+{"is_bug": false, "details": {"accuracy": 0.95}, "metric": 0.95}
+```
+"""
+        result = extract_review(text)
+        assert result["is_bug"] is False
+        assert result["details"]["accuracy"] == 0.95
+        assert result["metric"] == 0.95

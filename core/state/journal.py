@@ -142,7 +142,11 @@ class Journal(DataClassJsonMixin):
         return [n for n in self.nodes if not n.is_buggy]
 
     def get_best_node(self, only_good: bool = True) -> Optional[Node]:
-        """返回评估指标最高的节点。
+        """返回评估指标最优的节点。
+
+        正确处理 lower_is_better：
+        - lower_is_better=True: 返回 metric_value 最小的节点（如 RMSE）
+        - lower_is_better=False: 返回 metric_value 最大的节点（如 Accuracy）
 
         Args:
             only_good: 是否只考虑无 bug 的节点
@@ -158,17 +162,28 @@ class Journal(DataClassJsonMixin):
         if not valid_nodes:
             return None
 
-        return max(valid_nodes, key=lambda n: n.metric_value)  # type: ignore
+        # 使用第一个节点的 lower_is_better 作为参考
+        # 假设同一任务中所有节点的 lower_is_better 一致
+        reference = valid_nodes[0]
+
+        if reference.lower_is_better:
+            return min(valid_nodes, key=lambda n: n.metric_value)  # type: ignore
+        else:
+            return max(valid_nodes, key=lambda n: n.metric_value)  # type: ignore
 
     def get_best_k(self, k: int, only_good: bool = True) -> list[Node]:
         """返回评估指标 Top-K 的节点。
+
+        正确处理 lower_is_better：
+        - lower_is_better=True: 按 metric_value 升序排列（最小的在前）
+        - lower_is_better=False: 按 metric_value 降序排列（最大的在前）
 
         Args:
             k: 返回前 k 个节点
             only_good: 是否只考虑无 bug 的节点
 
         Returns:
-            Top-K 节点列表，按 metric_value 降序排列
+            Top-K 节点列表，按最优到次优排列
 
         时间复杂度: O(n log n)
 
@@ -180,8 +195,6 @@ class Journal(DataClassJsonMixin):
             >>> top_3 = journal.get_best_k(k=3)
             >>> len(top_3)
             3
-            >>> top_3[0].metric_value >= top_3[1].metric_value
-            True
         """
         candidates = self.good_nodes if only_good else self.nodes
         valid_nodes = [n for n in candidates if n.metric_value is not None]
@@ -189,11 +202,17 @@ class Journal(DataClassJsonMixin):
         if not valid_nodes:
             return []
 
-        # 按 metric_value 降序排序
+        # 使用第一个节点的 lower_is_better 作为参考
+        # 假设同一任务中所有节点的 lower_is_better 一致
+        reference = valid_nodes[0]
+
+        # 根据 lower_is_better 决定排序方向
+        # lower_is_better=True: 升序（小值在前）
+        # lower_is_better=False: 降序（大值在前）
         sorted_nodes = sorted(
             valid_nodes,
             key=lambda n: n.metric_value,  # type: ignore
-            reverse=True,
+            reverse=not reference.lower_is_better,
         )
 
         return sorted_nodes[:k]
@@ -279,5 +298,3 @@ class Journal(DataClassJsonMixin):
                 summaries.append("\n".join(parts))
 
         return "\n\n-------------------------------\n\n".join(summaries)
-
-
