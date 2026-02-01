@@ -44,3 +44,4 @@ datasets/
 tests/outputs/
 prepared.zip
 .scripts/update_codemaps.py
+embedding-models/
