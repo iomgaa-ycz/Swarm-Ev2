@@ -195,11 +195,13 @@ class Interpreter:
 
         return code
 
-    def _child_proc_setup(self, result_outq: Queue) -> None:
+    @staticmethod
+    def _child_proc_setup(result_outq: Queue, working_dir: Path) -> None:
         """子进程初始化设置。
 
         Args:
             result_outq: 结果输出队列
+            working_dir: 工作目录
         """
         try:
             # 禁用警告
@@ -208,10 +210,10 @@ class Interpreter:
             warnings.filterwarnings("ignore")
 
             # 设置工作目录
-            os.chdir(str(self.working_dir))
+            os.chdir(str(working_dir))
 
             # 添加到 sys.path
-            sys.path.insert(0, str(self.working_dir))
+            sys.path.insert(0, str(working_dir))
 
             # 重定向 stdout/stderr
             sys.stdout = sys.stderr = RedirectQueue(result_outq)
@@ -220,12 +222,14 @@ class Interpreter:
             result_outq.put(f"[子进程初始化错误] {traceback.format_exc()}")
             raise
 
+    @staticmethod
     def _run_session(
-        self,
         code_inq: Queue,
         result_outq: Queue,
         event_outq: Queue,
         process_id: int,
+        working_dir: Path,
+        agent_file_name: str,
     ) -> None:
         """子进程主循环（在独立进程中运行）。
 
@@ -234,8 +238,10 @@ class Interpreter:
             result_outq: 结果输出队列
             event_outq: 事件输出队列
             process_id: 进程 ID
+            working_dir: 工作目录
+            agent_file_name: 脚本文件名
         """
-        self._child_proc_setup(result_outq)
+        Interpreter._child_proc_setup(result_outq, working_dir)
 
         global_scope: dict = {"__name__": "__main__"}
 
@@ -243,10 +249,10 @@ class Interpreter:
             code, node_id = code_inq.get()
 
             # 确保在正确的工作目录
-            os.chdir(str(self.working_dir))
+            os.chdir(str(working_dir))
 
             # 写入临时脚本
-            script_path = self.working_dir / self.agent_file_name[process_id]
+            script_path = working_dir / agent_file_name
             with open(script_path, "w", encoding="utf-8") as f:
                 f.write(code)
 
@@ -254,13 +260,13 @@ class Interpreter:
 
             try:
                 exec(
-                    compile(code, self.agent_file_name[process_id], "exec"),
+                    compile(code, agent_file_name, "exec"),
                     global_scope,
                 )
                 event_outq.put(("state:finished", None, None, None))
             except BaseException as e:
                 tb_str, e_cls_name, exc_info, exc_stack = exception_summary(
-                    e, self.working_dir, self.agent_file_name[process_id]
+                    e, working_dir, agent_file_name
                 )
                 result_outq.put(tb_str)
 
@@ -292,12 +298,14 @@ class Interpreter:
         self.event_outq[process_id] = Queue()
 
         self.process[process_id] = Process(
-            target=self._run_session,
+            target=Interpreter._run_session,
             args=(
                 self.code_inq[process_id],
                 self.result_outq[process_id],
                 self.event_outq[process_id],
                 process_id,
+                self.working_dir,
+                self.agent_file_name[process_id],
             ),
         )
         self.process[process_id].start()
