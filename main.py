@@ -27,6 +27,7 @@ from core.evolution import (
     TaskDispatcher,
     GeneRegistry,
     AgentEvolution,
+    SolutionEvolution,
 )
 
 
@@ -411,8 +412,18 @@ def main() -> None:
             journal=journal,
             task_desc=task_description,
             agent_evolution=agent_evolution,
+            task_dispatcher=task_dispatcher,  # Phase 3 集成
+            experience_pool=experience_pool,  # Phase 3 集成
         )
         log_msg("INFO", "Orchestrator 初始化完成（双层进化模式 + 并行执行）")
+
+        # 初始化 SolutionEvolution（Phase 3）
+        solution_evolution = SolutionEvolution(
+            config=config,
+            journal=journal,
+            orchestrator=orchestrator,
+        )
+        log_msg("INFO", "SolutionEvolution 初始化完成（MVP 简化版）")
 
         print("✅ 所有组件初始化完成")
 
@@ -436,9 +447,43 @@ def main() -> None:
         print(f"  总步数: {num_epochs * steps_per_epoch}")
         print("")
 
-        best_node = orchestrator.run(
-            num_epochs=num_epochs,
-            steps_per_epoch=steps_per_epoch,
+        # MVP 实现：先运行 Orchestrator 收集初始种群，再运行 SolutionEvolution
+        best_node = None
+
+        for epoch in range(num_epochs):
+            log_msg("INFO", f"===== Epoch {epoch + 1}/{num_epochs} 开始 =====")
+
+            # [1] 运行 Orchestrator（生成初始/改进方案）
+            log_msg("INFO", f"运行 Orchestrator: {steps_per_epoch} 个 step")
+            orchestrator._run_single_epoch(steps_per_epoch)
+
+            # [2] 运行 SolutionEvolution（遗传算法）
+            log_msg("INFO", "运行 SolutionEvolution（遗传算法）")
+            epoch_best = solution_evolution.run_epoch(steps_per_epoch)
+
+            if epoch_best and (
+                not best_node or epoch_best.metric_value > (best_node.metric_value or 0)
+            ):
+                best_node = epoch_best
+
+            # [3] Agent 层进化（每 3 Epoch）
+            if agent_evolution and (epoch + 1) % 3 == 0:
+                log_msg("INFO", "触发 Agent 层进化")
+                agent_evolution.evolve(epoch)
+
+            # Epoch 结束日志
+            current_best = journal.get_best_node()
+            log_msg(
+                "INFO",
+                f"===== Epoch {epoch + 1}/{num_epochs} 完成 | "
+                f"最佳 metric: {current_best.metric_value if current_best else 'N/A'} =====",
+            )
+
+        # 最终使用 Journal 中的最佳节点
+        best_node = journal.get_best_node(only_good=True)
+        log_msg(
+            "INFO",
+            f"双层进化完成: best_node={'存在' if best_node else '不存在'}",
         )
 
         # ============================================================
