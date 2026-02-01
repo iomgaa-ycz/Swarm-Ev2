@@ -164,6 +164,13 @@ class EvolutionConfig:
 
 
 @dataclass
+class EnvironmentConfig:
+    """环境配置。"""
+
+    conda_env_name: str
+
+
+@dataclass
 class Config(Hashable):
     """顶层配置类。
 
@@ -177,6 +184,7 @@ class Config(Hashable):
     agent: AgentConfig
     search: SearchConfig
     logging: LoggingConfig
+    environment: EnvironmentConfig
     evolution: EvolutionConfig
 
     def __hash__(self) -> int:
@@ -403,6 +411,7 @@ def validate_config(cfg: DictConfig) -> Config:
                 invalid_metric_upper_bound=50,
             ),
             logging=LoggingConfig(level="", console_output=False, file_output=False),
+            environment=EnvironmentConfig(conda_env_name=""),
             evolution=EvolutionConfig(
                 experience_pool=ExperiencePoolConfig(
                     max_records=0,
@@ -456,6 +465,7 @@ def validate_config(cfg: DictConfig) -> Config:
         agent=AgentConfig(**cfg_dict["agent"]),
         search=SearchConfig(**cfg_dict["search"]),
         logging=LoggingConfig(**cfg_dict["logging"]),
+        environment=EnvironmentConfig(**cfg_dict["environment"]),
         evolution=EvolutionConfig(
             experience_pool=ExperiencePoolConfig(
                 **cfg_dict["evolution"]["experience_pool"]
