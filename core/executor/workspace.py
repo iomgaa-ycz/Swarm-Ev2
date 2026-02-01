@@ -1,7 +1,7 @@
 """
 工作空间管理模块。
 
-负责工作空间目录结构管理、文件路径重写、节点文件归档等功能。
+负责工作空间目录结构管理、文件路径重写、节点文件归档、数据预处理等功能。
 """
 
 import re
@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Optional, Any
 
 from utils.logger_system import log_msg
+from utils.file_utils import extract_archives, clean_up_dataset
 
 
 class WorkspaceManager:
@@ -179,3 +180,65 @@ class WorkspaceManager:
             shutil.rmtree(working_dir)
             working_dir.mkdir(exist_ok=True)
             log_msg("INFO", "已清空 working 目录")
+
+    def preprocess_input(self) -> None:
+        """预处理输入数据：解压压缩包 + 清理垃圾文件。
+
+        预处理内容:
+            1. 解压 workspace/input/ 下的所有 .zip 文件
+            2. 清理 __MACOSX、.DS_Store 等垃圾文件
+
+        注意:
+            - 需要在 link_input_data() 之后调用
+            - 如果使用 symlink 模式，会先转换为复制模式再预处理
+        """
+        input_dir = self.workspace_dir / "input"
+
+        if not input_dir.exists():
+            log_msg("WARNING", "输入目录不存在，跳过预处理")
+            return
+
+        # 如果是符号链接，需要先转换为实际复制
+        if input_dir.is_symlink():
+            log_msg("INFO", "检测到符号链接，转换为复制模式以支持预处理")
+            source = input_dir.resolve()
+            input_dir.unlink()
+            shutil.copytree(source, input_dir)
+            log_msg("INFO", f"已复制数据: {source} -> {input_dir}")
+
+        # 解压压缩包
+        extracted = extract_archives(input_dir)
+        if extracted > 0:
+            log_msg("INFO", f"预处理完成: 解压 {extracted} 个压缩包")
+
+        # 清理垃圾文件
+        cleaned = clean_up_dataset(input_dir)
+        if cleaned > 0:
+            log_msg("INFO", f"预处理完成: 清理 {cleaned} 个垃圾文件")
+
+    def prepare_workspace(self, source_dir: Optional[Path] = None) -> None:
+        """一站式准备工作空间。
+
+        执行流程:
+            1. setup() - 创建目录结构
+            2. link_input_data() - 复制/链接输入数据
+            3. preprocess_input() - 预处理（如果配置启用）
+
+        Args:
+            source_dir: 数据源目录（默认使用 config.data.data_dir）
+
+        配置项:
+            - data.preprocess_data: 是否启用预处理（默认 true）
+        """
+        # Phase 1: 创建目录结构
+        self.setup()
+
+        # Phase 2: 链接/复制输入数据
+        self.link_input_data(source_dir)
+
+        # Phase 3: 预处理（根据配置）
+        preprocess_enabled = getattr(self.config.data, "preprocess_data", True)
+        if preprocess_enabled:
+            self.preprocess_input()
+        else:
+            log_msg("INFO", "数据预处理已禁用（config.data.preprocess_data=false）")

@@ -1,6 +1,6 @@
 # Swarm-Ev2 项目架构概览
 
-**Last Updated:** 2026-02-01 (main.py 双层架构重构)
+**Last Updated:** 2026-02-01 (file_utils + workspace 预处理功能)
 **项目版本:** 0.3.1
 **当前阶段:** Phase 3.5 Skill 进化（已完成）+ main.py 双层架构集成
 
@@ -81,7 +81,7 @@ graph TD
     subgraph "Phase 1 - 基础设施"
         CFG[utils/config.py<br/>配置管理 598行<br/>+EvolutionConfig]
         LOG[utils/logger_system.py<br/>日志系统 180行]
-        FU[utils/file_utils.py<br/>文件工具 113行]
+        FU[utils/file_utils.py<br/>文件工具 223行<br/>+extract/clean]
         YAML[config/default.yaml<br/>YAML 配置 108行<br/>+evolution 配置节]
         ENV[.env<br/>环境变量]
     end
@@ -101,7 +101,7 @@ graph TD
 
     subgraph "Phase 2 - 执行层"
         INTERP[core/executor/interpreter.py<br/>代码执行沙箱 176行]
-        WS[core/executor/workspace.py<br/>工作空间管理 181行]
+        WS[core/executor/workspace.py<br/>工作空间管理 245行<br/>+preprocess]
     end
 
     subgraph "Phase 2 - Agent 层"
@@ -223,7 +223,7 @@ graph TD
 | **Phase 1: 基础设施** ||||
 | 配置管理 | `utils/config.py` | 598 | 完成 (+EvolutionConfig) |
 | 日志系统 | `utils/logger_system.py` | 180 | 完成 |
-| 文件工具 | `utils/file_utils.py` | 113 | 完成 |
+| 文件工具 | `utils/file_utils.py` | 223 | 完成 (+extract/clean) |
 | **Phase 1: 数据结构** ||||
 | Node 数据类 | `core/state/node.py` | 121 | 完成 |
 | Journal 数据类 | `core/state/journal.py` | 283 | 完成 (+get_best_k) |
@@ -235,7 +235,7 @@ graph TD
 | 后端工具 | `core/backend/utils.py` | 80 | 完成 |
 | **Phase 2: 执行层** ||||
 | 代码执行器 | `core/executor/interpreter.py` | 176 | 完成 |
-| 工作空间管理 | `core/executor/workspace.py` | 181 | 完成 |
+| 工作空间管理 | `core/executor/workspace.py` | 245 | 完成 (+preprocess) |
 | **Phase 2: Agent 层** ||||
 | Agent 基类 | `agents/base_agent.py` | 119 | 完成 (+mutate) |
 | Prompt 构建器 | `utils/prompt_builder.py` | 167 | 完成 |
@@ -263,7 +263,7 @@ graph TD
 | **配置文件** ||||
 | YAML 配置 | `config/default.yaml` | 111 | 完成 (+agent进化配置) |
 
-**总计**: 47 个核心模块 | ~9100 行核心代码 + 36 个测试文件（~7936 行测试代码）
+**总计**: 47 个核心模块 | ~9300 行核心代码 + 36 个测试文件（~7936 行测试代码）
 
 ---
 
@@ -316,7 +316,7 @@ Swarm-Ev2/
 │   ├── executor/                  # 代码执行
 │   │   ├── __init__.py            # 模块导出
 │   │   ├── interpreter.py         # 执行沙箱
-│   │   └── workspace.py           # 工作空间管理
+│   │   └── workspace.py           # 工作空间管理 (+preprocess/prepare)
 │   ├── orchestrator.py            # 编排器（534行）
 │   └── evolution/                 # 进化机制
 │       ├── __init__.py            # 模块导出
@@ -338,7 +338,7 @@ Swarm-Ev2/
 ├── utils/                         # 工具模块
 │   ├── config.py                  # 配置管理 (+EvolutionConfig)
 │   ├── logger_system.py           # 日志系统
-│   ├── file_utils.py              # 文件工具
+│   ├── file_utils.py              # 文件工具 (+extract_archives/clean_up_dataset)
 │   ├── data_preview.py            # 数据预览生成
 │   ├── metric.py                  # 评估指标工具
 │   ├── response.py                # LLM 响应解析

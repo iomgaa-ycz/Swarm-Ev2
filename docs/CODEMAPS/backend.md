@@ -1,6 +1,6 @@
 # 后端模块详细说明
 
-**Last Updated:** 2026-02-01 (main.py 双层架构重构)
+**Last Updated:** 2026-02-01 (file_utils + workspace 预处理功能)
 **模块范围:** main.py, utils/, core/state/, core/backend/, core/executor/, core/evolution/, agents/, search/, config/, tests/, benchmark/
 **当前阶段:** Phase 3.5 Skill 进化（已完成）+ main.py 双层架构集成
 
@@ -15,7 +15,7 @@
 | **基础设施层** |||||
 | 配置系统 | `utils/config.py` | 598 | OmegaConf 配置加载与验证 (+EvolutionConfig) | 完成 |
 | 日志系统 | `utils/logger_system.py` | 180 | 双通道日志输出 | 完成 |
-| 文件工具 | `utils/file_utils.py` | 113 | 目录复制/链接 | 完成 |
+| 文件工具 | `utils/file_utils.py` | 223 | 目录复制/链接/解压/清理 | 完成 |
 | **数据结构层** |||||
 | Node 数据类 | `core/state/node.py` | 121 | 解决方案 DAG 节点 | 完成 |
 | Journal 数据类 | `core/state/journal.py` | 283 | DAG 容器与查询 (+get_best_k) | 完成 |
@@ -27,7 +27,7 @@
 | 后端工具 | `core/backend/utils.py` | 80 | 消息格式化 + 重试机制 | 完成 |
 | **执行层** |||||
 | 代码执行器 | `core/executor/interpreter.py` | 176 | 沙箱执行 + 超时控制 | 完成 |
-| 工作空间管理 | `core/executor/workspace.py` | 181 | 目录管理 + 文件归档 | 完成 |
+| 工作空间管理 | `core/executor/workspace.py` | 245 | 目录管理 + 文件归档 + 数据预处理 | 完成 |
 | **工具层** |||||
 | 数据预览 | `utils/data_preview.py` | 269 | EDA 预览生成 | 完成 |
 | 指标工具 | `utils/metric.py` | 117 | 评估指标容器 | 完成 |
@@ -624,13 +624,13 @@ class Interpreter:
     def run(self, code: str, reset_session: bool = True) -> ExecutionResult: ...
 ```
 
-### 7.2 WorkspaceManager (`core/executor/workspace.py`) - 181 行
+### 7.2 WorkspaceManager (`core/executor/workspace.py`) - 245 行
 
-工作空间管理器，负责目录结构管理和文件归档。
+工作空间管理器，负责目录结构管理、文件归档和数据预处理。
 
 ```
 workspace/
-+-- input/          # 输入数据（符号链接）
++-- input/          # 输入数据（符号链接或复制）
 +-- working/        # 临时工作目录
 +-- submission/     # 预测结果（submission_{node_id}.csv）
 +-- archives/       # 归档文件（node_{node_id}.zip）
@@ -648,6 +648,76 @@ workspace/
 | `archive_node_files(node_id, code)` | `(str, str) -> Path?` | 打包节点文件为 zip |
 | `cleanup_submission()` | `() -> None` | 清空 submission 目录 |
 | `cleanup_working()` | `() -> None` | 清空 working 目录 |
+| **`preprocess_input()`** | **`() -> None`** | **预处理输入数据（解压 + 清理垃圾文件）** |
+| **`prepare_workspace(source_dir)`** | **`(Path?) -> None`** | **一站式工作空间准备（setup + link + preprocess）** |
+
+**预处理流程 (`preprocess_input`)**:
+1. 检查 `input/` 目录是否存在
+2. 如果是符号链接，转换为复制模式
+3. 解压所有 `.zip` 文件（调用 `file_utils.extract_archives`）
+4. 清理 `__MACOSX` 和 `.DS_Store` 垃圾文件
+
+**一站式准备 (`prepare_workspace`)**:
+```
+prepare_workspace(source_dir)
+|
++-- [1] setup() - 创建目录结构
+|
++-- [2] link_input_data(source_dir) - 复制/链接输入数据
+|
++-- [3] preprocess_input() - 预处理（根据 config.data.preprocess_data 配置）
+```
+
+### 7.3 文件工具模块 (`utils/file_utils.py`) - 223 行 [扩展]
+
+文件操作工具模块，提供目录复制、链接、解压和清理功能。
+
+**核心函数:**
+
+| 函数 | 签名 | 说明 |
+|------|------|------|
+| `copytree` | `(src: Path, dst: Path, use_symlinks: bool) -> None` | 复制或链接目录树（支持只读保护） |
+| `_set_readonly_recursive` | `(path: Path) -> None` | 递归设置目录只读权限 |
+| **`extract_archives`** | **`(path: Path) -> int`** | **解压目录中所有 .zip 文件** |
+| **`clean_up_dataset`** | **`(path: Path) -> int`** | **清理 __MACOSX 和 .DS_Store 垃圾文件** |
+
+**extract_archives 函数详情:**
+
+```python
+def extract_archives(path: Path) -> int:
+    """解压目录中的所有 .zip 压缩包。
+
+    功能:
+        - 递归查找所有 .zip 文件
+        - 解压到同名目录（去掉 .zip 后缀）
+        - 处理嵌套目录情况（zip 中只有一个同名目录时展开）
+        - 解压后删除原始 zip 文件
+        - 自动调用 clean_up_dataset 清理垃圾文件
+
+    Returns:
+        解压的压缩包数量
+    """
+```
+
+**clean_up_dataset 函数详情:**
+
+```python
+def clean_up_dataset(path: Path) -> int:
+    """清理数据集中的垃圾文件。
+
+    清理内容:
+        - __MACOSX 目录（macOS 压缩产生）
+        - .DS_Store 文件（macOS Finder 产生）
+
+    Returns:
+        清理的文件/目录数量
+    """
+```
+
+**使用场景:**
+- `WorkspaceManager.preprocess_input()` 调用这两个函数进行数据预处理
+- 支持处理 Kaggle 竞赛下载的 zip 数据集
+- 自动清理 macOS 产生的元数据文件
 
 ---
 

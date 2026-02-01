@@ -146,3 +146,117 @@ class TestWorkspaceManager:
         working_dir = manager.workspace_dir / "working"
         assert working_dir.exists()
         assert len(list(working_dir.iterdir())) == 0
+
+    def test_preprocess_input_extracts_zip(self, mock_config, tmp_path):
+        """测试 preprocess_input 解压 zip 文件。"""
+        manager = WorkspaceManager(mock_config)
+        manager.setup()
+
+        # 创建 input 目录和 zip 文件
+        input_dir = manager.workspace_dir / "input"
+        zip_path = input_dir / "data.zip"
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            zf.writestr("train.csv", "a,b\n1,2")
+
+        # 预处理
+        manager.preprocess_input()
+
+        # 验证
+        assert not zip_path.exists()
+        assert (input_dir / "data" / "train.csv").read_text() == "a,b\n1,2"
+
+    def test_preprocess_input_cleans_macosx(self, mock_config, tmp_path):
+        """测试 preprocess_input 清理 macOS 垃圾文件。"""
+        manager = WorkspaceManager(mock_config)
+        manager.setup()
+
+        # 创建垃圾文件
+        input_dir = manager.workspace_dir / "input"
+        (input_dir / "__MACOSX").mkdir()
+        (input_dir / "__MACOSX" / "._file").write_text("meta")
+        (input_dir / ".DS_Store").write_text("data")
+        (input_dir / "train.csv").write_text("a,b")
+
+        # 预处理
+        manager.preprocess_input()
+
+        # 验证
+        assert not (input_dir / "__MACOSX").exists()
+        assert not (input_dir / ".DS_Store").exists()
+        assert (input_dir / "train.csv").read_text() == "a,b"
+
+    def test_preprocess_input_converts_symlink(self, mock_config, tmp_path):
+        """测试 preprocess_input 将符号链接转换为复制。"""
+        # 创建数据源
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+        (data_dir / "file.txt").write_text("content")
+
+        manager = WorkspaceManager(mock_config)
+        manager.setup()
+
+        # 创建符号链接
+        input_link = manager.workspace_dir / "input"
+        input_link.rmdir()  # 删除 setup 创建的空目录
+        input_link.symlink_to(data_dir)
+        assert input_link.is_symlink()
+
+        # 预处理
+        manager.preprocess_input()
+
+        # 验证：符号链接已转换为实际目录
+        assert not input_link.is_symlink()
+        assert input_link.is_dir()
+        assert (input_link / "file.txt").read_text() == "content"
+
+    def test_prepare_workspace_full_flow(self, mock_config, tmp_path):
+        """测试 prepare_workspace 一站式流程。"""
+        # 创建数据源
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+
+        # 创建 zip 文件
+        zip_path = data_dir / "train.zip"
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            zf.writestr("data.csv", "a,b\n1,2")
+
+        # 创建垃圾文件
+        (data_dir / ".DS_Store").write_text("junk")
+
+        # 配置启用预处理
+        mock_config.data.preprocess_data = True
+        mock_config.data.data_dir = data_dir
+
+        manager = WorkspaceManager(mock_config)
+        manager.prepare_workspace(data_dir)
+
+        # 验证目录结构
+        assert (manager.workspace_dir / "input").exists()
+        assert (manager.workspace_dir / "working").exists()
+        assert (manager.workspace_dir / "submission").exists()
+
+        # 验证解压和清理
+        input_dir = manager.workspace_dir / "input"
+        assert (input_dir / "train" / "data.csv").read_text() == "a,b\n1,2"
+        assert not (input_dir / ".DS_Store").exists()
+
+    def test_prepare_workspace_preprocess_disabled(self, mock_config, tmp_path):
+        """测试禁用预处理时不执行解压。"""
+        # 创建数据源
+        data_dir = tmp_path / "data"
+        data_dir.mkdir()
+
+        # 创建 zip 文件
+        zip_path = data_dir / "train.zip"
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            zf.writestr("data.csv", "a,b\n1,2")
+
+        # 禁用预处理
+        mock_config.data.preprocess_data = False
+        mock_config.data.data_dir = data_dir
+
+        manager = WorkspaceManager(mock_config)
+        manager.prepare_workspace(data_dir)
+
+        # 验证：zip 文件仍然存在（未解压，因为是符号链接模式）
+        assert zip_path.exists()

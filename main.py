@@ -367,6 +367,13 @@ def main() -> None:
         )
         print(f"✅ 工作空间构建成功: {config.project.workspace_dir}")
 
+        # 初始化工作空间管理器并执行数据预处理（解压压缩包 + 清理垃圾文件）
+        workspace = WorkspaceManager(config)
+        if getattr(config.data, "preprocess_data", True):
+            print("  执行数据预处理（解压 + 清理）...")
+            workspace.preprocess_input()
+            print("✅ 数据预处理完成")
+
         # ============================================================
         # Phase 3: 组件初始化
         # ============================================================
@@ -385,9 +392,8 @@ def main() -> None:
         )
         log_msg("INFO", "代码执行器初始化完成")
 
-        # 初始化工作空间管理器
-        workspace = WorkspaceManager(config)
-        log_msg("INFO", "工作空间管理器初始化完成")
+        # 工作空间管理器已在 Phase 2 初始化
+        log_msg("INFO", "工作空间管理器已就绪")
 
         # 初始化 PromptBuilder
         prompt_builder = PromptBuilder(obfuscate=False)

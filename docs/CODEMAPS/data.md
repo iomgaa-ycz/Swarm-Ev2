@@ -1,6 +1,6 @@
 # 数据流与配置管理
 
-**Last Updated:** 2026-02-01 (main.py 双层架构重构)
+**Last Updated:** 2026-02-01 (file_utils + workspace 预处理功能)
 **模块范围:** main.py, config/, .env, utils/config.py, utils/logger_system.py, core/executor/, core/orchestrator.py, core/evolution/, search/, utils/prompt_manager.py, benchmark/
 **当前阶段:** Phase 3.5 Skill 进化（已完成）+ main.py 双层架构集成
 
@@ -286,6 +286,53 @@ workspace/input/ <- shutil.copytree <- data_dir/
   - 占用额外磁盘空间
   - 复制后递归设置只读权限
   - Windows 环境推荐
+```
+
+### 4.4 数据预处理流程 [NEW]
+
+```
+preprocess_data: true (默认)
+-----------------------------
+WorkspaceManager.preprocess_input()
+  |
+  +-- [1] 检查 input/ 目录是否存在
+  |
+  +-- [2] 如果是符号链接 -> 转换为复制模式
+  |       (预处理需要修改文件，符号链接不允许)
+  |
+  +-- [3] 解压压缩包
+  |       file_utils.extract_archives(input_dir)
+  |       - 递归查找所有 .zip 文件
+  |       - 解压到同名目录
+  |       - 处理嵌套目录情况
+  |       - 删除原始 zip 文件
+  |
+  +-- [4] 清理垃圾文件
+          file_utils.clean_up_dataset(input_dir)
+          - 删除 __MACOSX 目录
+          - 删除 .DS_Store 文件
+
+preprocess_data: false
+-----------------------------
+跳过预处理，直接使用原始数据
+```
+
+### 4.5 一站式工作空间准备 [NEW]
+
+```
+WorkspaceManager.prepare_workspace(source_dir)
+  |
+  +-- Phase 1: setup()
+  |       创建目录结构 (input/, working/, submission/, ...)
+  |
+  +-- Phase 2: link_input_data(source_dir)
+  |       复制/链接输入数据到 input/
+  |
+  +-- Phase 3: preprocess_input() (根据配置)
+          解压 + 清理垃圾文件
+
+配置项:
+  - data.preprocess_data: true/false (默认 true)
 ```
 
 ---
