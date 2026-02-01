@@ -1,0 +1,1137 @@
+{
+  "total_files": 77,
+  "total_lines": 15479,
+  "modules": {
+    "main": {
+      "file": "main.py",
+      "lines": 161,
+      "imports": [
+        "utils.logger_system",
+        "agents.coder_agent",
+        "shutil",
+        "core.orchestrator",
+        "utils.config",
+        "core.executor.interpreter",
+        "core.state",
+        "utils.prompt_builder",
+        "utils.workspace_builder"
+      ]
+    },
+    "core.__init__": {
+      "file": "core/__init__.py",
+      "lines": 4,
+      "imports": []
+    },
+    "core.orchestrator": {
+      "file": "core/orchestrator.py",
+      "lines": 535,
+      "imports": [
+        "utils.logger_system",
+        "agents.base_agent",
+        "typing",
+        "shutil",
+        "json",
+        "core.backend",
+        "utils.config",
+        "time",
+        "core.state",
+        "random",
+        "core.executor.interpreter",
+        "core.executor.workspace"
+      ]
+    },
+    "tests.__init__": {
+      "file": "tests/__init__.py",
+      "lines": 2,
+      "imports": []
+    },
+    "agents.base_agent": {
+      "file": "agents/base_agent.py",
+      "lines": 120,
+      "imports": [
+        "dataclasses_json",
+        "typing",
+        "abc",
+        "dataclasses",
+        "utils.config",
+        "core.state",
+        "utils.prompt_builder"
+      ]
+    },
+    "agents.__init__": {
+      "file": "agents/__init__.py",
+      "lines": 10,
+      "imports": [
+        "base_agent",
+        "coder_agent"
+      ]
+    },
+    "agents.coder_agent": {
+      "file": "agents/coder_agent.py",
+      "lines": 273,
+      "imports": [
+        "utils.logger_system",
+        "typing",
+        "utils.response",
+        "core.backend",
+        "core.state",
+        "time",
+        "core.executor.interpreter",
+        "base_agent"
+      ]
+    },
+    "utils.logger_system": {
+      "file": "utils/logger_system.py",
+      "lines": 181,
+      "imports": [
+        "traceback",
+        "typing",
+        "json",
+        "pathlib",
+        "datetime"
+      ]
+    },
+    "utils.config": {
+      "file": "utils/config.py",
+      "lines": 555,
+      "imports": [
+        "os",
+        "utils.logger_system",
+        "rich",
+        "omegaconf",
+        "pathlib",
+        "rich.syntax",
+        "utils.file_utils",
+        "dataclasses",
+        "dotenv",
+        "random",
+        "datetime",
+        "collections.abc"
+      ]
+    },
+    "utils.data_preview": {
+      "file": "utils/data_preview.py",
+      "lines": 270,
+      "imports": [
+        "pandas",
+        "utils.logger_system",
+        "humanize",
+        "genson",
+        "json",
+        "pathlib",
+        "pandas.api.types"
+      ]
+    },
+    "utils.prompt_builder": {
+      "file": "utils/prompt_builder.py",
+      "lines": 269,
+      "imports": [
+        "utils.logger_system",
+        "utils.prompt_manager",
+        "typing",
+        "pathlib",
+        "core.state"
+      ]
+    },
+    "utils.prompt_manager": {
+      "file": "utils/prompt_manager.py",
+      "lines": 252,
+      "imports": [
+        "utils.logger_system",
+        "typing",
+        "pathlib",
+        "core.evolution.experience_pool",
+        "jinja2"
+      ]
+    },
+    "utils.__init__": {
+      "file": "utils/__init__.py",
+      "lines": 2,
+      "imports": []
+    },
+    "utils.response": {
+      "file": "utils/response.py",
+      "lines": 90,
+      "imports": [
+        "re"
+      ]
+    },
+    "utils.metric": {
+      "file": "utils/metric.py",
+      "lines": 118,
+      "imports": [
+        "dataclasses",
+        "typing"
+      ]
+    },
+    "utils.workspace_builder": {
+      "file": "utils/workspace_builder.py",
+      "lines": 128,
+      "imports": [
+        "typing",
+        "utils.logger_system",
+        "shutil",
+        "pathlib"
+      ]
+    },
+    "utils.file_utils": {
+      "file": "utils/file_utils.py",
+      "lines": 114,
+      "imports": [
+        "os",
+        "utils.logger_system",
+        "stat",
+        "shutil",
+        "pathlib"
+      ]
+    },
+    "search.__init__": {
+      "file": "search/__init__.py",
+      "lines": 10,
+      "imports": [
+        "parallel_evaluator",
+        "fitness"
+      ]
+    },
+    "search.parallel_evaluator": {
+      "file": "search/parallel_evaluator.py",
+      "lines": 246,
+      "imports": [
+        "utils.logger_system",
+        "agents.base_agent",
+        "re",
+        "search.fitness",
+        "typing",
+        "concurrent.futures",
+        "utils.config",
+        "core.state",
+        "core.executor.interpreter",
+        "core.executor.workspace",
+        "core.evolution.gene_registry",
+        "core.evolution.pheromone",
+        "__future__"
+      ]
+    },
+    "search.fitness": {
+      "file": "search/fitness.py",
+      "lines": 82,
+      "imports": [
+        "math"
+      ]
+    },
+    ".scripts.update_codemaps": {
+      "file": ".scripts/update_codemaps.py",
+      "lines": 423,
+      "imports": [
+        "os",
+        "re",
+        "typing",
+        "json",
+        "pathlib",
+        "datetime"
+      ]
+    },
+    ".reports.codemap-analyzer": {
+      "file": ".reports/codemap-analyzer.py",
+      "lines": 181,
+      "imports": [
+        "ast",
+        "typing",
+        "json",
+        "pathlib",
+        "collections"
+      ]
+    },
+    ".reports.codemap-analysis": {
+      "file": ".reports/codemap-analysis.py",
+      "lines": 147,
+      "imports": [
+        "datetime",
+        "json",
+        "pathlib"
+      ]
+    },
+    ".claude.skills.continuous-learning-v2.scripts.instinct-cli": {
+      "file": ".claude/skills/continuous-learning-v2/scripts/instinct-cli.py",
+      "lines": 495,
+      "imports": [
+        "os",
+        "re",
+        "typing",
+        "json",
+        "pathlib",
+        "urllib.request",
+        "sys",
+        "collections",
+        "datetime",
+        "argparse"
+      ]
+    },
+    "tests.unit.test_journal": {
+      "file": "tests/unit/test_journal.py",
+      "lines": 292,
+      "imports": [
+        "core.evolution.gene_parser",
+        "core.state"
+      ]
+    },
+    "tests.unit.test_metric": {
+      "file": "tests/unit/test_metric.py",
+      "lines": 96,
+      "imports": [
+        "pytest",
+        "utils.metric"
+      ]
+    },
+    "tests.unit.test_task": {
+      "file": "tests/unit/test_task.py",
+      "lines": 82,
+      "imports": [
+        "core.state"
+      ]
+    },
+    "tests.unit.test_response": {
+      "file": "tests/unit/test_response.py",
+      "lines": 85,
+      "imports": [
+        "utils.response"
+      ]
+    },
+    "tests.unit.test_backend_provider": {
+      "file": "tests/unit/test_backend_provider.py",
+      "lines": 98,
+      "imports": [
+        "pytest",
+        "unittest.mock",
+        "core.backend"
+      ]
+    },
+    "tests.unit.test_file_utils": {
+      "file": "tests/unit/test_file_utils.py",
+      "lines": 123,
+      "imports": [
+        "os",
+        "stat",
+        "pathlib",
+        "utils.file_utils",
+        "pytest"
+      ]
+    },
+    "tests.unit.__init__": {
+      "file": "tests/unit/__init__.py",
+      "lines": 2,
+      "imports": []
+    },
+    "tests.unit.test_workspace": {
+      "file": "tests/unit/test_workspace.py",
+      "lines": 149,
+      "imports": [
+        "zipfile",
+        "unittest.mock",
+        "pathlib",
+        "pytest",
+        "core.executor.workspace"
+      ]
+    },
+    "tests.unit.test_orchestrator": {
+      "file": "tests/unit/test_orchestrator.py",
+      "lines": 318,
+      "imports": [
+        "agents.base_agent",
+        "unittest.mock",
+        "omegaconf",
+        "core.orchestrator",
+        "pytest",
+        "core.state"
+      ]
+    },
+    "tests.unit.test_config": {
+      "file": "tests/unit/test_config.py",
+      "lines": 769,
+      "imports": [
+        "re",
+        "omegaconf",
+        "pathlib",
+        "pytest",
+        "utils.config"
+      ]
+    },
+    "tests.unit.test_interpreter": {
+      "file": "tests/unit/test_interpreter.py",
+      "lines": 115,
+      "imports": [
+        "pytest",
+        "core.executor.interpreter"
+      ]
+    },
+    "tests.unit.test_prompt_builder": {
+      "file": "tests/unit/test_prompt_builder.py",
+      "lines": 282,
+      "imports": [
+        "utils.prompt_builder",
+        "core.state"
+      ]
+    },
+    "tests.unit.test_config_priority": {
+      "file": "tests/unit/test_config_priority.py",
+      "lines": 349,
+      "imports": [
+        "os",
+        "omegaconf",
+        "pathlib",
+        "pytest",
+        "utils.config"
+      ]
+    },
+    "tests.unit.test_data_preview": {
+      "file": "tests/unit/test_data_preview.py",
+      "lines": 125,
+      "imports": [
+        "utils.data_preview",
+        "pandas"
+      ]
+    },
+    "tests.unit.test_agents": {
+      "file": "tests/unit/test_agents.py",
+      "lines": 506,
+      "imports": [
+        "agents.base_agent",
+        "agents.coder_agent",
+        "unittest.mock",
+        "pytest",
+        "time",
+        "core.state",
+        "core.executor.interpreter"
+      ]
+    },
+    "tests.unit.test_node": {
+      "file": "tests/unit/test_node.py",
+      "lines": 104,
+      "imports": [
+        "core.state"
+      ]
+    },
+    "tests.unit.test_state_integration": {
+      "file": "tests/unit/test_state_integration.py",
+      "lines": 147,
+      "imports": [
+        "core.evolution.gene_parser",
+        "core.state"
+      ]
+    },
+    "tests.test_evolution.test_agent_evolution": {
+      "file": "tests/test_evolution/test_agent_evolution.py",
+      "lines": 326,
+      "imports": [
+        "agents.base_agent",
+        "unittest.mock",
+        "pytest",
+        "time",
+        "core.evolution"
+      ]
+    },
+    "tests.test_evolution.test_gene_parser": {
+      "file": "tests/test_evolution/test_gene_parser.py",
+      "lines": 246,
+      "imports": [
+        "pytest",
+        "core.evolution.gene_parser"
+      ]
+    },
+    "tests.test_evolution.__init__": {
+      "file": "tests/test_evolution/__init__.py",
+      "lines": 2,
+      "imports": []
+    },
+    "tests.test_evolution.test_pheromone": {
+      "file": "tests/test_evolution/test_pheromone.py",
+      "lines": 205,
+      "imports": [
+        "pytest",
+        "math",
+        "core.state",
+        "core.evolution.pheromone"
+      ]
+    },
+    "tests.test_evolution.test_prompt_manager": {
+      "file": "tests/test_evolution/test_prompt_manager.py",
+      "lines": 386,
+      "imports": [
+        "utils.prompt_manager",
+        "unittest.mock",
+        "pytest",
+        "core.state",
+        "core.evolution.experience_pool"
+      ]
+    },
+    "tests.test_evolution.test_task_dispatcher": {
+      "file": "tests/test_evolution/test_task_dispatcher.py",
+      "lines": 176,
+      "imports": [
+        "pytest",
+        "unittest.mock",
+        "core.evolution",
+        "agents.base_agent"
+      ]
+    },
+    "tests.test_evolution.test_gene_registry": {
+      "file": "tests/test_evolution/test_gene_registry.py",
+      "lines": 240,
+      "imports": [
+        "pytest",
+        "core.evolution.gene_registry",
+        "core.state",
+        "math"
+      ]
+    },
+    "tests.test_evolution.test_gene_selector": {
+      "file": "tests/test_evolution/test_gene_selector.py",
+      "lines": 331,
+      "imports": [
+        "pytest",
+        "core.evolution.gene_registry",
+        "core.state",
+        "core.evolution.gene_selector"
+      ]
+    },
+    "tests.test_evolution.test_solution_evolution": {
+      "file": "tests/test_evolution/test_solution_evolution.py",
+      "lines": 466,
+      "imports": [
+        "core.evolution.task_dispatcher",
+        "agents.base_agent",
+        "unittest.mock",
+        "search.parallel_evaluator",
+        "pytest",
+        "utils.config",
+        "core.state",
+        "time",
+        "core.evolution.gene_registry",
+        "core.evolution.experience_pool",
+        "core.evolution.solution_evolution"
+      ]
+    },
+    "tests.test_evolution.test_experience_pool": {
+      "file": "tests/test_evolution/test_experience_pool.py",
+      "lines": 461,
+      "imports": [
+        "threading",
+        "pytest",
+        "dataclasses",
+        "time",
+        "core.evolution.experience_pool"
+      ]
+    },
+    "tests.integration.__init__": {
+      "file": "tests/integration/__init__.py",
+      "lines": 2,
+      "imports": []
+    },
+    "tests.integration.test_prompt_system_integration": {
+      "file": "tests/integration/test_prompt_system_integration.py",
+      "lines": 177,
+      "imports": [
+        "utils.prompt_manager",
+        "pytest",
+        "pathlib",
+        "sys"
+      ]
+    },
+    "tests.test_search.test_parallel_evaluator": {
+      "file": "tests/test_search/test_parallel_evaluator.py",
+      "lines": 393,
+      "imports": [
+        "agents.base_agent",
+        "unittest.mock",
+        "pathlib",
+        "search.parallel_evaluator",
+        "pytest",
+        "utils.config",
+        "core.state",
+        "core.executor.interpreter",
+        "core.evolution.gene_registry"
+      ]
+    },
+    "tests.test_search.__init__": {
+      "file": "tests/test_search/__init__.py",
+      "lines": 2,
+      "imports": []
+    },
+    "tests.test_search.test_fitness": {
+      "file": "tests/test_search/test_fitness.py",
+      "lines": 109,
+      "imports": [
+        "pytest",
+        "math",
+        "search.fitness"
+      ]
+    },
+    "workspace.best_solution.solution": {
+      "file": "workspace/best_solution/solution.py",
+      "lines": 155,
+      "imports": [
+        "os",
+        "pandas",
+        "lightgbm",
+        "sklearn.metrics",
+        "sklearn.model_selection",
+        "numpy"
+      ]
+    },
+    "core.backend.backend_anthropic": {
+      "file": "core/backend/backend_anthropic.py",
+      "lines": 143,
+      "imports": [
+        "utils.logger_system",
+        "utils",
+        "typing",
+        "anthropic",
+        "funcy"
+      ]
+    },
+    "core.backend.__init__": {
+      "file": "core/backend/__init__.py",
+      "lines": 138,
+      "imports": [
+        "typing",
+        "utils.logger_system"
+      ]
+    },
+    "core.backend.backend_openai": {
+      "file": "core/backend/backend_openai.py",
+      "lines": 164,
+      "imports": [
+        "utils.logger_system",
+        "utils",
+        "typing",
+        "funcy",
+        "openai"
+      ]
+    },
+    "core.backend.utils": {
+      "file": "core/backend/utils.py",
+      "lines": 81,
+      "imports": [
+        "utils.logger_system",
+        "typing",
+        "backoff"
+      ]
+    },
+    "core.state.task": {
+      "file": "core/state/task.py",
+      "lines": 63,
+      "imports": [
+        "dataclasses_json",
+        "uuid",
+        "typing",
+        "dataclasses",
+        "time"
+      ]
+    },
+    "core.state.journal": {
+      "file": "core/state/journal.py",
+      "lines": 284,
+      "imports": [
+        "dataclasses",
+        "typing",
+        "node",
+        "dataclasses_json"
+      ]
+    },
+    "core.state.__init__": {
+      "file": "core/state/__init__.py",
+      "lines": 17,
+      "imports": [
+        "node",
+        "journal",
+        "task"
+      ]
+    },
+    "core.state.node": {
+      "file": "core/state/node.py",
+      "lines": 122,
+      "imports": [
+        "dataclasses_json",
+        "uuid",
+        "typing",
+        "dataclasses",
+        "time"
+      ]
+    },
+    "core.evolution.gene_parser": {
+      "file": "core/evolution/gene_parser.py",
+      "lines": 163,
+      "imports": [
+        "typing",
+        "re"
+      ]
+    },
+    "core.evolution.task_dispatcher": {
+      "file": "core/evolution/task_dispatcher.py",
+      "lines": 158,
+      "imports": [
+        "typing",
+        "utils.logger_system",
+        "agents.base_agent",
+        "random"
+      ]
+    },
+    "core.evolution.solution_evolution": {
+      "file": "core/evolution/solution_evolution.py",
+      "lines": 421,
+      "imports": [
+        "core.evolution.task_dispatcher",
+        "core.evolution.gene_parser",
+        "agents.base_agent",
+        "utils.logger_system",
+        "core.evolution.gene_selector",
+        "search.fitness",
+        "typing",
+        "hashlib",
+        "search.parallel_evaluator",
+        "utils.config",
+        "core.state",
+        "core.evolution.gene_registry",
+        "random",
+        "time",
+        "core.evolution.experience_pool",
+        "__future__"
+      ]
+    },
+    "core.evolution.experience_pool": {
+      "file": "core/evolution/experience_pool.py",
+      "lines": 320,
+      "imports": [
+        "utils.logger_system",
+        "typing",
+        "threading",
+        "json",
+        "pathlib",
+        "dataclasses",
+        "utils.config"
+      ]
+    },
+    "core.evolution.__init__": {
+      "file": "core/evolution/__init__.py",
+      "lines": 35,
+      "imports": [
+        "experience_pool",
+        "agent_evolution",
+        "pheromone",
+        "gene_parser",
+        "gene_selector",
+        "solution_evolution",
+        "gene_registry",
+        "task_dispatcher"
+      ]
+    },
+    "core.evolution.agent_evolution": {
+      "file": "core/evolution/agent_evolution.py",
+      "lines": 393,
+      "imports": [
+        "utils.logger_system",
+        "agents.base_agent",
+        "typing",
+        "core.backend",
+        "pathlib",
+        "utils.config",
+        "random",
+        "core.evolution.experience_pool"
+      ]
+    },
+    "core.evolution.pheromone": {
+      "file": "core/evolution/pheromone.py",
+      "lines": 105,
+      "imports": [
+        "core.state",
+        "typing",
+        "math",
+        "__future__"
+      ]
+    },
+    "core.evolution.gene_selector": {
+      "file": "core/evolution/gene_selector.py",
+      "lines": 315,
+      "imports": [
+        "utils.logger_system",
+        "typing",
+        "dataclasses",
+        "core.state",
+        "core.evolution.gene_registry",
+        "__future__"
+      ]
+    },
+    "core.evolution.gene_registry": {
+      "file": "core/evolution/gene_registry.py",
+      "lines": 200,
+      "imports": [
+        "re",
+        "math",
+        "__future__",
+        "typing",
+        "core.state",
+        "hashlib"
+      ]
+    },
+    "core.executor.__init__": {
+      "file": "core/executor/__init__.py",
+      "lines": 11,
+      "imports": [
+        "interpreter",
+        "workspace"
+      ]
+    },
+    "core.executor.interpreter": {
+      "file": "core/executor/interpreter.py",
+      "lines": 177,
+      "imports": [
+        "utils.logger_system",
+        "re",
+        "typing",
+        "pathlib",
+        "dataclasses",
+        "time",
+        "subprocess"
+      ]
+    },
+    "core.executor.workspace": {
+      "file": "core/executor/workspace.py",
+      "lines": 182,
+      "imports": [
+        "zipfile",
+        "utils.logger_system",
+        "re",
+        "typing",
+        "shutil",
+        "pathlib"
+      ]
+    }
+  },
+  "dependencies": {
+    "main": [
+      "utils.logger_system",
+      "core.orchestrator",
+      "utils.config",
+      "core.state",
+      "core.executor.interpreter",
+      "utils.prompt_builder",
+      "utils.workspace_builder"
+    ],
+    "core.orchestrator": [
+      "utils.logger_system",
+      "core.backend",
+      "utils.config",
+      "core.state",
+      "core.executor.interpreter",
+      "core.executor.workspace"
+    ],
+    "agents.base_agent": [
+      "utils.prompt_builder",
+      "utils.config",
+      "core.state"
+    ],
+    "agents.coder_agent": [
+      "utils.logger_system",
+      "utils.response",
+      "core.backend",
+      "core.state",
+      "core.executor.interpreter"
+    ],
+    "utils.config": [
+      "utils.logger_system",
+      "utils.file_utils"
+    ],
+    "utils.data_preview": [
+      "utils.logger_system"
+    ],
+    "utils.prompt_builder": [
+      "utils.prompt_manager",
+      "utils.logger_system",
+      "core.state"
+    ],
+    "utils.prompt_manager": [
+      "core.evolution.experience_pool",
+      "utils.logger_system"
+    ],
+    "utils.workspace_builder": [
+      "utils.logger_system"
+    ],
+    "utils.file_utils": [
+      "utils.logger_system"
+    ],
+    "search.parallel_evaluator": [
+      "utils.logger_system",
+      "utils.config",
+      "core.state",
+      "core.executor.interpreter",
+      "core.executor.workspace",
+      "core.evolution.gene_registry",
+      "core.evolution.pheromone"
+    ],
+    "tests.unit.test_journal": [
+      "core.evolution.gene_parser",
+      "core.state"
+    ],
+    "tests.unit.test_metric": [
+      "utils.metric"
+    ],
+    "tests.unit.test_task": [
+      "core.state"
+    ],
+    "tests.unit.test_response": [
+      "utils.response"
+    ],
+    "tests.unit.test_backend_provider": [
+      "core.backend"
+    ],
+    "tests.unit.test_file_utils": [
+      "utils.file_utils"
+    ],
+    "tests.unit.test_workspace": [
+      "core.executor.workspace"
+    ],
+    "tests.unit.test_orchestrator": [
+      "core.orchestrator",
+      "core.state"
+    ],
+    "tests.unit.test_config": [
+      "utils.config"
+    ],
+    "tests.unit.test_interpreter": [
+      "core.executor.interpreter"
+    ],
+    "tests.unit.test_prompt_builder": [
+      "utils.prompt_builder",
+      "core.state"
+    ],
+    "tests.unit.test_config_priority": [
+      "utils.config"
+    ],
+    "tests.unit.test_data_preview": [
+      "utils.data_preview"
+    ],
+    "tests.unit.test_agents": [
+      "core.state",
+      "core.executor.interpreter"
+    ],
+    "tests.unit.test_node": [
+      "core.state"
+    ],
+    "tests.unit.test_state_integration": [
+      "core.evolution.gene_parser",
+      "core.state"
+    ],
+    "tests.test_evolution.test_agent_evolution": [
+      "core.evolution"
+    ],
+    "tests.test_evolution.test_gene_parser": [
+      "core.evolution.gene_parser"
+    ],
+    "tests.test_evolution.test_pheromone": [
+      "core.state",
+      "core.evolution.pheromone"
+    ],
+    "tests.test_evolution.test_prompt_manager": [
+      "utils.prompt_manager",
+      "core.evolution.experience_pool",
+      "core.state"
+    ],
+    "tests.test_evolution.test_task_dispatcher": [
+      "core.evolution"
+    ],
+    "tests.test_evolution.test_gene_registry": [
+      "core.state",
+      "core.evolution.gene_registry"
+    ],
+    "tests.test_evolution.test_gene_selector": [
+      "core.state",
+      "core.evolution.gene_registry",
+      "core.evolution.gene_selector"
+    ],
+    "tests.test_evolution.test_solution_evolution": [
+      "core.evolution.task_dispatcher",
+      "utils.config",
+      "core.state",
+      "core.evolution.gene_registry",
+      "core.evolution.experience_pool",
+      "core.evolution.solution_evolution"
+    ],
+    "tests.test_evolution.test_experience_pool": [
+      "core.evolution.experience_pool"
+    ],
+    "tests.integration.test_prompt_system_integration": [
+      "utils.prompt_manager"
+    ],
+    "tests.test_search.test_parallel_evaluator": [
+      "utils.config",
+      "core.evolution.gene_registry",
+      "core.state",
+      "core.executor.interpreter"
+    ],
+    "core.backend.backend_anthropic": [
+      "utils.logger_system"
+    ],
+    "core.backend.__init__": [
+      "utils.logger_system"
+    ],
+    "core.backend.backend_openai": [
+      "utils.logger_system"
+    ],
+    "core.backend.utils": [
+      "utils.logger_system"
+    ],
+    "core.evolution.task_dispatcher": [
+      "utils.logger_system"
+    ],
+    "core.evolution.solution_evolution": [
+      "utils.logger_system",
+      "core.evolution.task_dispatcher",
+      "core.evolution.gene_parser",
+      "core.evolution.gene_selector",
+      "utils.config",
+      "core.state",
+      "core.evolution.gene_registry",
+      "core.evolution.experience_pool"
+    ],
+    "core.evolution.experience_pool": [
+      "utils.config",
+      "utils.logger_system"
+    ],
+    "core.evolution.agent_evolution": [
+      "core.evolution.experience_pool",
+      "utils.config",
+      "utils.logger_system",
+      "core.backend"
+    ],
+    "core.evolution.pheromone": [
+      "core.state"
+    ],
+    "core.evolution.gene_selector": [
+      "core.evolution.gene_registry",
+      "utils.logger_system",
+      "core.state"
+    ],
+    "core.evolution.gene_registry": [
+      "core.state"
+    ],
+    "core.executor.interpreter": [
+      "utils.logger_system"
+    ],
+    "core.executor.workspace": [
+      "utils.logger_system"
+    ]
+  },
+  "line_counts": {
+    "main": 161,
+    "core.__init__": 4,
+    "core.orchestrator": 535,
+    "tests.__init__": 2,
+    "agents.base_agent": 120,
+    "agents.__init__": 10,
+    "agents.coder_agent": 273,
+    "utils.logger_system": 181,
+    "utils.config": 555,
+    "utils.data_preview": 270,
+    "utils.prompt_builder": 269,
+    "utils.prompt_manager": 252,
+    "utils.__init__": 2,
+    "utils.response": 90,
+    "utils.metric": 118,
+    "utils.workspace_builder": 128,
+    "utils.file_utils": 114,
+    "search.__init__": 10,
+    "search.parallel_evaluator": 246,
+    "search.fitness": 82,
+    ".scripts.update_codemaps": 423,
+    ".reports.codemap-analyzer": 181,
+    ".reports.codemap-analysis": 147,
+    ".claude.skills.continuous-learning-v2.scripts.instinct-cli": 495,
+    "tests.unit.test_journal": 292,
+    "tests.unit.test_metric": 96,
+    "tests.unit.test_task": 82,
+    "tests.unit.test_response": 85,
+    "tests.unit.test_backend_provider": 98,
+    "tests.unit.test_file_utils": 123,
+    "tests.unit.__init__": 2,
+    "tests.unit.test_workspace": 149,
+    "tests.unit.test_orchestrator": 318,
+    "tests.unit.test_config": 769,
+    "tests.unit.test_interpreter": 115,
+    "tests.unit.test_prompt_builder": 282,
+    "tests.unit.test_config_priority": 349,
+    "tests.unit.test_data_preview": 125,
+    "tests.unit.test_agents": 506,
+    "tests.unit.test_node": 104,
+    "tests.unit.test_state_integration": 147,
+    "tests.test_evolution.test_agent_evolution": 326,
+    "tests.test_evolution.test_gene_parser": 246,
+    "tests.test_evolution.__init__": 2,
+    "tests.test_evolution.test_pheromone": 205,
+    "tests.test_evolution.test_prompt_manager": 386,
+    "tests.test_evolution.test_task_dispatcher": 176,
+    "tests.test_evolution.test_gene_registry": 240,
+    "tests.test_evolution.test_gene_selector": 331,
+    "tests.test_evolution.test_solution_evolution": 466,
+    "tests.test_evolution.test_experience_pool": 461,
+    "tests.integration.__init__": 2,
+    "tests.integration.test_prompt_system_integration": 177,
+    "tests.test_search.test_parallel_evaluator": 393,
+    "tests.test_search.__init__": 2,
+    "tests.test_search.test_fitness": 109,
+    "workspace.best_solution.solution": 155,
+    "core.backend.backend_anthropic": 143,
+    "core.backend.__init__": 138,
+    "core.backend.backend_openai": 164,
+    "core.backend.utils": 81,
+    "core.state.task": 63,
+    "core.state.journal": 284,
+    "core.state.__init__": 17,
+    "core.state.node": 122,
+    "core.evolution.gene_parser": 163,
+    "core.evolution.task_dispatcher": 158,
+    "core.evolution.solution_evolution": 421,
+    "core.evolution.experience_pool": 320,
+    "core.evolution.__init__": 35,
+    "core.evolution.agent_evolution": 393,
+    "core.evolution.pheromone": 105,
+    "core.evolution.gene_selector": 315,
+    "core.evolution.gene_registry": 200,
+    "core.executor.__init__": 11,
+    "core.executor.interpreter": 177,
+    "core.executor.workspace": 182
+  },
+  "stats_by_dir": {
+    "root": {
+      "files": 1,
+      "lines": 161
+    },
+    "core": {
+      "files": 22,
+      "lines": 4031
+    },
+    "tests": {
+      "files": 33,
+      "lines": 7166
+    },
+    "agents": {
+      "files": 3,
+      "lines": 403
+    },
+    "utils": {
+      "files": 10,
+      "lines": 1979
+    },
+    "search": {
+      "files": 3,
+      "lines": 338
+    },
+    "": {
+      "files": 4,
+      "lines": 1246
+    },
+    "workspace": {
+      "files": 1,
+      "lines": 155
+    }
+  }
+}

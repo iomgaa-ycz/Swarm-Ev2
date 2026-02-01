@@ -1,8 +1,8 @@
 # Swarm-Ev2 项目架构概览
 
-**Last Updated:** 2026-02-01
-**项目版本:** 0.1.0
-**当前阶段:** Phase 3.3 Agent层群体智能（已完成）
+**Last Updated:** 2026-02-01 21:30
+**项目版本:** 0.2.0
+**当前阶段:** Phase 3.4 Solution层遗传算法（已完成）
 
 ---
 
@@ -13,11 +13,11 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 | 属性 | 值 |
 |------|-----|
 | 语言 | Python 3.10 (Conda: Swarm-Evo) |
-| 架构 | 纯后端，asyncio |
+| 架构 | 纯后端，asyncio + 多线程 |
 | 配置 | OmegaConf + YAML |
 | 日志 | 双通道（文本 + JSON） |
-| 测试 | pytest + pytest-asyncio |
-| 代码行数 | ~5311 行（26 个核心模块） |
+| 测试 | pytest + pytest-asyncio (33 测试文件, 7166 行) |
+| 代码行数 | ~8313 行核心代码（44 模块） + 7166 行测试 |
 
 ---
 
@@ -30,7 +30,7 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 +---------------------------------------------------------+
 |                编排层 (Orchestration)                     |
 |   Orchestrator (534行)                                   |  <- Phase 2.4
-|   ParallelEvaluator                                      |  <- Phase 3
+|   ParallelEvaluator (171行)                              |  <- Phase 3.4
 +---------------------------------------------------------+
 |                  Agent 层 (Agents)                        |
 |   BaseAgent + CoderAgent + PromptBuilder                 |  <- Phase 2
@@ -40,9 +40,12 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 |   GeneParser (163行)                                     |  <- P3.1
 |   ExperiencePool (320行)                                 |  <- P3.2
 |   Fitness (82行)                                         |  <- P3.2
-|   TaskDispatcher (158行) [NEW]                           |  <- P3.3
-|   AgentEvolution (393行) [NEW]                           |  <- P3.3
-|   SolutionEvolution                                      |  <- P3.4
+|   TaskDispatcher (157行)                                 |  <- P3.3
+|   AgentEvolution (392行)                                 |  <- P3.3
+|   GeneRegistry (199行) [NEW]                             |  <- P3.4
+|   GeneSelector (314行) [NEW]                             |  <- P3.4
+|   Pheromone (104行) [NEW]                                |  <- P3.4
+|   SolutionEvolution (420行) [NEW]                        |  <- P3.4
 +---------------------------------------------------------+
 |                  执行层 (Execution)                       |
 |   Interpreter + WorkspaceManager                         |  <- Phase 2
@@ -199,8 +202,8 @@ graph TD
 | **3.1** | **基因解析器** | **完成** | **gene_parser.py (163行)** |
 | **3.2** | **经验池+适应度** | **完成** | **experience_pool.py (313行), fitness.py (82行)** |
 | **3+** | **PromptManager** | **完成** | **prompt_manager.py (252行) + benchmark/** |
-| **3.3** | **Agent 层群体智能** | **完成** | **task_dispatcher.py (158行) + agent_evolution.py (393行)** |
-| 3.4 | Solution 层 GA | 待实现 | solution_evolution.py |
+| **3.3** | **Agent 层群体智能** | **完成** | **task_dispatcher.py (157行) + agent_evolution.py (392行)** |
+| **3.4** | **Solution 层 GA** | **完成** | **solution_evolution.py (420行) + gene_selector.py (314行) + gene_registry.py (199行) + pheromone.py (104行) + parallel_evaluator.py (171行)** |
 | 4 | 扩展功能 | 待实现 | Memory, ToolRegistry |
 | 5 | 测试与文档 | 进行中 | 80%+ 覆盖率 |
 
@@ -231,18 +234,23 @@ graph TD
 | **Phase 2.4: Orchestrator** ||||
 | 任务编排器 | `core/orchestrator.py` | 534 | 完成 |
 | **Phase 3: 进化层** ||||
-| **基因解析器** | **`core/evolution/gene_parser.py`** | **163** | **完成** |
-| **共享经验池** | **`core/evolution/experience_pool.py`** | **320** | **完成** (+query扩展) |
+| **基因解析器** | **`core/evolution/gene_parser.py`** | **162** | **完成** |
+| **共享经验池** | **`core/evolution/experience_pool.py`** | **319** | **完成** (+query扩展) |
 | **适应度计算** | **`search/fitness.py`** | **82** | **完成** |
-| **任务分配器** | **`core/evolution/task_dispatcher.py`** | **158** | **完成 (P3.3)** |
-| **Agent 层进化** | **`core/evolution/agent_evolution.py`** | **393** | **完成 (P3.3)** |
+| **任务分配器** | **`core/evolution/task_dispatcher.py`** | **157** | **完成 (P3.3)** |
+| **Agent 层进化** | **`core/evolution/agent_evolution.py`** | **392** | **完成 (P3.3)** |
+| **基因注册表** | **`core/evolution/gene_registry.py`** | **199** | **完成 (P3.4)** |
+| **基因选择器** | **`core/evolution/gene_selector.py`** | **314** | **完成 (P3.4)** |
+| **信息素机制** | **`core/evolution/pheromone.py`** | **104** | **完成 (P3.4)** |
+| **Solution 层 GA** | **`core/evolution/solution_evolution.py`** | **420** | **完成 (P3.4)** |
+| **并行评估器** | **`search/parallel_evaluator.py`** | **171** | **完成 (P3.4)** |
 | **Phase 3+: Prompt 系统 (NEW)** ||||
 | **Prompt 管理器** | **`utils/prompt_manager.py`** | **252** | **完成** |
 | **Benchmark 资源** | **`benchmark/mle-bench/`** | **-** | **完成** |
 | **配置文件** ||||
 | YAML 配置 | `config/default.yaml` | 111 | 完成 (+agent进化配置) |
 
-**总计**: 26 个核心模块 | ~5311 行代码
+**总计**: 44 个核心模块 | ~8313 行核心代码 + 33 个测试文件（7166 行测试代码）
 
 ---
 
@@ -293,15 +301,18 @@ Swarm-Ev2/
 │   ├── orchestrator.py            # 编排器（534行）
 │   └── evolution/                 # 进化机制
 │       ├── __init__.py            # 模块导出
-│       ├── gene_parser.py         # 基因解析器 (163行)
-│       ├── experience_pool.py     # 共享经验池 (320行)
-│       ├── task_dispatcher.py     # 任务分配器 (158行)         Phase 3.3
-│       ├── agent_evolution.py     # Agent 层进化 (393行)       Phase 3.3
-│       └── solution_evolution.py  # Solution 层 GA             Phase 3.4
+│       ├── gene_parser.py         # 基因解析器 (162行)
+│       ├── experience_pool.py     # 共享经验池 (319行)
+│       ├── task_dispatcher.py     # 任务分配器 (157行)         Phase 3.3
+│       ├── agent_evolution.py     # Agent 层进化 (392行)       Phase 3.3
+│       ├── gene_registry.py       # 基因注册表 (199行)         Phase 3.4
+│       ├── gene_selector.py       # 基因选择器 (314行)         Phase 3.4
+│       ├── pheromone.py           # 信息素机制 (104行)         Phase 3.4
+│       └── solution_evolution.py  # Solution 层 GA (420行)     Phase 3.4
 ├── search/                        # 搜索与评估
 │   ├── __init__.py                # 模块导出
 │   ├── fitness.py                 # 适应度计算 (82行)
-│   └── parallel_evaluator.py      # 并行评估器                 Phase 3
+│   └── parallel_evaluator.py      # 并行评估器 (171行)         Phase 3.4
 ├── utils/                         # 工具模块
 │   ├── config.py                  # 配置管理 (+EvolutionConfig)
 │   ├── logger_system.py           # 日志系统
@@ -465,6 +476,135 @@ class AgentEvolution:
 | `inject_top_k_skills` | `(task_type, k, pool) -> str` | 提取 Top-K 成功案例 |
 | `build_prompt` | `(task_type, agent_id, context) -> str` | 构建完整 Prompt |
 
+### 6.7 基因注册表 (`core/evolution/gene_registry.py`) [NEW - P3.4]
+
+**职责**: 管理基因级信息素，支持基因哈希、归一化和信息素更新。
+
+```python
+class GeneRegistry:
+    """基因注册表（信息素管理）。
+
+    Attributes:
+        _gene_pheromones: Dict[str, float] - 基因 ID -> 信息素值
+        _gene_usage: Dict[str, int] - 基因 ID -> 使用次数
+        decay_rate: float - 信息素衰减率
+    """
+```
+
+| 函数 | 签名 | 说明 |
+|------|------|------|
+| `compute_gene_id` | `(locus: str, text: str) -> str` | 计算基因 ID（哈希） |
+| `normalize_gene_text` | `(text: str) -> str` | 归一化基因文本 |
+| `update_pheromone` | `(gene_id, delta) -> None` | 更新基因信息素 |
+| `get_pheromone` | `(gene_id) -> float` | 获取基因信息素值 |
+| `decay_all` | `() -> None` | 全局衰减 |
+
+### 6.8 基因选择器 (`core/evolution/gene_selector.py`) [NEW - P3.4]
+
+**职责**: 基于信息素的确定性基因选择，用于 Solution 层交叉操作。
+
+**策略**: 纯粹利用（Exploitation-only），无多样性正则化。
+
+```python
+def select_gene_plan(
+    journal: Journal,
+    gene_registry: GeneRegistry,
+    node_weight: float = 0.7,
+    gene_weight: float = 0.3,
+) -> Dict[str, str]:
+    """为每个位点选择 Top-1 基因。
+
+    质量计算:
+        quality = node_weight × node_pheromone + gene_weight × gene_pheromone
+
+    Returns:
+        Dict[locus_name, gene_id]
+    """
+```
+
+### 6.9 信息素机制 (`core/evolution/pheromone.py`) [NEW - P3.4]
+
+**职责**: 节点级信息素计算，融合节点得分、成功率和时间衰减。
+
+```python
+def compute_node_pheromone(
+    node: Node,
+    score_weight: float = 0.5,
+    success_weight: float = 0.3,
+    time_decay_weight: float = 0.2,
+    time_decay_rate: float = 0.01,
+) -> float:
+    """计算节点信息素值。
+
+    pheromone = w1×score + w2×success_rate + w3×time_decay
+    """
+```
+
+### 6.10 Solution 层进化器 (`core/evolution/solution_evolution.py`) [NEW - P3.4]
+
+**职责**: 实现完整的遗传算法流程，支持精英保留、锦标赛选择、交叉和变异。
+
+```python
+class SolutionEvolution:
+    """Solution 层遗传算法。
+
+    Attributes:
+        agents: List[BaseAgent] - Agent 列表
+        dispatcher: TaskDispatcher - 任务分配器
+        evaluator: ParallelEvaluator - 并行评估器
+        gene_registry: GeneRegistry - 基因注册表
+        experience_pool: ExperiencePool - 共享经验池
+        config: Config - 全局配置
+    """
+```
+
+| 方法 | 签名 | 说明 |
+|------|------|------|
+| `evolve_epoch` | `(epoch: int) -> List[Node]` | 执行一个 Epoch 的进化 |
+| `_elite_selection` | `(population) -> List[Node]` | 精英保留 (top-N) |
+| `_tournament_selection` | `(population, k) -> Node` | 锦标赛选择 |
+| `_crossover` | `(parent1, parent2) -> Node` | 基因交叉（随机或信息素驱动） |
+| `_mutate` | `(individual) -> Node` | 基因变异 |
+| `_evaluate_population` | `(population) -> List[Node]` | 并行评估种群 |
+
+**进化流程**:
+1. 精英保留（top-3）
+2. 锦标赛选择（k=3）生成父代
+3. 交叉生成子代（80% 概率）
+4. 变异（20% 概率）
+5. 并行评估新种群
+6. 更新基因注册表信息素
+
+### 6.11 并行评估器 (`search/parallel_evaluator.py`) [NEW - P3.4]
+
+**职责**: 使用多线程并发执行和评估多个 Solution，提高效率。
+
+```python
+class ParallelEvaluator:
+    """并行评估器（线程池）。
+
+    Attributes:
+        workspace: WorkspaceManager
+        interpreter: Interpreter
+        gene_registry: GeneRegistry
+        config: Config
+        max_workers: int - 线程池大小
+    """
+```
+
+| 方法 | 签名 | 说明 |
+|------|------|------|
+| `evaluate_batch` | `(nodes: List[Node]) -> List[Node]` | 并行评估节点列表 |
+| `_evaluate_single` | `(node: Node) -> Node` | 评估单个节点 |
+| `_execute_and_review` | `(node: Node) -> Node` | 执行代码并提取指标 |
+
+**工作流程**:
+1. 使用 ThreadPoolExecutor 创建线程池
+2. 并发执行所有节点的代码
+3. 提取 metric_value 并计算适应度
+4. 更新节点信息素
+5. 更新基因注册表
+
 ---
 
 ## 7. Orchestrator 编排器架构
@@ -571,11 +711,11 @@ AgentResult (输出)
 
 ---
 
-## 9. 双层群体智能架构概览
+## 9. 双层群体智能架构概览 [Phase 3 完成]
 
 ```
 +----------------------------------------------+
-|               Agent 层（群体智能） [P3.3]      |
+|          Agent 层（群体智能） [P3.3]          |
 |  +-----+ +-----+ +-----+ +-----+             |
 |  | A0  | | A1  | | A2  | | A3  |  4 个 Agent |
 |  +--+--+ +--+--+ +--+--+ +--+--+             |
@@ -584,22 +724,30 @@ AgentResult (输出)
 |     AgentEvolution (每 N Epoch 进化)          |
 |              | 生成 Solution                  |
 +----------------------------------------------+
-|            Solution 层（遗传算法）             |
+|        Solution 层（遗传算法） [P3.4 完成]     |
 |  种群: 12 个 Solution                         |
 |  基因: DATA | MODEL | LOSS | OPTIMIZER |     |
 |        REGULARIZATION | INITIALIZATION |     |
 |        TRAINING_TRICKS                       |
 |  操作: 精英保留(top-3) + 锦标赛(k=3) +       |
-|        交叉 + 变异(20%)                       |
+|        交叉(随机/信息素) + 变异(20%)          |
+|  引擎: SolutionEvolution (420行)             |
+|        ParallelEvaluator (171行, 多线程)      |
++----------------------------------------------+
+|      信息素系统 (Pheromone System) [NEW]      |
+|  - 节点级信息素 (pheromone.py, 104行)         |
+|  - 基因级信息素 (gene_registry.py, 199行)     |
+|  - 信息素驱动基因选择 (gene_selector.py, 314行)|
+|  - 时间衰减 + 质量更新                        |
 +----------------------------------------------+
 |         共享经验池 (ExperiencePool)           |
-|  - 存储 Agent 执行记录                        |
+|  - 存储 Agent 执行记录 (319行)                |
 |  - 支持 Top-K 查询 + 过滤                     |
 |  - JSON 持久化                               |
-|  Agent 表现 <-> Solution 评估结果             |
+|  - Agent 表现 <-> Solution 评估结果           |
 +----------------------------------------------+
-|         Prompt 系统 (NEW)                     |
-|  - PromptManager (Jinja2 模板)               |
+|         Prompt 系统 [P3+]                     |
+|  - PromptManager (Jinja2 模板, 252行)        |
 |  - benchmark/mle-bench/ 资源文件             |
 |  - 7 层结构化 Prompt                          |
 |  - 动态 Skill 注入 (Top-K 经验)              |

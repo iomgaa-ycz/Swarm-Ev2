@@ -1,7 +1,8 @@
 # 后端模块详细说明
 
-**Last Updated:** 2026-02-01
+**Last Updated:** 2026-02-01 21:30
 **模块范围:** utils/, core/state/, core/backend/, core/executor/, core/evolution/, agents/, search/, config/, tests/, benchmark/
+**当前阶段:** Phase 3.4 Solution层遗传算法（已完成）
 
 ---
 
@@ -39,11 +40,16 @@
 | **编排层** |||||
 | Orchestrator | `core/orchestrator.py` | 534 | 任务编排器 (三阶段选择+Function Calling Review) | 完成 |
 | **进化层 (Phase 3)** |||||
-| **基因解析器** | **`core/evolution/gene_parser.py`** | **163** | **解析 7 基因块，支持 GA 交叉** | **完成** |
-| **共享经验池** | **`core/evolution/experience_pool.py`** | **320** | **线程安全存储 + Top-K 查询 + 扩展过滤** | **完成** |
+| **基因解析器** | **`core/evolution/gene_parser.py`** | **162** | **解析 7 基因块，支持 GA 交叉** | **完成** |
+| **共享经验池** | **`core/evolution/experience_pool.py`** | **319** | **线程安全存储 + Top-K 查询 + 扩展过滤** | **完成** |
 | **适应度计算** | **`search/fitness.py`** | **82** | **归一化到 [0,1]，支持 lower_is_better** | **完成** |
-| **任务分配器** | **`core/evolution/task_dispatcher.py`** | **158** | **Epsilon-Greedy 策略 + EMA 得分更新** | **完成 (P3.3)** |
-| **Agent 层进化** | **`core/evolution/agent_evolution.py`** | **393** | **LLM 驱动的 Role/Strategy 变异** | **完成 (P3.3)** |
+| **任务分配器** | **`core/evolution/task_dispatcher.py`** | **157** | **Epsilon-Greedy 策略 + EMA 得分更新** | **完成 (P3.3)** |
+| **Agent 层进化** | **`core/evolution/agent_evolution.py`** | **392** | **LLM 驱动的 Role/Strategy 变异** | **完成 (P3.3)** |
+| **基因注册表** | **`core/evolution/gene_registry.py`** | **199** | **基因级信息素管理 + 哈希 + 衰减** | **完成 (P3.4)** |
+| **基因选择器** | **`core/evolution/gene_selector.py`** | **314** | **信息素驱动的确定性基因选择** | **完成 (P3.4)** |
+| **信息素机制** | **`core/evolution/pheromone.py`** | **104** | **节点级信息素计算 + 时间衰减** | **完成 (P3.4)** |
+| **Solution 层 GA** | **`core/evolution/solution_evolution.py`** | **420** | **完整 GA 流程（精英+锦标赛+交叉+变异）** | **完成 (P3.4)** |
+| **并行评估器** | **`search/parallel_evaluator.py`** | **171** | **多线程并发执行和评估** | **完成 (P3.4)** |
 | **配置文件** |||||
 | YAML 配置 | `config/default.yaml` | 111 | 项目主配置 (+agent进化配置) | 完成 |
 | 环境变量 | `.env.example` | 36 | API Keys 模板 | 完成 |
@@ -734,7 +740,356 @@ AgentEvolution
 
 ---
 
-## 11. 测试架构 (`tests/`)
+## 11. 基因注册表 (`core/evolution/gene_registry.py`) [NEW - P3.4]
+
+### 11.1 核心职责
+
+管理基因级信息素，支持基因哈希、归一化和信息素更新。每个基因通过位点名称和归一化文本的哈希值唯一标识。
+
+### 11.2 类结构
+
+```python
+class GeneRegistry:
+    """基因注册表（信息素管理）。
+
+    Attributes:
+        _gene_pheromones: Dict[str, float] - 基因 ID -> 信息素值
+        _gene_usage: Dict[str, int] - 基因 ID -> 使用次数
+        decay_rate: float - 信息素衰减率（默认 0.1）
+    """
+```
+
+### 11.3 核心函数
+
+| 函数 | 签名 | 说明 |
+|------|------|------|
+| `compute_gene_id` | `(locus: str, text: str) -> str` | 计算基因 ID（MD5 哈希） |
+| `normalize_gene_text` | `(text: str) -> str` | 归一化基因文本（移除注释、空行、多余空格） |
+| `update_pheromone` | `(gene_id: str, delta: float) -> None` | 更新基因信息素 |
+| `get_pheromone` | `(gene_id: str) -> float` | 获取基因信息素值 |
+| `decay_all` | `() -> None` | 全局衰减（所有基因 × (1-decay_rate)） |
+
+### 11.4 归一化策略
+
+```python
+def normalize_gene_text(text: str) -> str:
+    """归一化基因文本。
+
+    步骤:
+        1. 移除注释（# 开头的行）
+        2. 移除空行
+        3. 移除多余空格
+        4. 统一换行符
+    """
+```
+
+### 11.5 依赖关系
+
+```
+GeneRegistry
++-- hashlib (MD5)
++-- re (正则表达式)
++-- core.state.Node
+```
+
+---
+
+## 12. 基因选择器 (`core/evolution/gene_selector.py`) [NEW - P3.4]
+
+### 12.1 核心职责
+
+基于信息素的确定性基因选择，用于 Solution 层交叉操作。采用纯粹利用（Exploitation-only）策略，无多样性正则化。
+
+### 12.2 选择策略
+
+**质量计算**:
+```
+quality = node_weight × node_pheromone + gene_weight × gene_pheromone
+```
+
+**默认权重**:
+- `node_weight = 0.7`: 节点级信息素权重
+- `gene_weight = 0.3`: 基因级信息素权重
+
+### 12.3 核心函数
+
+| 函数 | 签名 | 说明 |
+|------|------|------|
+| `select_gene_plan` | `(journal, gene_registry, node_weight, gene_weight) -> Dict[str, str]` | 为每个位点选择 Top-1 基因 |
+| `_compute_quality` | `(node, gene_id, node_weight, gene_weight) -> float` | 计算质量分数 |
+
+### 12.4 选择流程
+
+```
+select_gene_plan()
+|
++-- 遍历 7 个基因位点
+|   |
+|   +-- 遍历 Journal 中所有节点
+|   |   |
+|   |   +-- 提取该位点的基因
+|   |   +-- 计算质量分数（节点信息素 + 基因信息素）
+|   |   +-- 记录候选基因
+|   |
+|   +-- 选择质量最高的基因 (Top-1)
+|
++-- 返回基因计划 {locus: gene_id}
+```
+
+### 12.5 依赖关系
+
+```
+GeneSelector
++-- core.evolution.gene_registry.GeneRegistry, compute_gene_id, normalize_gene_text
++-- core.state.Journal, Node
++-- utils.logger_system.log_msg
+```
+
+---
+
+## 13. 信息素机制 (`core/evolution/pheromone.py`) [NEW - P3.4]
+
+### 13.1 核心职责
+
+节点级信息素计算，融合节点得分、成功率和时间衰减。
+
+### 13.2 信息素公式
+
+```python
+pheromone = score_weight × score_term +
+            success_weight × success_rate +
+            time_decay_weight × exp(-decay_rate × time_elapsed)
+```
+
+**默认权重**:
+- `score_weight = 0.5`: 节点得分权重
+- `success_weight = 0.3`: 成功率权重
+- `time_decay_weight = 0.2`: 时间衰减权重
+- `time_decay_rate = 0.01`: 时间衰减率
+
+### 13.3 核心函数
+
+| 函数 | 签名 | 说明 |
+|------|------|------|
+| `ensure_node_stats` | `(node: Node) -> None` | 确保节点包含信息素统计字段 |
+| `compute_node_pheromone` | `(node, score_weight, success_weight, time_decay_weight, time_decay_rate) -> float` | 计算节点信息素值 |
+
+### 13.4 节点元数据
+
+```python
+node.metadata = {
+    "usage_count": int,       # 使用次数
+    "success_count": int,     # 成功次数
+    "pheromone_node": float,  # 节点信息素值
+}
+```
+
+### 13.5 依赖关系
+
+```
+Pheromone
++-- math (exp)
++-- time
++-- core.state.Node
+```
+
+---
+
+## 14. Solution 层进化器 (`core/evolution/solution_evolution.py`) [NEW - P3.4]
+
+### 14.1 核心职责
+
+实现完整的遗传算法流程，支持精英保留、锦标赛选择、交叉（随机/信息素驱动）和变异。
+
+### 14.2 类结构
+
+```python
+class SolutionEvolution:
+    """Solution 层遗传算法。
+
+    Attributes:
+        agents: List[BaseAgent] - Agent 列表
+        dispatcher: TaskDispatcher - 任务分配器
+        evaluator: ParallelEvaluator - 并行评估器
+        gene_registry: GeneRegistry - 基因注册表
+        experience_pool: ExperiencePool - 共享经验池
+        config: Config - 全局配置
+        journal: Journal - 历史节点记录
+    """
+```
+
+### 14.3 核心方法
+
+| 方法 | 签名 | 说明 |
+|------|------|------|
+| `evolve_epoch` | `(epoch: int) -> List[Node]` | 执行一个 Epoch 的进化 |
+| `_elite_selection` | `(population: List[Node]) -> List[Node]` | 精英保留 (top-N) |
+| `_tournament_selection` | `(population, k) -> Node` | 锦标赛选择 |
+| `_crossover` | `(parent1, parent2, use_pheromone) -> Node` | 基因交叉 |
+| `_mutate` | `(individual) -> Node` | 基因变异 |
+| `_evaluate_population` | `(population) -> List[Node]` | 并行评估种群 |
+
+### 14.4 进化流程
+
+```
+evolve_epoch(epoch)
+|
++-- [1] 精英保留
+|   elite = top-N (按 fitness 排序)
+|
++-- [2] 生成新个体
+|   while len(offspring) < population_size - elite_size:
+|       +-- 锦标赛选择 2 个父代
+|       +-- 交叉生成子代 (80% 概率)
+|       +-- 变异 (20% 概率)
+|
++-- [3] 合并种群
+|   new_population = elite + offspring
+|
++-- [4] 并行评估
+|   evaluated = ParallelEvaluator.evaluate_batch(new_population)
+|
++-- [5] 更新基因注册表
+|   for node in evaluated:
+|       for gene in node.genes:
+|           gene_registry.update_pheromone(gene, delta)
+|
++-- return evaluated
+```
+
+### 14.5 交叉策略
+
+**随机交叉** (`use_pheromone=False`):
+- 随机选择 50% 基因来自 parent1，50% 来自 parent2
+
+**信息素驱动交叉** (`use_pheromone=True`):
+- 使用 `gene_selector.select_gene_plan()` 选择质量最高的基因
+
+### 14.6 配置项（`config/default.yaml`）
+
+```yaml
+evolution:
+  solution:
+    population_size: 12        # 种群大小
+    elite_size: 3              # 精英保留数量
+    crossover_rate: 0.8        # 交叉概率
+    mutation_rate: 0.2         # 变异概率
+    tournament_k: 3            # 锦标赛选择 k 值
+    steps_per_epoch: 10        # 每 Epoch 步数
+```
+
+### 14.7 依赖关系
+
+```
+SolutionEvolution
++-- agents.base_agent.BaseAgent, AgentContext, AgentResult
++-- core.state.Node, Journal
++-- core.evolution.task_dispatcher.TaskDispatcher
++-- core.evolution.experience_pool.ExperiencePool, TaskRecord
++-- core.evolution.gene_parser.parse_solution_genes, REQUIRED_GENES
++-- core.evolution.gene_registry.GeneRegistry
++-- core.evolution.gene_selector.select_gene_plan
++-- search.parallel_evaluator.ParallelEvaluator
++-- search.fitness.normalize_fitness
++-- utils.config.Config
++-- utils.logger_system.log_msg, log_json
+```
+
+---
+
+## 15. 并行评估器 (`search/parallel_evaluator.py`) [NEW - P3.4]
+
+### 15.1 核心职责
+
+使用多线程并发执行和评估多个 Solution，提高效率。
+
+### 15.2 类结构
+
+```python
+class ParallelEvaluator:
+    """并行评估器（线程池）。
+
+    Attributes:
+        workspace: WorkspaceManager
+        interpreter: Interpreter
+        gene_registry: GeneRegistry
+        config: Config
+        max_workers: int - 线程池大小（默认 3）
+    """
+```
+
+### 15.3 核心方法
+
+| 方法 | 签名 | 说明 |
+|------|------|------|
+| `evaluate_batch` | `(nodes: List[Node]) -> List[Node]` | 并行评估节点列表 |
+| `_evaluate_single` | `(node: Node) -> Node` | 评估单个节点 |
+| `_execute_and_review` | `(node: Node) -> Node` | 执行代码并提取指标 |
+
+### 15.4 工作流程
+
+```
+evaluate_batch(nodes)
+|
++-- 创建 ThreadPoolExecutor (max_workers=3)
+|
++-- 提交所有节点到线程池
+|   futures = [executor.submit(_evaluate_single, node) for node in nodes]
+|
++-- 等待所有任务完成
+|   for future in as_completed(futures):
+|       evaluated_node = future.result()
+|       if node.metric_value is not None:
+|           node.fitness = normalize_fitness(...)
+|           compute_node_pheromone(node)
+|
++-- return evaluated_nodes
+```
+
+### 15.5 评估单个节点流程
+
+```
+_evaluate_single(node)
+|
++-- 执行代码
+|   workspace.rewrite_submission_path(node.code, node.id)
+|   result = interpreter.run(node.code)
+|
++-- 提取指标
+|   metric = _extract_metric_from_output(result.term_out)
+|   node.metric_value = metric
+|
++-- 更新节点字段
+|   node.exec_time = result.exec_time
+|   node.is_buggy = (result.exc_type is not None)
+|
++-- 计算适应度
+|   if metric is not None:
+|       node.fitness = normalize_fitness(metric, lower_is_better)
+|
++-- 更新信息素
+|   compute_node_pheromone(node)
+|
++-- return node
+```
+
+### 15.6 依赖关系
+
+```
+ParallelEvaluator
++-- concurrent.futures.ThreadPoolExecutor, as_completed
++-- core.executor.interpreter.Interpreter
++-- core.executor.workspace.WorkspaceManager
++-- core.evolution.gene_registry.GeneRegistry
++-- core.evolution.pheromone.compute_node_pheromone, ensure_node_stats
++-- search.fitness.normalize_fitness
++-- utils.config.Config
++-- utils.logger_system.log_msg, log_exception
+```
+
+---
+
+## 16. 测试架构 (`tests/`)
 
 ### 11.1 目录结构
 
@@ -759,16 +1114,21 @@ tests/
 |   +-- test_prompt_builder.py         # PromptBuilder 测试
 |   +-- test_agents.py                 # CoderAgent 测试
 |   +-- test_orchestrator.py           # Orchestrator 测试
-+-- test_evolution/                    # Phase 3 进化模块测试 (74 用例, 95% 覆盖率)
++-- test_evolution/                    # Phase 3 进化模块测试 (完整覆盖率)
 |   +-- __init__.py
 |   +-- test_gene_parser.py            # 基因解析器测试
 |   +-- test_experience_pool.py        # 经验池测试
 |   +-- test_prompt_manager.py         # PromptManager 测试
 |   +-- test_task_dispatcher.py        # 任务分配器测试 [P3.3]
 |   +-- test_agent_evolution.py        # Agent 层进化测试 [P3.3]
+|   +-- test_gene_registry.py          # 基因注册表测试 [P3.4]
+|   +-- test_gene_selector.py          # 基因选择器测试 [P3.4]
+|   +-- test_pheromone.py              # 信息素机制测试 [P3.4]
+|   +-- test_solution_evolution.py     # Solution 层 GA 测试 [P3.4]
 +-- test_search/                       # Phase 3 搜索模块测试
 |   +-- __init__.py
 |   +-- test_fitness.py                # 适应度计算测试
+|   +-- test_parallel_evaluator.py     # 并行评估器测试 [P3.4]
 +-- integration/                       # 集成测试
     +-- __init__.py
     +-- test_prompt_system_integration.py # Prompt 系统集成测试 [NEW]

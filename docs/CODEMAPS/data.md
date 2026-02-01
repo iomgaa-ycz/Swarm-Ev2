@@ -1,7 +1,8 @@
 # 数据流与配置管理
 
-**Last Updated:** 2026-02-01
+**Last Updated:** 2026-02-01 21:30
 **模块范围:** config/, .env, utils/config.py, utils/logger_system.py, core/executor/, core/orchestrator.py, core/evolution/, search/, utils/prompt_manager.py, benchmark/
+**当前阶段:** Phase 3.4 Solution层遗传算法（已完成）
 
 ---
 
@@ -154,11 +155,19 @@ evolution:
     mutation_rate: 0.2        # 变异概率
     tournament_k: 3           # 锦标赛选择 k 值
     steps_per_epoch: 10       # 每 Epoch 步数
+    use_pheromone_crossover: true  # 使用信息素驱动交叉 [P3.4]
 
   agent:                      # Agent 层进化配置
     num_agents: 4             # Agent 数量
     evolution_interval: 3     # 每 N 个 Epoch 进化一次
     epsilon: 0.3              # Epsilon-Greedy 探索率
+    learning_rate: 0.3        # EMA 学习率
+    configs_dir: "benchmark/mle-bench/agent_configs"
+    min_records_for_evolution: 20
+
+  gene_registry:              # 基因注册表配置 [P3.4]
+    decay_rate: 0.1           # 信息素衰减率
+    save_path: "workspace/evolution/gene_registry.json"
 ```
 
 ### 3.2 `.env.example` 模板
@@ -217,6 +226,7 @@ workspace/                    # project.workspace_dir
 |   +-- ...
 +-- evolution/                # Phase 3: 进化数据目录
 |   +-- experience_pool.json # ExperiencePool JSON 持久化文件
+|   +-- gene_registry.json   # GeneRegistry 信息素数据 [P3.4]
 +-- best_solution/            # 最佳解决方案（Orchestrator 维护）
     +-- solution.py           # 最佳方案代码
     +-- submission.csv        # 最佳方案的提交文件
@@ -495,6 +505,72 @@ PromptManager.inject_top_k_skills()
     v
 注入到 Prompt 的 EXAMPLES 层
 ```
+
+### 6.6 信息素系统数据流 [Phase 3.4]
+
+```
+Solution 层 GA 数据流
+----------------------
+
+SolutionEvolution.evolve_epoch(epoch)
+    |
+    v
+[1] 精英保留
+    +-- 从当前种群选择 top-N（按 fitness 排序）
+    |
+    v
+[2] 生成新个体
+    +-- 锦标赛选择 2 个父代
+    |
+    v
+    交叉操作 (80% 概率)
+    |
+    +-- 策略 1: 随机交叉
+    |   - 随机选择 50% 基因来自 parent1，50% 来自 parent2
+    |
+    +-- 策略 2: 信息素驱动交叉 [NEW]
+        - GeneSelector.select_gene_plan(journal, gene_registry)
+        - 为每个位点选择质量最高的基因
+        - quality = node_weight × node_pheromone + gene_weight × gene_pheromone
+    |
+    v
+    变异操作 (20% 概率)
+    +-- 随机选择 1-2 个基因位点
+    +-- 调用 Agent 生成新基因
+    |
+    v
+[3] 并行评估新种群
+    ParallelEvaluator.evaluate_batch(population)
+    +-- ThreadPoolExecutor (max_workers=3)
+    +-- 并发执行所有节点代码
+    +-- 提取 metric_value
+    +-- 计算 fitness = normalize_fitness(metric, lower_is_better)
+    +-- 计算节点信息素
+        pheromone = score_weight × score_term +
+                    success_weight × success_rate +
+                    time_decay_weight × time_decay
+    |
+    v
+[4] 更新基因注册表
+    for node in population:
+        for locus, gene_text in node.genes.items():
+            gene_id = compute_gene_id(locus, gene_text)
+            delta = fitness - baseline
+            gene_registry.update_pheromone(gene_id, delta)
+    |
+    v
+[5] 全局衰减
+    gene_registry.decay_all()  # 所有基因 × (1 - decay_rate)
+    |
+    v
+[6] JSON 持久化
+    gene_registry.save("workspace/evolution/gene_registry.json")
+```
+
+**信息素更新策略**:
+- **节点级**: 基于节点得分、成功率和时间衰减
+- **基因级**: 基于适应度差值（fitness - baseline）
+- **全局衰减**: 每个 Epoch 结束后所有基因信息素衰减 10%
 
 ---
 
