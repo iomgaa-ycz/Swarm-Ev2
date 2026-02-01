@@ -105,3 +105,6 @@ evolution:
     num_agents: 4  # Agent 数量
     evolution_interval: 3  # 每 N 个 Epoch 进化一次
     epsilon: 0.3  # Epsilon-Greedy 探索率
+    learning_rate: 0.3  # EMA 更新学习率（α）
+    configs_dir: "benchmark/mle-bench/agent_configs"  # Agent 配置文件根目录
+    min_records_for_evolution: 20  # 进化前最小经验池记录数
