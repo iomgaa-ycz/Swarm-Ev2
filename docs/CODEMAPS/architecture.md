@@ -1,8 +1,8 @@
 # Swarm-Ev2 项目架构概览
 
-**Last Updated:** 2026-02-01 23:30
-**项目版本:** 0.3.0
-**当前阶段:** Phase 3.5 Skill 进化（已完成）
+**Last Updated:** 2026-02-01 (main.py 双层架构重构)
+**项目版本:** 0.3.1
+**当前阶段:** Phase 3.5 Skill 进化（已完成）+ main.py 双层架构集成
 
 ---
 
@@ -26,7 +26,12 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 ```
 +---------------------------------------------------------+
 |                   入口层 (Entry)                          |
-|   main.py (白盒调试)  mle_bench_adapter.py (评测)         |  <- Phase 5
+|   main.py (双层进化架构, 525行)                            |  <- Phase 3.5+
+|   mle_bench_adapter.py (评测)                             |  <- Phase 5
+|   - initialize_agents() 初始化 Agent 种群                  |
+|   - initialize_evolution_components() 初始化进化组件        |
+|   - generate_markdown_report() 生成测试报告                 |
+|   - print_evolution_statistics() 打印进化统计               |
 +---------------------------------------------------------+
 |                编排层 (Orchestration)                     |
 |   Orchestrator (534行)                                   |  <- Phase 2.4
@@ -266,7 +271,13 @@ graph TD
 
 ```
 Swarm-Ev2/
-├── main.py                        # 白盒入口（本地调试）         Phase 5
+├── main.py                        # 双层进化入口 (525行)        Phase 3.5+
+│   # 核心函数:
+│   # - initialize_agents() 初始化 Agent 种群
+│   # - initialize_evolution_components() 初始化进化组件
+│   # - generate_markdown_report() 生成 Markdown 测试报告
+│   # - print_evolution_statistics() 打印进化统计
+│   # - main() 双层进化主循环（6 阶段流程）
 ├── mle_bench_adapter.py           # 黑盒入口（MLE-Bench 评测）   Phase 5
 ├── config/
 │   └── default.yaml               # 统一 YAML 配置 (108行)
@@ -710,13 +721,109 @@ composite_score = 0.6 × avg_accuracy + 0.4 × avg_generation_rate
 
 ---
 
-## 7. Orchestrator 编排器架构
+## 7. main.py 双层进化入口架构 [重构]
 
 ### 7.1 核心职责
 
+`main.py` 是系统的端到端入口，实现双层群体智能架构的完整执行流程。
+
+### 7.2 核心函数
+
+| 函数 | 签名 | 说明 |
+|------|------|------|
+| `initialize_agents` | `(config, prompt_builder, interpreter) -> List[BaseAgent]` | 初始化 Agent 种群（4 个 Agent） |
+| `initialize_evolution_components` | `(agents, config, workspace, interpreter) -> Tuple[...]` | 初始化 ExperiencePool, TaskDispatcher, GeneRegistry, AgentEvolution |
+| `generate_markdown_report` | `(journal, pool, dispatcher, config, start_time, best_node) -> Path` | 生成完整的 Markdown 测试报告 |
+| `print_evolution_statistics` | `(journal, pool, dispatcher, best_node) -> None` | 控制台打印进化统计信息 |
+| `main` | `() -> None` | 双层进化主循环（6 阶段流程） |
+
+### 7.3 main() 执行流程
+
+```
+main()
+|
++-- [Phase 1] 环境准备
+|   +-- load_config()
+|   +-- validate_dataset()
+|
++-- [Phase 2] 工作空间构建
+|   +-- 清理旧 workspace
+|   +-- build_workspace()
+|
++-- [Phase 3] 组件初始化
+|   +-- init_logger()
+|   +-- Interpreter()
+|   +-- WorkspaceManager()
+|   +-- PromptBuilder()
+|   +-- initialize_agents() -> 4 个 Agent
+|   +-- initialize_evolution_components()
+|       +-- ExperiencePool
+|       +-- TaskDispatcher
+|       +-- GeneRegistry
+|       +-- AgentEvolution (可选)
+|   +-- Journal()
+|   +-- Orchestrator(agent_evolution=agent_evolution)
+|
++-- [Phase 4] 运行双层进化主循环
+|   +-- orchestrator.run(num_epochs, steps_per_epoch)
+|   +-- 返回 best_node
+|
++-- [Phase 5] 生成测试报告
+|   +-- generate_markdown_report()
+|   +-- 输出到 tests/outputs/main_execution_{timestamp}.md
+|
++-- [Phase 6] 结果展示
+    +-- print_evolution_statistics()
+    +-- experience_pool.save()
+    +-- log_json() 记录最终日志
+```
+
+### 7.4 集成的进化组件
+
+| 组件 | 模块 | 初始化方式 |
+|------|------|-----------|
+| ExperiencePool | `core.evolution` | `ExperiencePool(config)` |
+| TaskDispatcher | `core.evolution` | `TaskDispatcher(agents, epsilon, learning_rate)` |
+| GeneRegistry | `core.evolution` | `GeneRegistry()` |
+| AgentEvolution | `core.evolution` | `AgentEvolution(agents, experience_pool, config, skill_manager=None)` |
+
+### 7.5 Markdown 报告结构
+
+```markdown
+# Swarm-Ev2 端到端测试报告
+
+## 1. 配置摘要
+| Agent 数量 | 种群大小 | 精英保留 | 交叉率 | 变异率 | ... |
+
+## 2. 执行统计
+| 总节点数 | 成功节点 | 失败节点 | 成功率 | 经验池记录 |
+
+## 3. 最佳方案
+| 节点 ID | 评估指标 | 执行时间 | ... |
+### 代码摘要
+```python
+...
+```
+
+## 4. Agent 擅长度得分
+| Agent | explore | merge | mutate |
+
+## 5. 节点执行历史
+| 序号 | 节点 ID | 状态 | 指标 | 执行时间 |
+
+## 6. 经验池样本
+| Agent | 任务类型 | 质量 | 策略摘要 |
+```
+
+---
+
+## 8. Orchestrator 编排器架构
+
+### 8.1 核心职责
+
 Orchestrator 是系统的中枢控制器，负责协调主循环、选择父节点、调用 Agent 生成代码、执行代码、Review 评估、更新最佳节点。
 
-### 7.2 主循环流程
+### 8.2 主循环流程
 
 ```
 +-----------------------------------------------------------+
@@ -759,7 +866,7 @@ Orchestrator 是系统的中枢控制器，负责协调主循环、选择父节�
 +-----------------------------------------------------------+
 ```
 
-### 7.3 三阶段父节点选择策略
+### 8.3 三阶段父节点选择策略
 
 ```
 _select_parent_node()
@@ -781,9 +888,9 @@ _select_parent_node()
 
 ---
 
-## 8. Agent 抽象层设计
+## 9. Agent 抽象层设计
 
-### 8.1 核心组件
+### 9.1 核心组件
 
 | 组件 | 文件 | 职责 |
 |------|------|------|
@@ -793,7 +900,7 @@ _select_parent_node()
 | `PromptBuilder` | `utils/prompt_builder.py` | Prompt 构建逻辑（简化版） |
 | `PromptManager` | `utils/prompt_manager.py` | Prompt 管理器（Jinja2 版）[NEW] |
 
-### 8.2 AgentContext 数据流
+### 9.2 AgentContext 数据流
 
 ```
 AgentContext (输入)
@@ -814,9 +921,15 @@ AgentResult (输出)
 
 ---
 
-## 9. 双层群体智能架构概览 [Phase 3.5 完成]
+## 10. 双层群体智能架构概览 [Phase 3.5 完成 + main.py 集成]
 
 ```
++----------------------------------------------+
+|              入口层 (Entry)                   |
+|  main.py (525行) - 双层进化入口               |
+|    initialize_agents() -> 4 个 Agent         |
+|    initialize_evolution_components()         |
+|    Orchestrator(agent_evolution=...)         |
 +----------------------------------------------+
 |          Agent 层（群体智能） [P3.3]          |
 |  +-----+ +-----+ +-----+ +-----+             |
@@ -865,7 +978,7 @@ AgentResult (输出)
 
 ---
 
-## 10. Benchmark 资源结构 [NEW]
+## 11. Benchmark 资源结构 [NEW]
 
 ```
 benchmark/mle-bench/
@@ -903,7 +1016,7 @@ benchmark/mle-bench/
 
 ---
 
-## 11. 关联文档
+## 12. 关联文档
 
 | 文档 | 路径 | 说明 |
 |------|------|------|

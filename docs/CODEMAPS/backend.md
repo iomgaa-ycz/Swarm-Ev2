@@ -1,8 +1,8 @@
 # 后端模块详细说明
 
-**Last Updated:** 2026-02-01 23:30
-**模块范围:** utils/, core/state/, core/backend/, core/executor/, core/evolution/, agents/, search/, config/, tests/, benchmark/
-**当前阶段:** Phase 3.5 Skill 进化（已完成）
+**Last Updated:** 2026-02-01 (main.py 双层架构重构)
+**模块范围:** main.py, utils/, core/state/, core/backend/, core/executor/, core/evolution/, agents/, search/, config/, tests/, benchmark/
+**当前阶段:** Phase 3.5 Skill 进化（已完成）+ main.py 双层架构集成
 
 ---
 
@@ -10,6 +10,8 @@
 
 | 模块 | 文件 | 行数 | 职责 | 状态 |
 |------|------|------|------|------|
+| **入口层 (Entry)** |||||
+| **main.py** | **`main.py`** | **525** | **双层进化架构入口** | **完成 (重构)** |
 | **基础设施层** |||||
 | 配置系统 | `utils/config.py` | 598 | OmegaConf 配置加载与验证 (+EvolutionConfig) | 完成 |
 | 日志系统 | `utils/logger_system.py` | 180 | 双通道日志输出 | 完成 |
@@ -64,7 +66,133 @@
 
 ---
 
-## 2. Orchestrator 编排器 (`core/orchestrator.py`)
+## 2. main.py 入口模块 (`main.py`) [重构]
+
+### 2.1 核心职责
+
+系统的端到端入口，实现双层群体智能架构的完整执行流程，整合 Agent 层和 Solution 层进化机制。
+
+### 2.2 核心函数
+
+| 函数 | 签名 | 说明 |
+|------|------|------|
+| `initialize_agents` | `(config: Config, prompt_builder: PromptBuilder, interpreter: Interpreter) -> List[BaseAgent]` | 根据配置初始化 Agent 种群（默认 4 个 CoderAgent） |
+| `initialize_evolution_components` | `(agents, config, workspace, interpreter) -> Tuple[ExperiencePool, TaskDispatcher, GeneRegistry, Optional[AgentEvolution]]` | 初始化完整的进化组件栈 |
+| `generate_markdown_report` | `(journal, experience_pool, task_dispatcher, config, start_time, best_node) -> Path` | 生成结构化的 Markdown 测试报告 |
+| `print_evolution_statistics` | `(journal, experience_pool, task_dispatcher, best_node) -> None` | 控制台打印进化统计摘要 |
+| `main` | `() -> None` | 双层进化主循环（6 阶段流程） |
+
+### 2.3 initialize_agents 函数
+
+```python
+def initialize_agents(
+    config: Config, prompt_builder: PromptBuilder, interpreter: Interpreter
+) -> List[BaseAgent]:
+    """初始化 Agent 种群。
+
+    根据 config.evolution.agent.num_agents 创建多个 CoderAgent 实例。
+    每个 Agent 具有唯一的名称 (agent_0, agent_1, ...).
+
+    Returns:
+        Agent 列表（默认 4 个 Agent）
+    """
+```
+
+### 2.4 initialize_evolution_components 函数
+
+```python
+def initialize_evolution_components(
+    agents: List[BaseAgent],
+    config: Config,
+    workspace: WorkspaceManager,
+    interpreter: Interpreter,
+) -> Tuple[ExperiencePool, TaskDispatcher, GeneRegistry, Optional[AgentEvolution]]:
+    """初始化进化算法组件。
+
+    组件初始化顺序:
+        1. ExperiencePool - 共享经验池
+        2. TaskDispatcher - 任务分发器（Epsilon-Greedy）
+        3. GeneRegistry - 基因注册表
+        4. AgentEvolution - Agent 层进化器（可选，需要 configs_dir 存在）
+
+    Returns:
+        (experience_pool, task_dispatcher, gene_registry, agent_evolution)
+    """
+```
+
+### 2.5 generate_markdown_report 函数
+
+**报告结构**:
+
+| 章节 | 内容 |
+|------|------|
+| 配置摘要 | Agent 数量、种群大小、精英保留、交叉率、变异率、探索率 |
+| 执行统计 | 总节点数、成功/失败节点、成功率、经验池记录数 |
+| 最佳方案 | 节点 ID、评估指标、执行时间、代码摘要 |
+| Agent 擅长度得分 | 各 Agent 在 explore/merge/mutate 任务上的得分矩阵 |
+| 节点执行历史 | 前 20 个节点的状态、指标、执行时间 |
+| 经验池样本 | 最近 5 条记录的 Agent、任务类型、质量、策略摘要 |
+
+**输出路径**: `tests/outputs/main_execution_{timestamp}.md`
+
+### 2.6 main() 执行流程
+
+```
+main()
+|
++-- [1/6] 环境准备
+|   +-- load_config() 加载配置
+|   +-- validate_dataset() 验证数据集
+|
++-- [2/6] 工作空间构建
+|   +-- shutil.rmtree() 清理旧 workspace
+|   +-- build_workspace() 构建新 workspace
+|
++-- [3/6] 组件初始化
+|   +-- init_logger() 日志系统
+|   +-- Interpreter() 代码执行器
+|   +-- WorkspaceManager() 工作空间管理器
+|   +-- PromptBuilder() Prompt 构建器
+|   +-- initialize_agents() -> 4 个 Agent
+|   +-- initialize_evolution_components()
+|   +-- Journal() 历史记录
+|   +-- Orchestrator(agent_evolution=agent_evolution) 双层进化模式
+|
++-- [4/6] 运行双层进化主循环
+|   +-- num_epochs = max_steps // steps_per_epoch
+|   +-- orchestrator.run(num_epochs, steps_per_epoch)
+|
++-- [5/6] 生成测试报告
+|   +-- generate_markdown_report()
+|
++-- [6/6] 结果展示
+    +-- print_evolution_statistics()
+    +-- experience_pool.save()
+    +-- log_json() 记录最终日志
+```
+
+### 2.7 依赖关系
+
+```
+main.py
++-- utils.config.load_config, Config
++-- utils.logger_system.init_logger, log_msg, log_exception, log_json
++-- utils.workspace_builder.build_workspace, validate_dataset
++-- utils.prompt_builder.PromptBuilder
++-- agents.coder_agent.CoderAgent
++-- agents.base_agent.BaseAgent
++-- core.executor.interpreter.Interpreter
++-- core.executor.workspace.WorkspaceManager
++-- core.state.Journal, Node
++-- core.orchestrator.Orchestrator
++-- core.evolution.ExperiencePool, TaskDispatcher, GeneRegistry, AgentEvolution
+```
+
+---
+
+## 3. Orchestrator 编排器 (`core/orchestrator.py`)
+
+> **注意**: Orchestrator 现在支持双层进化模式，通过 `agent_evolution` 参数接收 AgentEvolution 实例。
 
 ### 2.1 核心职责
 
@@ -180,7 +308,7 @@ Orchestrator
 
 ---
 
-## 3. Prompt 管理器 (`utils/prompt_manager.py`) [NEW]
+## 4. Prompt 管理器 (`utils/prompt_manager.py`) [NEW]
 
 ### 3.1 核心职责
 
@@ -256,7 +384,7 @@ PromptManager
 
 ---
 
-## 4. 配置系统 (`utils/config.py`)
+## 5. 配置系统 (`utils/config.py`)
 
 ### 4.1 架构设计
 
@@ -325,7 +453,7 @@ class Config(Hashable):
 
 ---
 
-## 5. 后端抽象层 (`core/backend/`)
+## 6. 后端抽象层 (`core/backend/`)
 
 ### 5.1 架构设计（支持 Function Calling）
 
@@ -399,7 +527,7 @@ llm:
 
 ---
 
-## 6. 核心数据结构
+## 7. 核心数据结构
 
 ### 6.1 Node (`core/state/node.py`) - 121 行
 
@@ -473,7 +601,7 @@ class Journal(DataClassJsonMixin):
 
 ---
 
-## 7. 执行层模块 (`core/executor/`)
+## 8. 执行层模块 (`core/executor/`)
 
 ### 7.1 Interpreter (`core/executor/interpreter.py`) - 176 行
 
@@ -523,7 +651,7 @@ workspace/
 
 ---
 
-## 8. Agent 抽象层 (`agents/`, `utils/prompt_builder.py`, `utils/prompt_manager.py`)
+## 9. Agent 抽象层 (`agents/`, `utils/prompt_builder.py`, `utils/prompt_manager.py`)
 
 ### 8.1 BaseAgent (`agents/base_agent.py`) - 119 行
 
@@ -582,7 +710,7 @@ class BaseAgent(ABC):
 
 ---
 
-## 9. 任务分配器 (`core/evolution/task_dispatcher.py`) [NEW - P3.3]
+## 10. 任务分配器 (`core/evolution/task_dispatcher.py`) [NEW - P3.3]
 
 ### 9.1 核心职责
 
@@ -642,7 +770,7 @@ TaskDispatcher
 
 ---
 
-## 10. Agent 层进化器 (`core/evolution/agent_evolution.py`) [NEW - P3.3]
+## 11. Agent 层进化器 (`core/evolution/agent_evolution.py`) [NEW - P3.3]
 
 ### 10.1 核心职责
 
@@ -744,7 +872,7 @@ AgentEvolution
 
 ---
 
-## 11. 基因注册表 (`core/evolution/gene_registry.py`) [NEW - P3.4]
+## 12. 基因注册表 (`core/evolution/gene_registry.py`) [NEW - P3.4]
 
 ### 11.1 核心职责
 
@@ -798,7 +926,7 @@ GeneRegistry
 
 ---
 
-## 12. 基因选择器 (`core/evolution/gene_selector.py`) [NEW - P3.4]
+## 13. 基因选择器 (`core/evolution/gene_selector.py`) [NEW - P3.4]
 
 ### 12.1 核心职责
 
@@ -851,7 +979,7 @@ GeneSelector
 
 ---
 
-## 13. 信息素机制 (`core/evolution/pheromone.py`) [NEW - P3.4]
+## 14. 信息素机制 (`core/evolution/pheromone.py`) [NEW - P3.4]
 
 ### 13.1 核心职责
 
@@ -899,7 +1027,7 @@ Pheromone
 
 ---
 
-## 14. Solution 层进化器 (`core/evolution/solution_evolution.py`) [NEW - P3.4]
+## 15. Solution 层进化器 (`core/evolution/solution_evolution.py`) [NEW - P3.4]
 
 ### 14.1 核心职责
 
@@ -1001,7 +1129,7 @@ SolutionEvolution
 
 ---
 
-## 15. 并行评估器 (`search/parallel_evaluator.py`) [NEW - P3.4]
+## 16. 并行评估器 (`search/parallel_evaluator.py`) [NEW - P3.4]
 
 ### 15.1 核心职责
 
@@ -1093,7 +1221,7 @@ ParallelEvaluator
 
 ---
 
-## 16. 测试架构 (`tests/`)
+## 17. 测试架构 (`tests/`)
 
 ### 11.1 目录结构
 
@@ -1162,7 +1290,7 @@ conda run -n Swarm-Evo pytest tests/integration/ -v
 
 ---
 
-## 12. 模块依赖图
+## 18. 模块依赖图
 
 ```mermaid
 graph TD
@@ -1305,7 +1433,7 @@ graph TD
 
 ---
 
-## 13. Skill 进化模块 (`core/evolution/`) [NEW - P3.5]
+## 19. Skill 进化模块 (`core/evolution/`) [NEW - P3.5]
 
 ### 13.1 代码嵌入管理器 (`code_embedding_manager.py`) - 127 行
 
@@ -1439,7 +1567,7 @@ SkillManager
 
 ---
 
-## 14. 关联文档
+## 20. 关联文档
 
 | 文档 | 路径 |
 |------|------|

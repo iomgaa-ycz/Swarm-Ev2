@@ -1,8 +1,8 @@
 # 数据流与配置管理
 
-**Last Updated:** 2026-02-01 23:30
-**模块范围:** config/, .env, utils/config.py, utils/logger_system.py, core/executor/, core/orchestrator.py, core/evolution/, search/, utils/prompt_manager.py, benchmark/
-**当前阶段:** Phase 3.5 Skill 进化（已完成）
+**Last Updated:** 2026-02-01 (main.py 双层架构重构)
+**模块范围:** main.py, config/, .env, utils/config.py, utils/logger_system.py, core/executor/, core/orchestrator.py, core/evolution/, search/, utils/prompt_manager.py, benchmark/
+**当前阶段:** Phase 3.5 Skill 进化（已完成）+ main.py 双层架构集成
 
 ---
 
@@ -340,7 +340,7 @@ logs/                        # project.log_dir
 
 ## 6. 数据流概览
 
-### 6.1 完整数据流（Phase 2.4 Orchestrator 已实现）
+### 6.1 完整数据流（main.py 双层架构重构）
 
 ```
 用户输入                       系统输出
@@ -351,25 +351,35 @@ config.yaml --> Config 对象 --> Agent 配置
                     |
 .env --> API Keys --> LLM Backend
                     |
-        +-- Orchestrator.run() -------------------+
+        +-- main.py 双层进化架构 -----------------+
         |                                          |
-        |  _select_parent_node()                   |
-        |       |                                  |
-        |  AgentContext -> CoderAgent.generate()   |
-        |       |                                  |
-        |  PromptBuilder/PromptManager -> LLM      |
-        |       |                                  |
-        |  WorkspaceManager 重写路径               |
-        |       |                                  |
-        |  Interpreter 执行代码 (subprocess)       |
-        |       |                                  |
-        |  workspace/submission/ -> submission_{id} |
-        |       |                                  |
-        |  _review_node() (Function Calling)       |
-        |       |                                  |
-        |  _update_best_node() (lower_is_better)   |
-        |       |                                  |
-        |  Journal.append(node)                    |
+        |  [Phase 1] 环境准备                       |
+        |       load_config() + validate_dataset() |
+        |                                          |
+        |  [Phase 2] 工作空间构建                   |
+        |       build_workspace()                  |
+        |                                          |
+        |  [Phase 3] 组件初始化                     |
+        |       initialize_agents() -> 4 Agent     |
+        |       initialize_evolution_components()  |
+        |         +-- ExperiencePool               |
+        |         +-- TaskDispatcher               |
+        |         +-- GeneRegistry                 |
+        |         +-- AgentEvolution               |
+        |       Orchestrator(agent_evolution=...)  |
+        |                                          |
+        |  [Phase 4] 双层进化主循环                 |
+        |       orchestrator.run(epochs, steps)    |
+        |         +-- Agent 层: 任务分发 + 进化     |
+        |         +-- Solution 层: GA 操作          |
+        |                                          |
+        |  [Phase 5] 生成测试报告                   |
+        |       generate_markdown_report()         |
+        |       -> tests/outputs/main_execution_*.md |
+        |                                          |
+        |  [Phase 6] 结果展示                       |
+        |       print_evolution_statistics()       |
+        |       experience_pool.save()             |
         |                                          |
         +------------------------------------------+
                     |
@@ -377,9 +387,86 @@ config.yaml --> Config 对象 --> Agent 配置
                     |
     logs/system.log --> 文本日志
     logs/metrics.json --> 结构化日志
+    tests/outputs/*.md --> Markdown 测试报告
 ```
 
-### 6.2 Prompt 系统数据流 [NEW]
+### 6.2 main.py 组件初始化数据流 [重构]
+
+```
+main.py 组件初始化流程
+----------------------
+
+[Phase 3] 组件初始化
+    |
+    +-- init_logger(log_dir)
+    |   初始化日志系统
+    |
+    +-- Interpreter(working_dir, timeout)
+    |   代码执行沙箱
+    |
+    +-- WorkspaceManager(config)
+    |   工作空间管理器
+    |
+    +-- PromptBuilder(obfuscate=False)
+    |   Prompt 构建器
+    |
+    +-- initialize_agents(config, prompt_builder, interpreter)
+    |   |
+    |   +-- for i in range(num_agents):
+    |   |       CoderAgent(name=f"agent_{i}", ...)
+    |   |
+    |   +-- 返回 4 个 Agent 列表
+    |
+    +-- initialize_evolution_components(agents, config, workspace, interpreter)
+    |   |
+    |   +-- ExperiencePool(config)
+    |   |   从 save_path 加载历史记录
+    |   |
+    |   +-- TaskDispatcher(agents, epsilon, learning_rate)
+    |   |   初始化擅长度矩阵
+    |   |
+    |   +-- GeneRegistry()
+    |   |   初始化基因信息素
+    |   |
+    |   +-- AgentEvolution(agents, experience_pool, config, skill_manager=None)
+    |   |   条件: configs_dir 存在
+    |   |
+    |   +-- 返回 (experience_pool, task_dispatcher, gene_registry, agent_evolution)
+    |
+    +-- Journal()
+    |   初始化空的历史记录
+    |
+    +-- Orchestrator(agent, config, journal, task_desc, agent_evolution)
+        双层进化模式编排器
+```
+
+**组件依赖图**:
+
+```
+                    Config
+                      |
+        +-------------+-------------+
+        |             |             |
+   Interpreter   WorkspaceManager  PromptBuilder
+        |             |             |
+        +-------------+-------------+
+                      |
+                  initialize_agents()
+                      |
+                  [Agent_0, Agent_1, Agent_2, Agent_3]
+                      |
+              initialize_evolution_components()
+                      |
+    +--------+--------+--------+--------+
+    |        |        |        |        |
+ExperiencePool TaskDispatcher GeneRegistry AgentEvolution
+                      |
+                  Orchestrator
+                      |
+                  main loop
+```
+
+### 6.3 Prompt 系统数据流 [NEW]
 
 ```
 PromptManager 初始化
@@ -416,7 +503,7 @@ build_prompt(task_type, agent_id, context)
 完整 Prompt 字符串 (7 层结构)
 ```
 
-### 6.3 配置系统数据流
+### 6.4 配置系统数据流
 
 ```
 .env 文件
@@ -439,7 +526,7 @@ DictConfig (merged)
 Config(@dataclass)
 ```
 
-### 6.4 Orchestrator 单步数据流
+### 6.5 Orchestrator 单步数据流
 
 ```
 Step N 开始
@@ -474,7 +561,7 @@ _update_best_node(node)
 _save_best_solution() -> workspace/best_solution/
 ```
 
-### 6.5 进化层数据流 [Phase 3]
+### 6.6 进化层数据流 [Phase 3]
 
 ```
 ExperiencePool 数据流
@@ -507,7 +594,7 @@ PromptManager.inject_top_k_skills()
 注入到 Prompt 的 EXAMPLES 层
 ```
 
-### 6.6 信息素系统数据流 [Phase 3.4]
+### 6.7 信息素系统数据流 [Phase 3.4]
 
 ```
 Solution 层 GA 数据流
@@ -573,7 +660,7 @@ SolutionEvolution.evolve_epoch(epoch)
 - **基因级**: 基于适应度差值（fitness - baseline）
 - **全局衰减**: 每个 Epoch 结束后所有基因信息素衰减 10%
 
-### 6.7 Skill 进化数据流 [Phase 3.5 NEW]
+### 6.8 Skill 进化数据流 [Phase 3.5]
 
 ```
 Skill 进化流程
@@ -717,18 +804,42 @@ llm.feedback: Review 评估 (Orchestrator)
 
 ## 9. 实际使用示例
 
-### 9.1 完整初始化流程
+### 9.1 使用 main.py 双层进化架构（推荐）
+
+```bash
+# 直接运行 main.py（推荐方式）
+conda run -n Swarm-Evo python main.py --data.data_dir=./datasets/titanic
+
+# 完整参数示例
+conda run -n Swarm-Evo python main.py \
+  --data.data_dir=./datasets/house-prices \
+  --agent.max_steps=50 \
+  --evolution.agent.num_agents=4 \
+  --evolution.solution.steps_per_epoch=10
+```
+
+**main.py 自动完成的工作**:
+1. 加载配置并验证数据集
+2. 构建工作空间
+3. 初始化 4 个 Agent 种群
+4. 初始化进化组件（ExperiencePool, TaskDispatcher, GeneRegistry, AgentEvolution）
+5. 运行双层进化主循环
+6. 生成 Markdown 测试报告到 `tests/outputs/`
+7. 保存经验池并打印统计信息
+
+### 9.2 手动初始化流程（高级用法）
 
 ```python
 from pathlib import Path
 from utils.config import load_config, setup_workspace, print_config
 from utils.logger_system import init_logger, log_msg
-from utils.prompt_manager import PromptManager  # NEW
+from utils.prompt_manager import PromptManager
 from agents.coder_agent import CoderAgent
 from core.state import Journal
 from core.executor.interpreter import Interpreter
 from core.orchestrator import Orchestrator
 from utils.prompt_builder import PromptBuilder
+from core.evolution import ExperiencePool, TaskDispatcher, GeneRegistry, AgentEvolution
 
 # 1. 加载配置
 cfg = load_config(use_cli=True)
@@ -747,37 +858,65 @@ prompt_manager = PromptManager(
     agent_configs_dir=Path("benchmark/mle-bench/agent_configs"),
 )
 
-# 5. 初始化 Agent
+# 5. 初始化 Agent 种群（双层架构）
 prompt_builder = PromptBuilder()
 interpreter = Interpreter(
     working_dir=cfg.project.workspace_dir / "working",
     timeout=cfg.execution.timeout,
 )
-agent = CoderAgent(
-    name="coder",
+
+agents = []
+for i in range(cfg.evolution.agent.num_agents):
+    agent = CoderAgent(
+        name=f"agent_{i}",
+        config=cfg,
+        prompt_builder=prompt_builder,
+        interpreter=interpreter,
+    )
+    agents.append(agent)
+
+# 6. 初始化进化组件
+experience_pool = ExperiencePool(cfg)
+task_dispatcher = TaskDispatcher(
+    agents=agents,
+    epsilon=cfg.evolution.agent.epsilon,
+    learning_rate=cfg.evolution.agent.learning_rate,
+)
+gene_registry = GeneRegistry()
+agent_evolution = AgentEvolution(
+    agents=agents,
+    experience_pool=experience_pool,
     config=cfg,
-    prompt_builder=prompt_builder,
-    interpreter=interpreter,
+    skill_manager=None,
 )
 
-# 6. 初始化 Orchestrator
+# 7. 初始化 Orchestrator（双层进化模式）
 journal = Journal()
 task_desc = open(cfg.data.desc_file).read()
 
 orchestrator = Orchestrator(
-    agent=agent,
+    agent=agents[0],  # 主 Agent
     config=cfg,
     journal=journal,
     task_desc=task_desc,
+    agent_evolution=agent_evolution,  # 启用双层进化
 )
 
-# 7. 运行主循环
-best_node = orchestrator.run()
+# 8. 运行双层进化主循环
+num_epochs = max(1, cfg.agent.max_steps // cfg.evolution.solution.steps_per_epoch)
+best_node = orchestrator.run(
+    num_epochs=num_epochs,
+    steps_per_epoch=cfg.evolution.solution.steps_per_epoch,
+)
+
 if best_node:
     print(f"最佳方案: metric={best_node.metric_value}")
+
+# 9. 保存经验池
+experience_pool.save()
 ```
 
-### 9.2 使用 PromptManager 构建 Prompt [NEW]
+### 9.3 使用 PromptManager 构建 Prompt
 
 ```python
 from pathlib import Path
@@ -816,7 +955,7 @@ prompt = pm.build_prompt(
 print(prompt)  # 7 层结构化 Prompt
 ```
 
-### 9.3 CLI 参数覆盖示例
+### 9.4 CLI 参数覆盖示例
 
 ```bash
 # 基础用法
