@@ -2,7 +2,7 @@
 
 **Last Updated:** 2026-02-01
 **项目版本:** 0.1.0
-**当前阶段:** Phase 3 进化机制（基础模块已完成）
+**当前阶段:** Phase 3.3 Agent层群体智能（已完成）
 
 ---
 
@@ -17,7 +17,7 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 | 配置 | OmegaConf + YAML |
 | 日志 | 双通道（文本 + JSON） |
 | 测试 | pytest + pytest-asyncio |
-| 代码行数 | ~4861 行（24 个核心模块） |
+| 代码行数 | ~5311 行（26 个核心模块） |
 
 ---
 
@@ -38,9 +38,11 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 +---------------------------------------------------------+
 |                进化层 (Evolution)                         |
 |   GeneParser (163行)                                     |  <- P3.1
-|   ExperiencePool (313行)                                 |  <- P3.2
+|   ExperiencePool (320行)                                 |  <- P3.2
 |   Fitness (82行)                                         |  <- P3.2
-|   AgentEvolution + SolutionEvolution                     |  <- P3.3-3.4
+|   TaskDispatcher (158行) [NEW]                           |  <- P3.3
+|   AgentEvolution (393行) [NEW]                           |  <- P3.3
+|   SolutionEvolution                                      |  <- P3.4
 +---------------------------------------------------------+
 |                  执行层 (Execution)                       |
 |   Interpreter + WorkspaceManager                         |  <- Phase 2
@@ -104,9 +106,10 @@ graph TD
 
     subgraph "Phase 3 - 进化层"
         GENE[core/evolution/gene_parser.py<br/>基因解析器 163行]
-        EPOOL[core/evolution/experience_pool.py<br/>共享经验池 313行]
+        EPOOL[core/evolution/experience_pool.py<br/>共享经验池 320行]
         FITNESS[search/fitness.py<br/>适应度计算 82行]
-        AEVO[core/evolution/agent_evolution.py<br/>Agent 层进化 待实现]
+        TDISP[core/evolution/task_dispatcher.py<br/>任务分配器 158行 NEW]
+        AEVO[core/evolution/agent_evolution.py<br/>Agent 层进化 393行 NEW]
         SEVO[core/evolution/solution_evolution.py<br/>Solution 层 GA 待实现]
     end
 
@@ -159,7 +162,12 @@ graph TD
     %% Phase 3 依赖
     EPOOL --> CFG
     EPOOL --> LOG
+    TDISP --> AGENT
+    TDISP --> LOG
     AEVO --> EPOOL
+    AEVO --> BACKEND
+    AEVO --> CFG
+    AEVO --> LOG
     SEVO --> GENE
     SEVO --> EPOOL
     SEVO --> FITNESS
@@ -169,8 +177,9 @@ graph TD
     style GENE fill:#c8e6c9
     style EPOOL fill:#c8e6c9
     style FITNESS fill:#c8e6c9
+    style TDISP fill:#c8e6c9
+    style AEVO fill:#c8e6c9
     style BENCH fill:#e3f2fd
-    style AEVO fill:#fff3e0
     style SEVO fill:#fff3e0
 ```
 
@@ -190,7 +199,7 @@ graph TD
 | **3.1** | **基因解析器** | **完成** | **gene_parser.py (163行)** |
 | **3.2** | **经验池+适应度** | **完成** | **experience_pool.py (313行), fitness.py (82行)** |
 | **3+** | **PromptManager** | **完成** | **prompt_manager.py (252行) + benchmark/** |
-| 3.3 | Agent 层进化 | 待实现 | agent_evolution.py |
+| **3.3** | **Agent 层群体智能** | **完成** | **task_dispatcher.py (158行) + agent_evolution.py (393行)** |
 | 3.4 | Solution 层 GA | 待实现 | solution_evolution.py |
 | 4 | 扩展功能 | 待实现 | Memory, ToolRegistry |
 | 5 | 测试与文档 | 进行中 | 80%+ 覆盖率 |
@@ -223,15 +232,17 @@ graph TD
 | 任务编排器 | `core/orchestrator.py` | 534 | 完成 |
 | **Phase 3: 进化层** ||||
 | **基因解析器** | **`core/evolution/gene_parser.py`** | **163** | **完成** |
-| **共享经验池** | **`core/evolution/experience_pool.py`** | **313** | **完成** |
+| **共享经验池** | **`core/evolution/experience_pool.py`** | **320** | **完成** (+query扩展) |
 | **适应度计算** | **`search/fitness.py`** | **82** | **完成** |
+| **任务分配器** | **`core/evolution/task_dispatcher.py`** | **158** | **完成 (P3.3)** |
+| **Agent 层进化** | **`core/evolution/agent_evolution.py`** | **393** | **完成 (P3.3)** |
 | **Phase 3+: Prompt 系统 (NEW)** ||||
 | **Prompt 管理器** | **`utils/prompt_manager.py`** | **252** | **完成** |
 | **Benchmark 资源** | **`benchmark/mle-bench/`** | **-** | **完成** |
 | **配置文件** ||||
-| YAML 配置 | `config/default.yaml` | 108 | 完成 (+evolution) |
+| YAML 配置 | `config/default.yaml` | 111 | 完成 (+agent进化配置) |
 
-**总计**: 24 个核心模块 | ~4861 行代码
+**总计**: 26 个核心模块 | ~5311 行代码
 
 ---
 
@@ -283,8 +294,9 @@ Swarm-Ev2/
 │   └── evolution/                 # 进化机制
 │       ├── __init__.py            # 模块导出
 │       ├── gene_parser.py         # 基因解析器 (163行)
-│       ├── experience_pool.py     # 共享经验池 (313行)
-│       ├── agent_evolution.py     # Agent 层进化               Phase 3.3
+│       ├── experience_pool.py     # 共享经验池 (320行)
+│       ├── task_dispatcher.py     # 任务分配器 (158行)         Phase 3.3
+│       ├── agent_evolution.py     # Agent 层进化 (393行)       Phase 3.3
 │       └── solution_evolution.py  # Solution 层 GA             Phase 3.4
 ├── search/                        # 搜索与评估
 │   ├── __init__.py                # 模块导出
@@ -302,10 +314,12 @@ Swarm-Ev2/
 │   └── workspace_builder.py       # 工作空间构建器 (NEW)
 ├── tests/                         # 测试
 │   ├── unit/                      # 单元测试 (19 个测试文件)
-│   ├── test_evolution/            # 进化模块测试
+│   ├── test_evolution/            # 进化模块测试 (74 个用例, 95% 覆盖率)
 │   │   ├── test_gene_parser.py
 │   │   ├── test_experience_pool.py
-│   │   └── test_prompt_manager.py # NEW
+│   │   ├── test_prompt_manager.py
+│   │   ├── test_task_dispatcher.py  # NEW (P3.3)
+│   │   └── test_agent_evolution.py  # NEW (P3.3)
 │   ├── test_search/               # 搜索模块测试
 │   │   └── test_fitness.py
 │   └── integration/               # 集成测试
@@ -375,7 +389,63 @@ def normalize_fitness(metric_value: float, lower_is_better: bool) -> float:
     """
 ```
 
-### 6.4 Prompt 管理器 (`utils/prompt_manager.py`) [NEW]
+### 6.4 任务分配器 (`core/evolution/task_dispatcher.py`) [NEW - P3.3]
+
+**职责**: 基于 Epsilon-Greedy 策略选择最适合的 Agent 执行任务，通过 EMA 更新擅长度得分。
+
+```python
+class TaskDispatcher:
+    """动态任务分配器（Epsilon-Greedy 策略）。
+
+    Attributes:
+        agents: Agent 列表
+        epsilon: 探索率（0-1）
+        learning_rate: EMA 学习率（α）
+        specialization_scores: 擅长度矩阵 {agent_id: {task_type: score}}
+    """
+```
+
+| 方法 | 签名 | 说明 |
+|------|------|------|
+| `select_agent` | `(task_type: str) -> BaseAgent` | Epsilon-Greedy 选择 Agent |
+| `update_score` | `(agent_id, task_type, quality) -> None` | EMA 更新擅长度得分 |
+| `get_specialization_matrix` | `() -> Dict` | 获取完整得分矩阵 |
+
+**EMA 更新公式**: `new_score = (1-α) × old_score + α × quality`
+
+### 6.5 Agent 层进化器 (`core/evolution/agent_evolution.py`) [NEW - P3.3]
+
+**职责**: 每 N 个 Epoch 评估所有 Agent 表现，对弱者进行 Role 和 Strategy 变异。
+
+```python
+class AgentEvolution:
+    """Agent 层进化器。
+
+    Attributes:
+        agents: Agent 列表
+        experience_pool: 共享经验池
+        config: 全局配置
+        configs_dir: Agent 配置文件根目录
+        evolution_interval: 进化间隔（Epoch）
+    """
+```
+
+| 方法 | 签名 | 说明 |
+|------|------|------|
+| `evolve` | `(epoch: int) -> None` | 主入口：检查并执行进化 |
+| `_evaluate_agents` | `() -> Dict[str, float]` | 评估所有 Agent（score = success_rate × avg_quality） |
+| `_identify_elites_and_weak` | `(scores) -> Tuple[List, List]` | 识别精英（top-2）和弱者（bottom-2） |
+| `_mutate_role` | `(weak_id, elite_id) -> None` | LLM 驱动的 Role 变异 |
+| `_mutate_strategy` | `(weak_id, task_type, elite_id) -> None` | LLM 驱动的 Strategy 变异 |
+
+**进化流程**:
+1. 检查 `epoch % interval == 0` 且 `epoch != 0`
+2. 验证经验池记录数 >= min_records
+3. 计算各 Agent 综合得分
+4. Top-2 保留，Bottom-2 变异
+5. 对弱者变异 Role + 3 种 Strategy
+
+### 6.6 Prompt 管理器 (`utils/prompt_manager.py`)
 
 **职责**: 基于 Jinja2 的统一 Prompt 管理系统。
 
@@ -505,11 +575,13 @@ AgentResult (输出)
 
 ```
 +----------------------------------------------+
-|               Agent 层（群体智能）             |
+|               Agent 层（群体智能） [P3.3]      |
 |  +-----+ +-----+ +-----+ +-----+             |
 |  | A0  | | A1  | | A2  | | A3  |  4 个 Agent |
 |  +--+--+ +--+--+ +--+--+ +--+--+             |
 |     +-------+-------+-------+                |
+|     TaskDispatcher (Epsilon-Greedy)          |
+|     AgentEvolution (每 N Epoch 进化)          |
 |              | 生成 Solution                  |
 +----------------------------------------------+
 |            Solution 层（遗传算法）             |

@@ -40,10 +40,12 @@
 | Orchestrator | `core/orchestrator.py` | 534 | 任务编排器 (三阶段选择+Function Calling Review) | 完成 |
 | **进化层 (Phase 3)** |||||
 | **基因解析器** | **`core/evolution/gene_parser.py`** | **163** | **解析 7 基因块，支持 GA 交叉** | **完成** |
-| **共享经验池** | **`core/evolution/experience_pool.py`** | **313** | **线程安全存储 + Top-K 查询 + JSON 持久化** | **完成** |
+| **共享经验池** | **`core/evolution/experience_pool.py`** | **320** | **线程安全存储 + Top-K 查询 + 扩展过滤** | **完成** |
 | **适应度计算** | **`search/fitness.py`** | **82** | **归一化到 [0,1]，支持 lower_is_better** | **完成** |
+| **任务分配器** | **`core/evolution/task_dispatcher.py`** | **158** | **Epsilon-Greedy 策略 + EMA 得分更新** | **完成 (P3.3)** |
+| **Agent 层进化** | **`core/evolution/agent_evolution.py`** | **393** | **LLM 驱动的 Role/Strategy 变异** | **完成 (P3.3)** |
 | **配置文件** |||||
-| YAML 配置 | `config/default.yaml` | 108 | 项目主配置 (+evolution 配置节) | 完成 |
+| YAML 配置 | `config/default.yaml` | 111 | 项目主配置 (+agent进化配置) | 完成 |
 | 环境变量 | `.env.example` | 36 | API Keys 模板 | 完成 |
 | **Benchmark 资源 (NEW)** |||||
 | Prompt 模板 | `benchmark/mle-bench/prompt_templates/` | - | Jinja2 模板 (explore/merge/mutate) | 完成 |
@@ -299,7 +301,7 @@ class Config(Hashable):
 |------|------|------|
 | `ExperiencePoolConfig` | max_records, top_k, save_path | 经验池配置 |
 | `SolutionEvolutionConfig` | population_size, elite_size, crossover_rate, mutation_rate, tournament_k, steps_per_epoch | GA 配置 |
-| `AgentEvolutionConfig` | num_agents, evolution_interval, epsilon | Agent 层进化配置 |
+| `AgentEvolutionConfig` | num_agents, evolution_interval, epsilon, learning_rate, configs_dir, min_records_for_evolution | Agent 层进化配置 [P3.3 扩展] |
 
 ### 4.3 核心函数
 
@@ -570,9 +572,171 @@ class BaseAgent(ABC):
 
 ---
 
-## 9. 测试架构 (`tests/`)
+## 9. 任务分配器 (`core/evolution/task_dispatcher.py`) [NEW - P3.3]
 
-### 9.1 目录结构
+### 9.1 核心职责
+
+基于 Epsilon-Greedy 策略动态选择最适合的 Agent 执行任务，通过指数移动平均（EMA）更新 Agent 的擅长度得分。
+
+### 9.2 类结构
+
+```python
+class TaskDispatcher:
+    """动态任务分配器（Epsilon-Greedy 策略）。
+
+    Attributes:
+        agents: Agent 列表
+        epsilon: 探索率（0-1 之间）
+        learning_rate: EMA 更新学习率（α）
+        specialization_scores: 擅长度得分矩阵
+            格式: {agent_id: {task_type: score}}
+    """
+```
+
+### 9.3 核心方法
+
+| 方法 | 签名 | 说明 |
+|------|------|------|
+| `select_agent` | `(task_type: str) -> BaseAgent` | Epsilon-Greedy 选择 Agent |
+| `update_score` | `(agent_id, task_type, quality) -> None` | EMA 更新擅长度得分 |
+| `get_specialization_matrix` | `() -> Dict[str, Dict[str, float]]` | 获取完整得分矩阵 |
+
+### 9.4 Epsilon-Greedy 策略
+
+```
+select_agent(task_type)
+|
++-- random() < epsilon?
+|   |
+|   +-- YES: 随机选择 Agent（探索）
+|   +-- NO:  选择擅长度最高的 Agent（利用）
+```
+
+### 9.5 EMA 更新公式
+
+```
+new_score = (1 - α) × old_score + α × quality
+```
+
+**默认参数**:
+- `epsilon = 0.3`: 30% 探索 + 70% 利用
+- `learning_rate = 0.3`: EMA 学习率 α
+
+### 9.6 依赖关系
+
+```
+TaskDispatcher
++-- agents.base_agent.BaseAgent
++-- utils.logger_system.log_msg, log_json
+```
+
+---
+
+## 10. Agent 层进化器 (`core/evolution/agent_evolution.py`) [NEW - P3.3]
+
+### 10.1 核心职责
+
+每 N 个 Epoch 评估所有 Agent 的表现，识别精英和弱者，对弱者进行 Role 和 Strategy 变异（LLM 驱动）。
+
+### 10.2 类结构
+
+```python
+class AgentEvolution:
+    """Agent 层进化器（每 N Epoch 进化一次）。
+
+    Attributes:
+        agents: Agent 列表
+        experience_pool: 共享经验池
+        config: 全局配置
+        configs_dir: Agent 配置文件根目录
+        evolution_interval: 进化间隔（每 N 个 Epoch）
+        min_records: 进化前最小经验池记录数
+    """
+```
+
+### 10.3 核心方法
+
+| 方法 | 签名 | 说明 |
+|------|------|------|
+| `evolve` | `(epoch: int) -> None` | 主入口：检查并执行进化 |
+| `_evaluate_agents` | `() -> Dict[str, float]` | 评估所有 Agent（score = success_rate × avg_quality） |
+| `_identify_elites_and_weak` | `(scores) -> Tuple[List, List]` | 识别精英（top-2）和弱者（bottom-2） |
+| `_mutate_weak_agents` | `(weak_ids, elite_ids) -> None` | 对弱者执行变异 |
+| `_mutate_role` | `(weak_id, elite_id) -> None` | LLM 驱动的 Role 变异 |
+| `_mutate_strategy` | `(weak_id, task_type, elite_id) -> None` | LLM 驱动的 Strategy 变异 |
+| `_get_performance_summary` | `(agent_id, task_type?) -> Dict` | 获取历史表现摘要 |
+| `_build_mutation_prompt` | `(current, elite, stats, section) -> str` | 构建变异 Prompt |
+
+### 10.4 进化流程
+
+```
+evolve(epoch)
+|
++-- [1] 检查是否需要进化
+|   条件: epoch % interval == 0 且 epoch != 0
+|
++-- [2] 检查经验池记录数
+|   条件: len(records) >= min_records
+|
++-- [3] 评估所有 Agent
+|   score = success_rate × avg_quality
+|
++-- [4] 识别精英和弱者
+|   精英: Top-2 保留
+|   弱者: Bottom-2 变异
+|
++-- [5] 对弱者进行变异
+    +-- 变异 Role（LLM 驱动）
+    +-- 变异 3 种 Strategy（explore/merge/mutate）
+```
+
+### 10.5 变异 Prompt 结构
+
+```
+**当前配置 (role/strategy)**:
+[当前内容]
+
+**精英配置（参考）**:
+[精英内容]
+
+**历史表现**:
+- 成功率: XX%
+- 平均质量: X.XXX
+- Top-3 成功案例: ...
+- Top-3 失败案例: ...
+
+**任务**: 进化当前配置，针对失败模式增加规避建议，学习精英策略但保持差异性。
+```
+
+### 10.6 配置项（`config/default.yaml`）
+
+```yaml
+evolution:
+  agent:
+    num_agents: 4                    # Agent 数量
+    evolution_interval: 3            # 每 N 个 Epoch 进化一次
+    epsilon: 0.3                     # Epsilon-Greedy 探索率
+    learning_rate: 0.3               # EMA 更新学习率
+    configs_dir: "benchmark/mle-bench/agent_configs"  # 配置文件目录
+    min_records_for_evolution: 20    # 进化前最小经验池记录数
+```
+
+### 10.7 依赖关系
+
+```
+AgentEvolution
++-- agents.base_agent.BaseAgent
++-- core.backend.query
++-- core.evolution.experience_pool.ExperiencePool
++-- utils.config.Config
++-- utils.logger_system.log_msg, log_json, log_exception
+```
+
+---
+
+## 11. 测试架构 (`tests/`)
+
+### 11.1 目录结构
 
 ```
 tests/
@@ -595,11 +759,13 @@ tests/
 |   +-- test_prompt_builder.py         # PromptBuilder 测试
 |   +-- test_agents.py                 # CoderAgent 测试
 |   +-- test_orchestrator.py           # Orchestrator 测试
-+-- test_evolution/                    # Phase 3 进化模块测试
++-- test_evolution/                    # Phase 3 进化模块测试 (74 用例, 95% 覆盖率)
 |   +-- __init__.py
 |   +-- test_gene_parser.py            # 基因解析器测试
 |   +-- test_experience_pool.py        # 经验池测试
-|   +-- test_prompt_manager.py         # PromptManager 测试 [NEW]
+|   +-- test_prompt_manager.py         # PromptManager 测试
+|   +-- test_task_dispatcher.py        # 任务分配器测试 [P3.3]
+|   +-- test_agent_evolution.py        # Agent 层进化测试 [P3.3]
 +-- test_search/                       # Phase 3 搜索模块测试
 |   +-- __init__.py
 |   +-- test_fitness.py                # 适应度计算测试
@@ -608,7 +774,7 @@ tests/
     +-- test_prompt_system_integration.py # Prompt 系统集成测试 [NEW]
 ```
 
-### 9.2 运行测试
+### 11.2 运行测试
 
 ```bash
 # 运行所有单元测试
@@ -629,7 +795,7 @@ conda run -n Swarm-Evo pytest tests/integration/ -v
 
 ---
 
-## 10. 模块依赖图
+## 12. 模块依赖图
 
 ```mermaid
 graph TD
@@ -678,6 +844,8 @@ graph TD
         GENE[core/evolution/gene_parser.py]
         EPOOL[core/evolution/experience_pool.py]
         FITNESS[search/fitness.py]
+        TDISP[core/evolution/task_dispatcher.py<br/>P3.3 NEW]
+        AEVO[core/evolution/agent_evolution.py<br/>P3.3 NEW]
     end
 
     subgraph "Benchmark 资源"
@@ -738,8 +906,16 @@ graph TD
 
     EPOOL --> CFG
     EPOOL --> LOG
+    TDISP --> AGENT
+    TDISP --> LOG
+    AEVO --> EPOOL
+    AEVO --> BACKEND
+    AEVO --> CFG
+    AEVO --> LOG
 
     style ORCH fill:#ffeb3b
+    style TDISP fill:#c8e6c9
+    style AEVO fill:#c8e6c9
     style PM fill:#c8e6c9
     style NODE fill:#fff4e6
     style JOURNAL fill:#fff4e6
@@ -757,11 +933,11 @@ graph TD
 6. 工具层: `data_preview`, `metric`, `response`, `prompt_builder`, **`prompt_manager`** (依赖基础层 + 数据层)
 7. Agent 层: `base_agent`, `coder_agent` (依赖配置层 + 数据层 + 工具层 + 执行层 + 后端层)
 8. **编排层**: **`orchestrator`** (依赖 Agent 层 + 数据层 + 执行层 + 后端层)
-9. **进化层**: `gene_parser`, `experience_pool`, `fitness` (依赖配置层 + 基础层)
+9. **进化层**: `gene_parser`, `experience_pool`, `fitness`, **`task_dispatcher`**, **`agent_evolution`** (依赖配置层 + 基础层 + Agent层 + 后端层)
 
 ---
 
-## 11. 关联文档
+## 13. 关联文档
 
 | 文档 | 路径 |
 |------|------|
