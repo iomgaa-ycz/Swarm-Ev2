@@ -82,5 +82,13 @@ The following is a summary of past solution attempts:
 - **Total Time Remaining**: {{ time_str }}
 - **Total Steps Remaining**: {{ steps_remaining }}
 
-**Note**: Use time and steps efficiently. Prioritize solutions with high expected value.
+## System Environment
+
+- **Device**: {{ device_info | default("CPU only") }}
+- **Conda Environment**: `{{ conda_env_name | default("python") }}`
+{% if conda_packages %}
+- **Installed Packages**: {{ conda_packages }}
+{% endif %}
+
+**Note**: Use time and steps efficiently. If GPU is available, prioritize GPU-accelerated solutions.
 {# END SECTION: GUIDELINES #}

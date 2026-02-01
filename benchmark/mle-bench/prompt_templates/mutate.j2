@@ -77,4 +77,11 @@ Before finalizing the mutated solution:
 - [ ] Validation metric is printed
 - [ ] Predictions are saved to `./submission/submission.csv`
 - [ ] Mutation rationale is documented in a comment
+
+## System Environment
+
+- **Device**: {{ device_info | default("CPU only") }}
+- **Conda Environment**: `{{ conda_env_name | default("python") }}`
+{% if conda_packages %}- **Installed Packages**: {{ conda_packages }}
+{% endif %}
 {# END SECTION: GUIDELINES #}
