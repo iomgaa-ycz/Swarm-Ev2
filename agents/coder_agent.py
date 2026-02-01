@@ -104,7 +104,7 @@ class CoderAgent(BaseAgent):
 
         # Phase 2: 构建 Prompt
         prompt = self.prompt_builder.build_explore_prompt(
-            task_desc=context.config.task.description,
+            task_desc=context.task_desc,
             parent_node=context.parent_node,
             memory=memory,
             data_preview=data_preview,
