@@ -30,6 +30,13 @@ class AgentContext(DataClassJsonMixin):
         start_time: 任务开始时间（用于计算剩余时间）
         current_step: 当前步数（用于计算剩余步数）
         task_desc: 任务描述字符串
+        device_info: 硬件描述字符串（CPU/RAM/GPU）
+        conda_packages: Conda 环境包信息描述
+        conda_env_name: Conda 环境名称
+        parent_a: merge 任务专用 - 父代 A
+        parent_b: merge 任务专用 - 父代 B
+        gene_plan: merge 任务专用 - 基因交叉计划
+        target_gene: mutate 任务专用 - 目标基因块名称
     """
 
     task_type: Literal["explore", "merge", "mutate"]
@@ -39,6 +46,15 @@ class AgentContext(DataClassJsonMixin):
     start_time: float
     current_step: int
     task_desc: str
+    device_info: str = ""
+    conda_packages: str = ""
+    conda_env_name: str = ""
+    # merge 任务专用字段
+    parent_a: Optional[Node] = None
+    parent_b: Optional[Node] = None
+    gene_plan: Optional[dict] = None
+    # mutate 任务专用字段
+    target_gene: Optional[str] = None
 
 
 @dataclass

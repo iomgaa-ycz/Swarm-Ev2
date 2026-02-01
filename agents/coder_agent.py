@@ -52,16 +52,17 @@ class CoderAgent(BaseAgent):
 
         Returns:
             AgentResult 对象
-
-        Raises:
-            NotImplementedError: 如果 task_type 不是 "explore"
         """
         try:
             if context.task_type == "explore":
                 node = self._explore(context)
                 return AgentResult(node=node, success=True)
             elif context.task_type == "merge":
-                raise NotImplementedError("Phase 2 暂不支持 merge 任务类型")
+                node = self._merge(context)
+                return AgentResult(node=node, success=True)
+            elif context.task_type == "mutate":
+                node = self._mutate(context)
+                return AgentResult(node=node, success=True)
             else:
                 raise ValueError(f"未知的 task_type: {context.task_type}")
 
@@ -109,6 +110,9 @@ class CoderAgent(BaseAgent):
             data_preview=data_preview,
             time_remaining=time_remaining,
             steps_remaining=steps_remaining,
+            device_info=context.device_info,
+            conda_packages=context.conda_packages,
+            conda_env_name=context.conda_env_name,
         )
 
         # Phase 3: 调用 LLM（带重试）
@@ -244,6 +248,111 @@ class CoderAgent(BaseAgent):
         except Exception as e:
             log_msg("WARNING", f"{self.name} 数据预览生成失败: {e}")
             return None
+
+    def _merge(self, context: AgentContext) -> Node:
+        """基因交叉（merge 任务）。
+
+        Args:
+            context: Agent 执行上下文
+
+        Returns:
+            生成的 Node 对象
+        """
+        log_msg(
+            "INFO",
+            f"{self.name} 开始 merge (parent_a={context.parent_a.id[:8] if context.parent_a else 'None'}, "
+            f"parent_b={context.parent_b.id[:8] if context.parent_b else 'None'})",
+        )
+
+        # 验证必需字段
+        if not context.parent_a or not context.parent_b or not context.gene_plan:
+            raise ValueError("merge 任务需要 parent_a, parent_b, gene_plan 字段")
+
+        # 计算剩余时间和步数
+        time_remaining, steps_remaining = self._calculate_remaining(context)
+
+        # 构建 merge Prompt
+        prompt = self.prompt_builder.build_merge_prompt(
+            task_desc=context.task_desc,
+            parent_a=context.parent_a,
+            parent_b=context.parent_b,
+            gene_plan=context.gene_plan,
+            time_remaining=time_remaining,
+            steps_remaining=steps_remaining,
+            agent_id=self.name,
+            device_info=context.device_info,
+            conda_packages=context.conda_packages,
+            conda_env_name=context.conda_env_name,
+        )
+
+        # 调用 LLM
+        response = self._call_llm_with_retry(prompt, max_retries=5)
+
+        # 解析响应
+        plan, code = self._parse_response_with_retry(response, max_retries=5)
+
+        # 创建 Node
+        node = Node(
+            code=code,
+            plan=plan,
+            parent_id=context.parent_a.id,  # 主父代
+            task_type=context.task_type,
+        )
+
+        log_msg("INFO", f"{self.name} merge 完成")
+        return node
+
+    def _mutate(self, context: AgentContext) -> Node:
+        """基因变异（mutate 任务）。
+
+        Args:
+            context: Agent 执行上下文
+
+        Returns:
+            生成的 Node 对象
+        """
+        log_msg(
+            "INFO",
+            f"{self.name} 开始 mutate (parent={context.parent_node.id[:8] if context.parent_node else 'None'}, "
+            f"target_gene={context.target_gene})",
+        )
+
+        # 验证必需字段
+        if not context.parent_node or not context.target_gene:
+            raise ValueError("mutate 任务需要 parent_node, target_gene 字段")
+
+        # 计算剩余时间和步数
+        time_remaining, steps_remaining = self._calculate_remaining(context)
+
+        # 构建 mutate Prompt
+        prompt = self.prompt_builder.build_mutate_prompt(
+            task_desc=context.task_desc,
+            parent_node=context.parent_node,
+            target_gene=context.target_gene,
+            time_remaining=time_remaining,
+            steps_remaining=steps_remaining,
+            agent_id=self.name,
+            device_info=context.device_info,
+            conda_packages=context.conda_packages,
+            conda_env_name=context.conda_env_name,
+        )
+
+        # 调用 LLM
+        response = self._call_llm_with_retry(prompt, max_retries=5)
+
+        # 解析响应
+        plan, code = self._parse_response_with_retry(response, max_retries=5)
+
+        # 创建 Node
+        node = Node(
+            code=code,
+            plan=plan,
+            parent_id=context.parent_node.id,
+            task_type=context.task_type,
+        )
+
+        log_msg("INFO", f"{self.name} mutate 完成")
+        return node
 
     def _calculate_remaining(self, context: AgentContext) -> Tuple[int, int]:
         """计算剩余时间和步数。
