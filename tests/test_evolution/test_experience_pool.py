@@ -338,3 +338,123 @@ class TestExperiencePool:
 
         assert len(pool.records) == 0
         assert not pool.save_path.exists()
+
+    def test_query_all_task_types(self, temp_config):
+        """测试 task_type=None 查询所有任务类型。"""
+        pool = ExperiencePool(temp_config)
+
+        # 添加不同任务类型的记录
+        pool.add(
+            TaskRecord(
+                agent_id="agent_0",
+                task_type="explore",
+                input_hash="hash_1",
+                output_quality=0.8,
+                strategy_summary="Explore strategy",
+                timestamp=time.time(),
+            )
+        )
+        pool.add(
+            TaskRecord(
+                agent_id="agent_0",
+                task_type="merge",
+                input_hash="hash_2",
+                output_quality=0.7,
+                strategy_summary="Merge strategy",
+                timestamp=time.time(),
+            )
+        )
+        pool.add(
+            TaskRecord(
+                agent_id="agent_0",
+                task_type="mutate",
+                input_hash="hash_3",
+                output_quality=0.6,
+                strategy_summary="Mutate strategy",
+                timestamp=time.time(),
+            )
+        )
+
+        # 查询所有任务类型
+        results = pool.query(task_type=None, k=10)
+
+        # 验证返回所有记录
+        assert len(results) == 3
+
+        # 验证包含所有任务类型
+        task_types = {r.task_type for r in results}
+        assert task_types == {"explore", "merge", "mutate"}
+
+        # 验证按 quality 降序排列
+        assert results[0].output_quality == 0.8  # explore
+        assert results[1].output_quality == 0.7  # merge
+        assert results[2].output_quality == 0.6  # mutate
+
+    def test_query_multiple_filters(self, temp_config):
+        """测试多条件过滤（agent_id + output_quality）。"""
+        pool = ExperiencePool(temp_config)
+
+        # 添加多个 Agent 的记录
+        for agent_id in ["agent_0", "agent_1"]:
+            for quality in [0.3, 0.5, 0.8]:
+                pool.add(
+                    TaskRecord(
+                        agent_id=agent_id,
+                        task_type="explore",
+                        input_hash=f"hash_{agent_id}_{quality}",
+                        output_quality=quality,
+                        strategy_summary=f"Strategy {quality}",
+                        timestamp=time.time(),
+                    )
+                )
+
+        # 查询 agent_0 的高质量记录（> 0.6）
+        results = pool.query(
+            task_type="explore", k=10, agent_id="agent_0", output_quality=(">", 0.6)
+        )
+
+        # 验证只返回 agent_0 的记录
+        assert all(r.agent_id == "agent_0" for r in results)
+
+        # 验证所有记录 quality > 0.6
+        assert all(r.output_quality > 0.6 for r in results)
+
+        # 验证返回 1 条记录（0.8）
+        assert len(results) == 1
+        assert results[0].output_quality == 0.8
+
+    def test_query_all_task_types_with_filters(self, temp_config):
+        """测试跨任务类型查询 + 多条件过滤。"""
+        pool = ExperiencePool(temp_config)
+
+        # 添加多个任务类型的记录
+        for task_type in ["explore", "merge", "mutate"]:
+            for quality in [0.3, 0.7, 0.9]:
+                pool.add(
+                    TaskRecord(
+                        agent_id="agent_0",
+                        task_type=task_type,
+                        input_hash=f"hash_{task_type}_{quality}",
+                        output_quality=quality,
+                        strategy_summary=f"{task_type} strategy {quality}",
+                        timestamp=time.time(),
+                    )
+                )
+
+        # 查询所有任务类型的高质量记录（> 0.7）
+        results = pool.query(
+            task_type=None,  # 所有任务类型
+            k=10,
+            agent_id="agent_0",
+            output_quality=(">", 0.7),
+        )
+
+        # 验证返回 3 条记录（每种任务类型 1 条，quality=0.9）
+        assert len(results) == 3
+
+        # 验证所有记录 quality > 0.7
+        assert all(r.output_quality > 0.7 for r in results)
+
+        # 验证包含所有任务类型
+        task_types = {r.task_type for r in results}
+        assert task_types == {"explore", "merge", "mutate"}

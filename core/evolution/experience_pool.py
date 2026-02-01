@@ -7,7 +7,7 @@ import json
 import threading
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import List, Dict, Any, Callable
+from typing import List, Dict, Any, Callable, Optional
 
 from utils.config import Config
 from utils.logger_system import log_msg, log_exception
@@ -99,14 +99,14 @@ class ExperiencePool:
 
     def query(
         self,
-        task_type: str,
+        task_type: Optional[str] = None,
         k: int = 10,
         **filters,
     ) -> List[TaskRecord]:
         """查询指定任务类型的 Top-K 记录。
 
         Args:
-            task_type: 任务类型（"explore" | "merge" | "mutate"）
+            task_type: 任务类型（"explore" | "merge" | "mutate"），None 表示查询所有任务类型
             k: 返回前 k 个记录
             **filters: 过滤条件，支持以下格式:
                 - output_quality=(">", 0.5): 质量大于 0.5
@@ -125,10 +125,17 @@ class ExperiencePool:
             True
             >>> all(r.task_type == "explore" for r in results)
             True
+            >>> # 查询所有任务类型的 Top-3 记录
+            >>> results = pool.query(task_type=None, k=3, agent_id="agent_0")
+            >>> len(results) <= 3
+            True
         """
         with self.lock:
-            # [1] 过滤任务类型
-            candidates = [r for r in self.records if r.task_type == task_type]
+            # [1] 过滤任务类型（如果指定）
+            if task_type is not None:
+                candidates = [r for r in self.records if r.task_type == task_type]
+            else:
+                candidates = self.records.copy()
 
             # [2] 应用额外过滤条件
             for field, condition in filters.items():
