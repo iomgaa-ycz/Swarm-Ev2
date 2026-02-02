@@ -274,8 +274,9 @@ def get_conda_packages(env_name: Optional[str] = None) -> str:
         失败时返回默认描述，不抛出异常
     """
     default_description = (
-        "Conda environment contains common ML packages including numpy, pandas, "
-        "scikit-learn, torch, etc. All packages are pre-installed."
+        "Package information unavailable. "
+        "Use only standard libraries (numpy, pandas, scikit-learn) to be safe. "
+        "Do NOT use xgboost, catboost, or other specialized packages without confirmation."
     )
 
     try:
@@ -377,6 +378,22 @@ def get_conda_packages(env_name: Optional[str] = None) -> str:
             description_parts.append(
                 "TensorFlow is available for neural network tasks."
             )
+
+        # 检测常见但可能未安装的包，生成负面约束
+        installed_names = {name.lower() for name, _ in highlighted_packages}
+        common_ml_packages = {"catboost", "xgboost", "tensorflow", "keras", "fastai"}
+        not_installed = common_ml_packages - installed_names
+
+        if not_installed:
+            not_installed_str = ", ".join(sorted(not_installed))
+            description_parts.append(
+                f"**NOT INSTALLED**: {not_installed_str}. Do NOT use these packages."
+            )
+
+        # 添加强制约束提醒
+        description_parts.append(
+            "**IMPORTANT**: Only use packages explicitly listed above."
+        )
 
         return " ".join(description_parts)
 

@@ -22,9 +22,10 @@
   - Ensure no missing values or formatting errors
 
 ### Available Resources
-- Your solution can use any relevant machine learning packages
-- Common packages available: `scikit-learn`, `xgboost`, `lightgbm`, `catboost`, `pytorch`, `tensorflow`, `pandas`, `numpy`, etc.
-- If using deep learning, ensure GPU availability is handled gracefully
+- **CRITICAL**: ONLY use packages listed in the "Installed Packages" section of System Environment
+- Do NOT assume any package is available unless explicitly listed
+- If a desired package is not listed, use an alternative from the installed packages
+- For deep learning, check GPU availability gracefully (fallback to CPU if unavailable)
 
 ### Best Practices
 - Set random seeds for reproducibility

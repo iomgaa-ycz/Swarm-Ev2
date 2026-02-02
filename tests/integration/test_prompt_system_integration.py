@@ -47,7 +47,6 @@ class TestPromptSystemIntegration:
         skills = [
             "skills/static/output_format.md",
             "skills/static/workspace_rules.md",
-            "skills/static/ml_best_practices.md",
             "skills/static/code_style.md",
         ]
         for skill in skills:
