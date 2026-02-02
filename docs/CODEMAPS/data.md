@@ -1,7 +1,7 @@
 # 数据流与配置管理
 
-**Last Updated:** 2026-02-01 (file_utils + workspace 预处理功能)
-**模块范围:** main.py, config/, .env, utils/config.py, utils/logger_system.py, core/executor/, core/orchestrator.py, core/evolution/, search/, utils/prompt_manager.py, benchmark/
+**Last Updated:** 2026-02-02 (模块行数更新: Orchestrator/Interpreter/CoderAgent 扩展)
+**模块范围:** main.py (560行), config/, .env, utils/config.py (603行), core/executor/, core/orchestrator.py (1168行), core/evolution/, search/, utils/prompt_manager.py (295行), benchmark/
 **当前阶段:** Phase 3.5 Skill 进化（已完成）+ main.py 双层架构集成
 
 ---

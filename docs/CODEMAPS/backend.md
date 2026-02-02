@@ -1,6 +1,6 @@
 # 后端模块详细说明
 
-**Last Updated:** 2026-02-01 (file_utils + workspace 预处理功能)
+**Last Updated:** 2026-02-02 (模块行数更新: Orchestrator/Interpreter/CoderAgent 扩展)
 **模块范围:** main.py, utils/, core/state/, core/backend/, core/executor/, core/evolution/, agents/, search/, config/, tests/, benchmark/
 **当前阶段:** Phase 3.5 Skill 进化（已完成）+ main.py 双层架构集成
 
@@ -11,14 +11,15 @@
 | 模块 | 文件 | 行数 | 职责 | 状态 |
 |------|------|------|------|------|
 | **入口层 (Entry)** |||||
-| **main.py** | **`main.py`** | **525** | **双层进化架构入口** | **完成 (重构)** |
+| **main.py** | **`main.py`** | **560** | **双层进化架构入口** | **完成 (重构)** |
 | **基础设施层** |||||
-| 配置系统 | `utils/config.py` | 598 | OmegaConf 配置加载与验证 (+EvolutionConfig) | 完成 |
+| 配置系统 | `utils/config.py` | 603 | OmegaConf 配置加载与验证 (+EvolutionConfig) | 完成 |
 | 日志系统 | `utils/logger_system.py` | 180 | 双通道日志输出 | 完成 |
-| 文件工具 | `utils/file_utils.py` | 223 | 目录复制/链接/解压/清理 | 完成 |
+| 文件工具 | `utils/file_utils.py` | 222 | 目录复制/链接/解压/清理 | 完成 |
+| **系统信息** | **`utils/system_info.py`** | **329** | **系统环境信息收集** | **完成 (NEW)** |
 | **数据结构层** |||||
 | Node 数据类 | `core/state/node.py` | 121 | 解决方案 DAG 节点 | 完成 |
-| Journal 数据类 | `core/state/journal.py` | 283 | DAG 容器与查询 (+get_best_k) | 完成 |
+| Journal 数据类 | `core/state/journal.py` | 300 | DAG 容器与查询 (+get_best_k) | 完成 |
 | Task 数据类 | `core/state/task.py` | 62 | Agent 任务定义 | 完成 |
 | **后端抽象层** |||||
 | 后端抽象层 | `core/backend/__init__.py` | 137 | 统一 LLM 查询接口 (Function Calling) | 完成 |
@@ -26,31 +27,31 @@
 | Anthropic 后端 | `core/backend/backend_anthropic.py` | 142 | Claude 系列支持 | 完成 |
 | 后端工具 | `core/backend/utils.py` | 80 | 消息格式化 + 重试机制 | 完成 |
 | **执行层** |||||
-| 代码执行器 | `core/executor/interpreter.py` | 176 | 沙箱执行 + 超时控制 | 完成 |
-| 工作空间管理 | `core/executor/workspace.py` | 245 | 目录管理 + 文件归档 + 数据预处理 | 完成 |
+| **代码执行器** | **`core/executor/interpreter.py`** | **547** | **沙箱执行 + 并行支持 + pickle 修复** | **完成 (扩展)** |
+| 工作空间管理 | `core/executor/workspace.py` | 244 | 目录管理 + 文件归档 + 数据预处理 | 完成 |
 | **工具层** |||||
-| 数据预览 | `utils/data_preview.py` | 269 | EDA 预览生成 | 完成 |
+| 数据预览 | `utils/data_preview.py` | 273 | EDA 预览生成 | 完成 |
 | 指标工具 | `utils/metric.py` | 117 | 评估指标容器 | 完成 |
-| 响应解析 | `utils/response.py` | 89 | LLM 响应提取 | 完成 |
-| Prompt 构建器 | `utils/prompt_builder.py` | 167 | 统一 Prompt 生成逻辑 | 完成 |
-| **Prompt 系统 (NEW)** |||||
-| **Prompt 管理器** | **`utils/prompt_manager.py`** | **252** | **Jinja2 模板 + 7 层 Prompt** | **完成** |
-| 工作空间构建器 | `utils/workspace_builder.py` | 60 | 工作空间初始化 | 完成 |
+| 响应解析 | `utils/response.py` | 154 | LLM 响应提取 | 完成 |
+| **Prompt 构建器** | **`utils/prompt_builder.py`** | **247** | **统一 Prompt 生成逻辑** | **完成 (扩展)** |
+| **Prompt 系统** |||||
+| **Prompt 管理器** | **`utils/prompt_manager.py`** | **295** | **Jinja2 模板 + 7 层 Prompt** | **完成** |
+| 工作空间构建器 | `utils/workspace_builder.py` | 127 | 工作空间初始化 | 完成 |
 | **Agent 层** |||||
-| Agent 基类 | `agents/base_agent.py` | 119 | Agent 抽象基类 (+mutate task_type) | 完成 |
-| CoderAgent | `agents/coder_agent.py` | 272 | 代码生成 Agent | 完成 |
+| Agent 基类 | `agents/base_agent.py` | 135 | Agent 抽象基类 (+mutate task_type) | 完成 |
+| **CoderAgent** | **`agents/coder_agent.py`** | **375** | **代码生成 Agent (+merge/mutate 任务)** | **完成 (扩展)** |
 | **编排层** |||||
-| Orchestrator | `core/orchestrator.py` | 534 | 任务编排器 (三阶段选择+Function Calling Review) | 完成 |
+| **Orchestrator** | **`core/orchestrator.py`** | **1168** | **任务编排器 (+双层进化+merge/mutate 任务)** | **完成 (扩展)** |
 | **进化层 (Phase 3)** |||||
 | **基因解析器** | **`core/evolution/gene_parser.py`** | **162** | **解析 7 基因块，支持 GA 交叉** | **完成** |
 | **共享经验池** | **`core/evolution/experience_pool.py`** | **319** | **线程安全存储 + Top-K 查询 + 扩展过滤** | **完成** |
-| **适应度计算** | **`search/fitness.py`** | **82** | **归一化到 [0,1]，支持 lower_is_better** | **完成** |
+| **适应度计算** | **`search/fitness.py`** | **81** | **归一化到 [0,1]，支持 lower_is_better** | **完成** |
 | **任务分配器** | **`core/evolution/task_dispatcher.py`** | **157** | **Epsilon-Greedy 策略 + EMA 得分更新** | **完成 (P3.3)** |
-| **Agent 层进化** | **`core/evolution/agent_evolution.py`** | **392** | **LLM 驱动的 Role/Strategy 变异** | **完成 (P3.3)** |
+| **Agent 层进化** | **`core/evolution/agent_evolution.py`** | **439** | **LLM 驱动的 Role/Strategy 变异** | **完成 (P3.3)** |
 | **基因注册表** | **`core/evolution/gene_registry.py`** | **199** | **基因级信息素管理 + 哈希 + 衰减** | **完成 (P3.4)** |
 | **基因选择器** | **`core/evolution/gene_selector.py`** | **314** | **信息素驱动的确定性基因选择** | **完成 (P3.4)** |
 | **信息素机制** | **`core/evolution/pheromone.py`** | **104** | **节点级信息素计算 + 时间衰减** | **完成 (P3.4)** |
-| **Solution 层 GA** | **`core/evolution/solution_evolution.py`** | **420** | **完整 GA 流程（精英+锦标赛+交叉+变异）** | **完成 (P3.4)** |
+| **Solution 层 GA** | **`core/evolution/solution_evolution.py`** | **541** | **完整 GA 流程（精英+锦标赛+交叉+变异）** | **完成 (P3.4)** |
 | **并行评估器** | **`search/parallel_evaluator.py`** | **245** | **多线程并发执行和评估** | **完成 (P3.4)** |
 | **Phase 3.5 Skill 进化** |||||
 | **代码嵌入管理器** | **`core/evolution/code_embedding_manager.py`** | **127** | **bge-m3 文本向量化 + 缓存** | **完成 (P3.5)** |
@@ -190,22 +191,23 @@ main.py
 
 ---
 
-## 3. Orchestrator 编排器 (`core/orchestrator.py`)
+## 3. Orchestrator 编排器 (`core/orchestrator.py`) [1168 行, +双层进化]
 
-> **注意**: Orchestrator 现在支持双层进化模式，通过 `agent_evolution` 参数接收 AgentEvolution 实例。
+> **重大更新**: Orchestrator 从 534 行扩展至 1168 行（+119%），新增双层进化架构支持和 merge/mutate 任务执行能力。
 
-### 2.1 核心职责
+### 3.1 核心职责
 
-Orchestrator 是系统的中枢控制器，协调主循环、父节点选择、Agent 代码生成、代码执行、Review 评估、最佳节点更新。
+Orchestrator 是系统的中枢控制器，协调主循环、父节点选择、Agent 代码生成、代码执行、Review 评估、最佳节点更新。现支持双层进化模式和 GA 操作。
 
-### 2.2 类结构
+### 3.2 类结构
 
 ```python
 class Orchestrator:
-    """任务编排器。
+    """任务编排器（双层进化模式）。
 
     Attributes:
-        agent: BaseAgent - 代码生成 Agent
+        agent: BaseAgent - 主代码生成 Agent
+        agents: List[BaseAgent] - Agent 种群（双层进化模式）
         config: Config - 全局配置
         journal: Journal - 历史节点记录
         task_desc: str - 任务描述
@@ -214,89 +216,115 @@ class Orchestrator:
         best_node: Optional[Node] - 当前最佳节点
         workspace: WorkspaceManager - 工作空间管理器
         interpreter: Interpreter - 代码执行器
+        # 双层进化组件 (NEW)
+        agent_evolution: Optional[AgentEvolution] - Agent 层进化器
+        task_dispatcher: Optional[TaskDispatcher] - 任务分配器
+        experience_pool: Optional[ExperiencePool] - 共享经验池
+        gene_registry: Optional[GeneRegistry] - 基因注册表
     """
 ```
 
-### 2.3 核心方法
+### 3.3 核心方法
 
 | 方法 | 签名 | 说明 |
 |------|------|------|
-| `run` | `(max_steps?: int) -> Optional[Node]` | 主循环入口，返回最佳节点 |
+| `run` | `(num_epochs?, steps_per_epoch?, max_steps?) -> Optional[Node]` | 主循环入口（支持 epoch 模式） |
 | `step` | `() -> None` | 单步执行（6 阶段流程） |
 | `_select_parent_node` | `() -> Optional[Node]` | 三阶段父节点选择策略 |
 | `_prepare_step` | `() -> None` | 清理 submission 目录 |
 | `_execute_code` | `(code: str, node_id: str) -> ExecutionResult` | 执行代码（含路径重写） |
 | `_review_node` | `(node: Node) -> None` | Function Calling Review |
-| `_build_review_messages` | `(node: Node) -> str` | 构建 Review 消息 |
-| `_get_review_tool_schema` | `() -> Dict` | 获取 submit_review schema |
 | `_update_best_node` | `(node: Node) -> None` | 更新最佳节点（支持 lower_is_better） |
-| `_save_best_solution` | `(node: Node) -> None` | 保存最佳方案到文件 |
+| **`execute_merge_task`** | **`(parent1, parent2) -> Node`** | **执行 merge 任务（GA 交叉）NEW** |
+| **`execute_mutate_task`** | **`(parent) -> Node`** | **执行 mutate 任务（GA 变异）NEW** |
 
-### 2.4 三阶段父节点选择策略
+### 3.4 双层进化模式运行流程
+
+```
+run(num_epochs, steps_per_epoch)
+|
++-- for epoch in range(num_epochs):
+|   |
+|   +-- for step in range(steps_per_epoch):
+|   |       self.step()  # 原有单步逻辑
+|   |
+|   +-- [Epoch 结束后]
+|   |   +-- 更新 TaskDispatcher 擅长度得分
+|   |   +-- 记录到 ExperiencePool
+|   |   +-- 更新 GeneRegistry 信息素
+|   |
+|   +-- [Agent 层进化检查]
+|       if agent_evolution and epoch % interval == 0:
+|           agent_evolution.evolve(epoch)
+|
++-- return self.best_node
+```
+
+### 3.5 execute_merge_task 方法 (NEW)
 
 ```python
-def _select_parent_node(self) -> Optional[Node]:
-    """
-    Phase 1: 初稿模式
-        条件: len(journal.draft_nodes) < config.search.num_drafts
-        结果: return None -> 生成全新方案
+def execute_merge_task(
+    self, parent1: Node, parent2: Node
+) -> Node:
+    """执行 merge 任务（GA 交叉）。
 
-    Phase 2: 修复模式
-        条件: random() < config.search.debug_prob
-        操作: 构建 DAG，查找 buggy 叶子节点
-        结果: return random_buggy_leaf -> 修复 bug
+    流程:
+        1. 选择 Agent (TaskDispatcher)
+        2. 构建 AgentContext (task_type="merge")
+        3. 调用 agent.generate(context)
+        4. 执行代码 (_execute_code)
+        5. 评估结果 (_review_node)
+        6. 更新经验池和基因注册表
+        7. 更新 best_node
 
-    Phase 3: 改进模式
-        条件: 默认
-        操作: journal.get_best_node(only_good=True)
-        结果: return best_node -> 改进最佳方案
+    Returns:
+        合并后的新节点
     """
 ```
 
-### 2.5 Function Calling Review
+### 3.6 execute_mutate_task 方法 (NEW)
 
 ```python
-def _review_node(self, node: Node) -> None:
-    """使用 Function Calling 评估节点。
+def execute_mutate_task(self, parent: Node) -> Node:
+    """执行 mutate 任务（GA 变异）。
 
-    调用 LLM:
-        model: config.llm.feedback.model (默认 glm-4.6)
-        tools: [submit_review]
-        tool_choice: {"type": "function", "function": {"name": "submit_review"}}
+    流程:
+        1. 选择 Agent (TaskDispatcher)
+        2. 构建 AgentContext (task_type="mutate")
+        3. 调用 agent.generate(context)
+        4. 执行代码
+        5. 评估结果
+        6. 更新经验池和基因注册表
 
-    submit_review schema:
-        - is_bug: bool         是否有 bug
-        - has_csv_submission: bool  是否生成 submission.csv
-        - summary: string      2-3 句话摘要
-        - metric: number|null  验证集指标值
-        - lower_is_better: bool 指标方向
-
-    更新节点字段:
-        - node.analysis = summary
-        - node.is_buggy = is_bug || exc_type != None
-        - node.metric_value = metric
-        - node.lower_is_better = lower_is_better
+    Returns:
+        变异后的新节点
     """
 ```
 
-### 2.6 双向指标比较
-
-```python
-def _update_best_node(self, node: Node) -> None:
-    """更新最佳节点（支持 lower_is_better）。
-
-    过滤: is_buggy=True 或 metric_value=None -> 跳过
-
-    比较逻辑:
-        lower_is_better=True  (RMSE, MAE):  new < current -> 更新
-        lower_is_better=False (Accuracy, F1): new > current -> 更新
-    """
-```
-
-### 2.7 依赖关系
+### 3.7 三阶段父节点选择策略
 
 ```
-Orchestrator
+_select_parent_node()
+|
++-- Phase 1: 初稿模式
+|   条件: len(journal.draft_nodes) < config.search.num_drafts
+|   结果: return None -> 生成全新方案
+|
++-- Phase 2: 修复模式
+|   条件: random() < config.search.debug_prob
+|   操作: journal.build_dag() -> 查找 buggy 叶子节点
+|   结果: return random_buggy_leaf -> Agent 修复 bug
+|
++-- Phase 3: 改进模式
+    条件: 默认
+    操作: journal.get_best_node(only_good=True)
+    结果: return best_node -> Agent 改进最佳方案
+```
+
+### 3.8 依赖关系
+
+```
+Orchestrator (1168行)
 +-- agents.base_agent.BaseAgent, AgentContext
 +-- core.state.Node, Journal
 +-- core.executor.interpreter.Interpreter, ExecutionResult
@@ -304,6 +332,12 @@ Orchestrator
 +-- core.backend.query (Function Calling)
 +-- utils.config.Config
 +-- utils.logger_system.log_msg, log_exception
+# 双层进化依赖 (NEW)
++-- core.evolution.agent_evolution.AgentEvolution
++-- core.evolution.task_dispatcher.TaskDispatcher
++-- core.evolution.experience_pool.ExperiencePool, TaskRecord
++-- core.evolution.gene_registry.GeneRegistry
++-- search.fitness.normalize_fitness
 ```
 
 ---
@@ -603,9 +637,11 @@ class Journal(DataClassJsonMixin):
 
 ## 8. 执行层模块 (`core/executor/`)
 
-### 7.1 Interpreter (`core/executor/interpreter.py`) - 176 行
+### 7.1 Interpreter (`core/executor/interpreter.py`) - 547 行 [+并行执行支持]
 
-Python 代码执行沙箱，使用独立的 subprocess 执行代码。
+> **重大更新**: Interpreter 从 176 行扩展至 547 行（+211%），新增并行执行支持和 pickle 序列化问题修复。
+
+Python 代码执行沙箱，使用独立的 subprocess/进程池执行代码。
 
 ```python
 @dataclass
@@ -619,12 +655,29 @@ class ExecutionResult:
     timeout: bool                    # 是否超时
 
 class Interpreter:
-    """Python 代码执行沙箱。"""
+    """Python 代码执行沙箱（支持并行）。
+
+    Attributes:
+        working_dir: Path - 工作目录
+        timeout: int - 超时时间（秒）
+        _process_pool: Optional[ProcessPoolExecutor] - 进程池（并行模式）
+    """
+
     def __init__(self, working_dir: Path, timeout: int = 300): ...
     def run(self, code: str, reset_session: bool = True) -> ExecutionResult: ...
+    def run_parallel(self, codes: List[str]) -> List[ExecutionResult]: ...  # NEW
+    def _execute_in_subprocess(self, code: str) -> ExecutionResult: ...  # 重构
+    def _serialize_result(self, result: ExecutionResult) -> Dict: ...  # NEW
+    def _deserialize_result(self, data: Dict) -> ExecutionResult: ...  # NEW
 ```
 
-### 7.2 WorkspaceManager (`core/executor/workspace.py`) - 245 行
+**并行执行特性 (NEW)**:
+- 使用 ProcessPoolExecutor 进行多进程并行执行
+- 修复 pickle 序列化问题（ExecutionResult 现在可序列化）
+- 支持批量代码执行（用于 ParallelEvaluator）
+- 改进错误处理和超时控制
+
+### 7.2 WorkspaceManager (`core/executor/workspace.py`) - 244 行
 
 工作空间管理器，负责目录结构管理、文件归档和数据预处理。
 
@@ -668,7 +721,7 @@ prepare_workspace(source_dir)
 +-- [3] preprocess_input() - 预处理（根据 config.data.preprocess_data 配置）
 ```
 
-### 7.3 文件工具模块 (`utils/file_utils.py`) - 223 行 [扩展]
+### 7.3 文件工具模块 (`utils/file_utils.py`) - 222 行
 
 文件操作工具模块，提供目录复制、链接、解压和清理功能。
 
@@ -719,11 +772,43 @@ def clean_up_dataset(path: Path) -> int:
 - 支持处理 Kaggle 竞赛下载的 zip 数据集
 - 自动清理 macOS 产生的元数据文件
 
+### 7.4 系统信息工具 (`utils/system_info.py`) - 329 行 [NEW]
+
+**职责**: 收集系统运行环境信息，用于调试和日志记录。
+
+```python
+def get_system_info() -> Dict[str, Any]:
+    """收集系统环境信息。
+
+    Returns:
+        Dict 包含:
+            - platform: 操作系统信息
+            - python_version: Python 版本
+            - cpu_count: CPU 核心数
+            - memory_total: 总内存
+            - memory_available: 可用内存
+            - gpu_info: GPU 信息（如果可用）
+            - conda_env: Conda 环境名称
+            - installed_packages: 已安装的关键包版本
+    """
+
+def format_system_info() -> str:
+    """格式化系统信息为人类可读字符串。"""
+
+def log_system_info() -> None:
+    """记录系统信息到日志。"""
+```
+
+**使用场景**:
+- main.py 启动时记录运行环境
+- 生成 Markdown 测试报告时包含环境信息
+- 调试跨平台问题
+
 ---
 
 ## 9. Agent 抽象层 (`agents/`, `utils/prompt_builder.py`, `utils/prompt_manager.py`)
 
-### 8.1 BaseAgent (`agents/base_agent.py`) - 119 行
+### 8.1 BaseAgent (`agents/base_agent.py`) - 135 行
 
 Agent 抽象基类，定义统一的 Agent 接口。
 
@@ -737,7 +822,15 @@ class BaseAgent(ABC):
 
     @abstractmethod
     def _explore(self, context: AgentContext) -> Node:
-        """探索新方案（统一方法）。"""
+        """探索新方案。"""
+
+    @abstractmethod
+    def _merge(self, context: AgentContext) -> Node:
+        """合并方案（GA 交叉）。"""
+
+    @abstractmethod
+    def _mutate(self, context: AgentContext) -> Node:
+        """变异方案（GA 变异）。"""
 ```
 
 **数据类:**
@@ -752,25 +845,44 @@ class BaseAgent(ABC):
 - `"merge"`: 合并两个方案（GA 交叉）
 - `"mutate"`: 变异现有方案（GA 变异）
 
-### 8.2 CoderAgent (`agents/coder_agent.py`) - 272 行
+### 8.2 CoderAgent (`agents/coder_agent.py`) - 375 行 [+merge/mutate 任务支持]
 
-代码生成 Agent，继承 BaseAgent。
+> **重大更新**: CoderAgent 从 272 行扩展至 375 行（+38%），新增 merge 和 mutate 任务支持。
+
+代码生成 Agent，继承 BaseAgent，支持三种任务类型。
 
 **核心方法:**
 
 | 方法 | 签名 | 说明 |
 |------|------|------|
-| `generate` | `(context: AgentContext) -> AgentResult` | 主入口，分发到 `_explore` |
-| `_explore` | `(context: AgentContext) -> Node` | 完整的代码生成->执行->评估流程 |
-| `_call_llm_with_retry` | `(prompt: str, max_retries: int) -> str` | LLM 调用（5次重试，指数退避） |
+| `generate` | `(context: AgentContext) -> AgentResult` | 主入口，根据 task_type 分发 |
+| `_explore` | `(context: AgentContext) -> Node` | 探索新方案 |
+| **`_merge`** | **`(context: AgentContext) -> Node`** | **合并两个方案（GA 交叉）NEW** |
+| **`_mutate`** | **`(context: AgentContext) -> Node`** | **变异现有方案（GA 变异）NEW** |
+| `_call_llm_with_retry` | `(prompt: str, max_retries: int) -> str` | LLM 调用（5次重试） |
 | `_parse_response_with_retry` | `(response: str, max_retries: int) -> Tuple[str, str]` | 响应解析 |
 | `_generate_data_preview` | `() -> Optional[str]` | 生成数据预览 |
-| `_calculate_remaining` | `(context) -> Tuple[int, int]` | 计算剩余时间和步数 |
+
+**任务分发逻辑:**
+
+```python
+def generate(self, context: AgentContext) -> AgentResult:
+    match context.task_type:
+        case "explore":
+            node = self._explore(context)
+        case "merge":
+            node = self._merge(context)  # NEW
+        case "mutate":
+            node = self._mutate(context)  # NEW
+        case _:
+            raise ValueError(f"Unknown task_type: {context.task_type}")
+    return AgentResult(node=node, success=True)
+```
 
 ### 8.3 PromptBuilder vs PromptManager
 
-| 特性 | PromptBuilder (167行) | PromptManager (252行) [NEW] |
-|------|----------------------|---------------------------|
+| 特性 | PromptBuilder (247行) | PromptManager (295行) |
+|------|----------------------|----------------------|
 | 模板引擎 | 字符串拼接 | Jinja2 |
 | Skill 加载 | 不支持 | 支持 (.md 文件) |
 | Agent 配置 | 不支持 | 支持 (差异化 Agent) |
@@ -1097,7 +1209,7 @@ Pheromone
 
 ---
 
-## 15. Solution 层进化器 (`core/evolution/solution_evolution.py`) [NEW - P3.4]
+## 15. Solution 层进化器 (`core/evolution/solution_evolution.py`) [541 行, P3.4]
 
 ### 14.1 核心职责
 
@@ -1107,7 +1219,7 @@ Pheromone
 
 ```python
 class SolutionEvolution:
-    """Solution 层遗传算法。
+    """Solution 层遗传算法 (541行)。
 
     Attributes:
         agents: List[BaseAgent] - Agent 列表

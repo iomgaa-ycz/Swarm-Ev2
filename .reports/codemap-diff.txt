@@ -1,100 +1,253 @@
 # Codemap 差异报告
 
-**生成时间**: 2026-02-01 23:30
-**当前版本**: 0.3.0 (Phase 3.5 Skill 进化)
-**上一版本**: 0.2.0 (Phase 3.4 Solution层遗传算法)
+**生成时间**: 2026-02-02 00:00
+**当前版本**: 0.3.1 (Phase 3.5 Skill 进化完成 + main.py 双层架构集成)
+**对比基准**: docs/CODEMAPS/ (Last Updated: 2026-02-01)
 
-## 变更统计
+---
 
-| 指标 | 变更前 | 变更后 | 差异 |
-|------|--------|--------|------|
-| 核心模块数 | 44 | 47 | +3 (+6.8%) |
-| 核心代码行数 | ~8313 | ~9100 | +787 (+9.5%) |
-| 测试文件数 | 33 | 36 | +3 (+9.1%) |
-| 测试代码行数 | ~7166 | ~7936 | +770 (+10.7%) |
+## 1. 变更统计总览
 
-**差异百分比**: 9.5% (< 30%，无需用户审批)
+| 指标 | 文档记录 | 实际值 | 差异 | 变化率 |
+|------|---------|--------|------|-------|
+| 核心模块数 | 47 | 42 | -5 (含__init__) | -10.6% |
+| 核心代码行数 | ~9300 | 9470 | +170 | +1.8% |
+| 测试文件数 | 36 | 35 | -1 | -2.8% |
+| 测试代码行数 | ~7936 | 8388 | +452 | +5.7% |
 
-## 新增文件
+**总体差异百分比**: +3.6% (核心代码)
 
-### Phase 3.5 Skill 进化模块
+---
 
-| 文件 | 行数 | 说明 |
+## 2. 关键模块行数变化 (CRITICAL)
+
+### 超过 30% 变化的模块 (需要用户审批)
+
+| 模块 | 文档记录 | 实际行数 | 差异 | 变化率 | 状态 |
+|------|---------|---------|------|-------|------|
+| core/orchestrator.py | 534 | 1168 | +634 | **+119%** | MAJOR |
+| core/executor/interpreter.py | 176 | 547 | +371 | **+211%** | MAJOR |
+| agents/coder_agent.py | 272 | 375 | +103 | **+38%** | MAJOR |
+| utils/prompt_builder.py | 167 | 247 | +80 | **+48%** | MAJOR |
+
+### 变化 <30% 的模块 (自动通过)
+
+| 模块 | 文档记录 | 实际行数 | 差异 | 变化率 |
+|------|---------|---------|------|-------|
+| main.py | 525 | 560 | +35 | +6.7% |
+| core/evolution/solution_evolution.py | 420 | 541 | +121 | +29% |
+| core/state/journal.py | 283 | 300 | +17 | +6% |
+| utils/prompt_manager.py | 252 | 295 | +43 | +17% |
+| agents/base_agent.py | 119 | 135 | +16 | +13% |
+| utils/config.py | 598 | 603 | +5 | +0.8% |
+
+### 新增模块
+
+| 模块 | 行数 | 说明 |
 |------|------|------|
-| `core/evolution/code_embedding_manager.py` | 127 | bge-m3 文本向量化 + 懒加载 + 缓存 |
-| `core/evolution/skill_extractor.py` | 302 | HDBSCAN 聚类 + LLM 总结策略模式 |
-| `core/evolution/skill_manager.py` | 371 | Skill 质量评估、演化、元数据管理 |
+| utils/system_info.py | 329 | 系统信息收集工具 (NEW) |
 
-### 测试文件
+---
 
-| 文件 | 说明 |
-|------|------|
-| `tests/test_evolution/test_code_embedding_manager.py` | 嵌入管理器单元测试 |
-| `tests/test_evolution/test_skill_extractor.py` | Skill 提取器单元测试 |
-| `tests/test_evolution/test_skill_manager.py` | Skill 管理器单元测试 |
+## 3. MAJOR 变更详情分析
 
-## 修改文件
+### 3.1 core/orchestrator.py (534 -> 1168, +119%)
 
-| 文件 | 变更类型 | 说明 |
-|------|---------|------|
-| `core/evolution/__init__.py` | MODIFY | 导出新增的 Skill 模块 |
-| `core/evolution/agent_evolution.py` | MODIFY | 新增 Skill 池更新逻辑 (+47 行) |
-| `config/default.yaml` | MODIFY | 新增 evolution.skill 配置节 |
-| `docs/plans/phase3_5_skill_evolution_plan.md` | NEW | Phase 3.5 实施方案 |
+**变更原因**:
+- 新增双层进化架构支持 (`agent_evolution` 参数)
+- 扩展 `run()` 方法支持 `epochs + steps_per_epoch` 模式
+- 新增 `execute_merge_task()` 方法支持 merge 任务
+- 新增 `execute_mutate_task()` 方法支持 mutate 任务
+- 扩展 Function Calling Review 逻辑
+- 新增进化组件集成 (TaskDispatcher, GeneRegistry)
 
-## 配置新增
+**影响范围**:
+- architecture.md: 分层架构图需更新
+- backend.md: Orchestrator 章节需重写
+- data.md: 数据流图需更新
 
-```yaml
-evolution:
-  skill:
-    min_cluster_size: 5          # HDBSCAN 最小簇大小
-    duplicate_threshold: 0.85    # 语义相似度阈值（去重）
-    min_composite_score: 0.5     # 新增 Skill 的最低综合评分
-    deprecate_threshold: 0.4     # 淘汰 Skill 的综合评分阈值
-    unused_epochs: 5             # 连续未使用 Epoch 数（淘汰条件）
-    embedding_model_path: "./embedding-models/bge-m3"
+### 3.2 core/executor/interpreter.py (176 -> 547, +211%)
+
+**变更原因**:
+- 新增并行执行支持 (修复 pickle 序列化问题)
+- 扩展 `run()` 方法支持更复杂的执行场景
+- 新增进程池管理逻辑
+- 改进错误处理和超时控制
+- 新增代码执行隔离机制
+
+**影响范围**:
+- backend.md: Interpreter 章节需更新
+- data.md: 执行层数据流需更新
+
+### 3.3 agents/coder_agent.py (272 -> 375, +38%)
+
+**变更原因**:
+- 新增 `_merge()` 方法支持 merge 任务
+- 新增 `_mutate()` 方法支持 mutate 任务
+- 扩展 `generate()` 分发逻辑
+- 优化 LLM 调用和响应解析
+
+**影响范围**:
+- backend.md: CoderAgent 章节需更新
+- architecture.md: Agent 层说明需更新
+
+### 3.4 utils/prompt_builder.py (167 -> 247, +48%)
+
+**变更原因**:
+- 扩展 Prompt 构建逻辑
+- 新增更多上下文注入选项
+- 优化代码结构
+
+**影响范围**:
+- backend.md: PromptBuilder 章节需更新
+
+---
+
+## 4. 实际代码行数统计
+
+### 核心模块 (agents/, core/, utils/, search/)
+
+```
+agents/
+├── __init__.py            9
+├── base_agent.py        135
+└── coder_agent.py       375
+                   小计: 519
+
+core/
+├── __init__.py            3
+├── backend/
+│   ├── __init__.py      137
+│   ├── backend_anthropic.py 142
+│   ├── backend_openai.py    163
+│   └── utils.py           80
+├── executor/
+│   ├── __init__.py       10
+│   ├── interpreter.py   547
+│   └── workspace.py     244
+├── evolution/
+│   ├── __init__.py       40
+│   ├── agent_evolution.py    439
+│   ├── code_embedding_manager.py 127
+│   ├── experience_pool.py    319
+│   ├── gene_parser.py       162
+│   ├── gene_registry.py     199
+│   ├── gene_selector.py     314
+│   ├── pheromone.py        104
+│   ├── skill_extractor.py   302
+│   ├── skill_manager.py     371
+│   ├── solution_evolution.py 541
+│   └── task_dispatcher.py   157
+├── orchestrator.py      1168
+└── state/
+    ├── __init__.py        16
+    ├── journal.py        300
+    ├── node.py           121
+    └── task.py            62
+                   小计: 5767
+
+utils/
+├── __init__.py            1
+├── config.py            603
+├── data_preview.py      273
+├── file_utils.py        222
+├── logger_system.py     180
+├── metric.py            117
+├── prompt_builder.py    247
+├── prompt_manager.py    295
+├── response.py          154
+├── system_info.py       329  [NEW]
+└── workspace_builder.py 127
+                   小计: 2548
+
+search/
+├── __init__.py            9
+├── fitness.py            81
+└── parallel_evaluator.py 245
+                   小计: 335
+
+main.py                  560
+
+核心代码总计: 9729 行
 ```
 
-## 新增依赖
+### 测试模块 (tests/)
 
 ```
-hdbscan          # HDBSCAN 聚类库
-sentence-transformers  # bge-m3 嵌入模型
+tests/
+├── unit/               (19 文件, ~5500 行)
+├── test_evolution/     (13 文件, ~2400 行)
+├── test_search/        (2 文件, ~500 行)
+└── integration/        (1 文件, ~176 行)
+
+测试代码总计: ~8388 行 (35 文件)
 ```
 
-## 架构变更
+---
 
-### 进化层扩展
+## 5. 需要更新的文档清单
 
-```
-进化层 (Evolution)
-├── P3.1 GeneParser (162行)
-├── P3.2 ExperiencePool (319行)
-├── P3.2 Fitness (81行)
-├── P3.3 TaskDispatcher (157行)
-├── P3.3 AgentEvolution (439行) ← 扩展
-├── P3.4 GeneRegistry (199行)
-├── P3.4 GeneSelector (314行)
-├── P3.4 Pheromone (104行)
-├── P3.4 SolutionEvolution (420行)
-├── P3.5 CodeEmbeddingManager (127行) ← NEW
-├── P3.5 SkillExtractor (302行) ← NEW
-└── P3.5 SkillManager (371行) ← NEW
-```
+### CRITICAL (必须更新)
 
-## 目录统计
+| 文档 | 更新内容 | 优先级 |
+|------|---------|-------|
+| architecture.md | 更新所有模块行数、分层架构图 | P0 |
+| backend.md | 重写 Orchestrator、Interpreter、CoderAgent 章节 | P0 |
+| data.md | 更新数据流图、模块行数引用 | P0 |
 
-| 目录 | 文件数 | 代码行数 |
-|------|--------|---------|
-| agents/ | 3 | 400 |
-| core/ | 25 | ~4800 |
-| utils/ | 10 | ~2029 |
-| search/ | 3 | 335 |
-| tests/ | 36 | ~7936 |
-| **总计** | **77** | **~15500** |
+### HIGH (建议更新)
 
-## 审批状态
+| 文档 | 更新内容 | 优先级 |
+|------|---------|-------|
+| architecture.md | 新增 system_info.py 模块说明 | P1 |
+| backend.md | 新增 Orchestrator 双层进化模式说明 | P1 |
 
-- [x] 差异 < 30%，自动通过
-- [x] 无破坏性变更
-- [x] 测试覆盖完整
+---
+
+## 6. 审批状态
+
+### 需要用户审批的变更:
+
+- [x] orchestrator.py (+119%) - 双层进化架构扩展 **[已批准 2026-02-02]**
+- [x] interpreter.py (+211%) - 并行执行支持 **[已批准 2026-02-02]**
+- [x] coder_agent.py (+38%) - merge/mutate 任务支持 **[已批准 2026-02-02]**
+- [x] prompt_builder.py (+48%) - Prompt 构建扩展 **[已批准 2026-02-02]**
+
+### 自动通过的变更:
+
+- [x] main.py (+6.7%) - 小幅更新
+- [x] solution_evolution.py (+29%) - GA 优化
+- [x] 其他模块 (<30% 变化)
+
+---
+
+## 7. 已完成操作
+
+1. **[DONE]** 用户已批准上述 MAJOR 变更
+2. **[DONE]** architecture.md 模块行数已更新
+3. **[DONE]** backend.md Orchestrator、Interpreter、CoderAgent 章节已重写
+4. **[DONE]** data.md 时间戳和模块范围已更新
+5. **[DONE]** system_info.py 模块文档已添加到 backend.md
+
+---
+
+## 8. 更新完成总结
+
+**更新时间**: 2026-02-02
+
+**已更新文件**:
+- `/Users/yuchengzhang/Desktop/Code/Swarm-Ev2/docs/CODEMAPS/architecture.md`
+- `/Users/yuchengzhang/Desktop/Code/Swarm-Ev2/docs/CODEMAPS/backend.md`
+- `/Users/yuchengzhang/Desktop/Code/Swarm-Ev2/docs/CODEMAPS/data.md`
+- `/Users/yuchengzhang/Desktop/Code/Swarm-Ev2/.reports/codemap-diff.txt`
+
+**主要变更**:
+1. 所有模块行数统计已更新为最新值
+2. Orchestrator 章节完全重写（534 -> 1168 行）
+3. Interpreter 章节更新（176 -> 547 行，新增并行执行支持）
+4. CoderAgent 章节更新（272 -> 375 行，新增 merge/mutate 任务）
+5. 新增 system_info.py 模块说明
+
+---
+
+# 报告结束
