@@ -208,6 +208,59 @@ def get_hardware_description() -> str:
     return ", ".join(description_parts)
 
 
+def get_conda_python_path(env_name: str) -> Optional[str]:
+    """获取指定 conda 环境的 Python 解释器路径。
+
+    Args:
+        env_name: conda 环境名称
+
+    Returns:
+        Python 路径，失败返回 None
+
+    适配: macOS + Ubuntu（conda/miniconda/anaconda）
+    """
+    try:
+        # 方法1：conda run which python（最可靠，跨平台）
+        result = subprocess.run(
+            ["conda", "run", "-n", env_name, "which", "python"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            python_path = result.stdout.strip()
+            if os.path.exists(python_path):
+                log_msg("INFO", f"Conda Python 路径: {python_path}")
+                return python_path
+
+        # 方法2：解析 conda info --envs --json
+        result = subprocess.run(
+            ["conda", "info", "--envs", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+        if result.returncode == 0:
+            data = json.loads(result.stdout)
+            for env_path in data.get("envs", []):
+                if env_path.endswith(f"/{env_name}") or env_path.endswith(
+                    f"\\{env_name}"
+                ):
+                    python_path = os.path.join(env_path, "bin", "python")
+                    if os.path.exists(python_path):
+                        log_msg("INFO", f"Conda Python 路径（via envs）: {python_path}")
+                        return python_path
+
+    except subprocess.TimeoutExpired:
+        log_msg("WARNING", "获取 conda Python 路径超时")
+    except FileNotFoundError:
+        log_msg("WARNING", "conda 命令不可用")
+    except Exception as e:
+        log_msg("WARNING", f"获取 conda Python 路径失败: {e}")
+
+    return None
+
+
 def get_conda_packages(env_name: Optional[str] = None) -> str:
     """获取 Conda 环境中所有包的摘要描述。
 
@@ -253,18 +306,20 @@ def get_conda_packages(env_name: Optional[str] = None) -> str:
         channel_counter: Counter[str] = Counter()
         highlighted_packages: list[tuple[str, str]] = []
 
-        # 核心 ML 包列表
-        core_packages = {
-            "numpy",
+        # 核心 ML 包列表（按重要性排序：数据处理 → 传统ML → Boosting → 深度学习）
+        core_packages_priority = [
             "pandas",
-            "scipy",
-            "scikit-learn",
-            "torch",
-            "torchvision",
-            "tensorflow",
+            "numpy",
+            "scipy",  # 数据处理基础
+            "scikit-learn",  # 传统 ML
             "xgboost",
             "lightgbm",
-        }
+            "catboost",  # Boosting 三剑客
+            "torch",
+            "torchvision",
+            "tensorflow",  # 深度学习
+        ]
+        core_packages = set(core_packages_priority)
 
         for package in packages_data:
             name = package.get("name", "")
@@ -293,8 +348,15 @@ def get_conda_packages(env_name: Optional[str] = None) -> str:
 
         # 核心包列表
         if highlighted_packages:
-            # 按名称排序，取前 6 个
-            sorted_packages = sorted(set(highlighted_packages), key=lambda x: x[0])[:6]
+            # 按重要性排序（优先级列表顺序），取前 6 个
+            def priority_key(pkg_tuple: tuple[str, str]) -> int:
+                name = pkg_tuple[0].lower()
+                try:
+                    return core_packages_priority.index(name)
+                except ValueError:
+                    return len(core_packages_priority)
+
+            sorted_packages = sorted(set(highlighted_packages), key=priority_key)[:6]
             packages_str = ", ".join([sig for _, sig in sorted_packages])
             remaining = len(highlighted_packages) - len(sorted_packages)
 

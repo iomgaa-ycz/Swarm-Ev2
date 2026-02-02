@@ -1,19 +1,21 @@
 """
-代码执行沙箱模块（并行版本）。
+代码执行沙箱模块（subprocess 版本）。
 
-使用 multiprocessing 在隔离环境中并行执行 Python 代码，提供超时控制和输出捕获。
-参考: Reference/ML-Master-main/interpreter/interpreter_parallel.py
+使用 subprocess.Popen 在指定 Python 环境中执行代码，支持：
+- 显式指定 Python 解释器路径（解决 conda 环境问题）
+- 超时控制和输出捕获
+- 并行执行（通过槽位管理）
 """
 
 import os
-import queue
+import re
 import signal
+import subprocess
 import sys
 import time
-import traceback
 from dataclasses import dataclass, field
-from multiprocessing import Process, Queue, Lock
 from pathlib import Path
+from threading import Lock
 from typing import Optional, List, Tuple
 
 from utils.logger_system import log_msg
@@ -61,60 +63,10 @@ class ExecutionResult:
     timeout: bool = False
 
 
-class RedirectQueue:
-    """重定向输出到队列的类。"""
-
-    def __init__(self, q: Queue):
-        self.queue = q
-
-    def write(self, msg: str):
-        self.queue.put(msg)
-
-    def flush(self):
-        pass
-
-
-def exception_summary(
-    e: BaseException,
-    working_dir: Path,
-    exec_file_name: str,
-) -> Tuple[str, str, dict, List[Tuple]]:
-    """生成异常摘要信息。
-
-    Args:
-        e: 异常对象
-        working_dir: 工作目录
-        exec_file_name: 执行文件名
-
-    Returns:
-        (traceback字符串, 异常类名, 异常信息字典, 异常堆栈列表)
-    """
-    tb_lines = traceback.format_exception(e)
-    # 过滤掉框架内部的堆栈信息
-    tb_str = "".join(
-        [line for line in tb_lines if "swarm-ev2/" not in line.lower() and "importlib" not in line]
-    )
-
-    # 替换完整路径为文件名
-    tb_str = tb_str.replace(str(working_dir / exec_file_name), exec_file_name)
-
-    exc_info = {}
-    if hasattr(e, "args"):
-        exc_info["args"] = [str(i) for i in e.args]
-    for att in ["name", "msg", "obj"]:
-        if hasattr(e, att):
-            exc_info[att] = str(getattr(e, att))
-
-    tb = traceback.extract_tb(e.__traceback__)
-    exc_stack = [(t.filename, t.lineno, t.name, t.line) for t in tb]
-
-    return tb_str, e.__class__.__name__, exc_info, exc_stack
-
-
 class Interpreter:
-    """Python 代码执行沙箱（支持并行执行）。
+    """Python 代码执行沙箱（subprocess 版本）。
 
-    使用独立的 multiprocessing.Process 执行代码，支持多进程并行。
+    使用 subprocess.Popen 执行代码，支持指定 Python 解释器路径。
     """
 
     def __init__(
@@ -122,6 +74,7 @@ class Interpreter:
         working_dir: Path,
         timeout: int = 3600,
         max_parallel_run: int = 3,
+        python_path: Optional[str] = None,
     ):
         """初始化执行器。
 
@@ -129,58 +82,43 @@ class Interpreter:
             working_dir: 工作目录（代码在此目录执行）
             timeout: 超时时间（秒，默认 3600）
             max_parallel_run: 最大并行进程数（默认 3）
+            python_path: Python 解释器路径，None 则使用 sys.executable
         """
         self.working_dir = Path(working_dir).resolve()
         self.timeout = timeout
         self.max_parallel_run = max_parallel_run
+        self.python_path = python_path or sys.executable
 
         if not self.working_dir.exists():
             self.working_dir.mkdir(parents=True, exist_ok=True)
 
         # 进程管理
-        self.process: List[Optional[Process]] = [None] * max_parallel_run
+        self.process: List[Optional[subprocess.Popen]] = [None] * max_parallel_run
         self.status_map = [0] * max_parallel_run  # 0=空闲, 1=占用
         self.current_parallel_run = 0
-
-        # 队列通信
-        self.code_inq: List[Optional[Queue]] = [None] * max_parallel_run
-        self.result_outq: List[Optional[Queue]] = [None] * max_parallel_run
-        self.event_outq: List[Optional[Queue]] = [None] * max_parallel_run
 
         # 进程分配锁
         self.lock = Lock()
 
         # 脚本文件名（避免并行冲突）
-        self.agent_file_name = [f"runfile_{i}.py" for i in range(max_parallel_run)]
+        self.script_names = [f"runfile_{i}.py" for i in range(max_parallel_run)]
 
         log_msg(
             "INFO",
             f"Interpreter 初始化: working_dir={self.working_dir}, "
-            f"timeout={self.timeout}s, max_parallel={max_parallel_run}",
+            f"timeout={self.timeout}s, python={self.python_path}",
         )
 
     def check_available(self) -> bool:
-        """检查是否有可用的执行槽位。
-
-        Returns:
-            True 表示有空闲槽位
-        """
+        """检查是否有可用的执行槽位。"""
         return self.current_parallel_run < self.max_parallel_run
 
     def _replace_submission_name(self, code: str, node_id: str) -> str:
         """将 submission.csv 替换为 submission_{node_id}.csv。
 
         防止并行执行时多个进程写入同一文件。
-
-        Args:
-            code: 原始代码
-            node_id: 节点 ID
-
-        Returns:
-            替换后的代码
         """
         submission_file = f"submission_{node_id}.csv"
-
         replacements = [
             ("submission/submission.csv", f"submission/{submission_file}"),
             ("/submission.csv", f"/{submission_file}"),
@@ -189,166 +127,83 @@ class Interpreter:
             ('"submission.csv"', f'"{submission_file}"'),
             ("'submission.csv'", f"'{submission_file}'"),
         ]
-
         for old, new in replacements:
             code = code.replace(old, new)
-
         return code
 
-    @staticmethod
-    def _child_proc_setup(result_outq: Queue, working_dir: Path) -> None:
-        """子进程初始化设置。
+    def _parse_exception(
+        self, output: str, script_name: str
+    ) -> Tuple[Optional[str], Optional[dict], Optional[List[Tuple]]]:
+        """从输出中解析异常信息。
 
         Args:
-            result_outq: 结果输出队列
-            working_dir: 工作目录
+            output: 终端输出
+            script_name: 脚本文件名
+
+        Returns:
+            (异常类型, 异常信息字典, 异常堆栈)
         """
+        # 匹配 Python 异常格式: ExceptionType: message
+        exc_pattern = r"(\w+Error|\w+Exception|KeyboardInterrupt): (.+?)(?:\n|$)"
+        match = re.search(exc_pattern, output)
+
+        if not match:
+            return None, None, None
+
+        exc_type = match.group(1)
+        exc_msg = match.group(2).strip()
+
+        # 构建异常信息
+        exc_info = {"args": [exc_msg], "msg": exc_msg}
+        if "'" in exc_msg:
+            # 提取模块名（如 "No module named 'xgboost'" -> name='xgboost'）
+            name_match = re.search(r"'(\w+)'", exc_msg)
+            if name_match:
+                exc_info["name"] = name_match.group(1)
+
+        # 解析堆栈（简化版）
+        exc_stack = []
+        tb_pattern = r'File "([^"]+)", line (\d+), in (\w+)'
+        for m in re.finditer(tb_pattern, output):
+            filename, lineno, funcname = m.groups()
+            # 简化路径
+            if script_name in filename:
+                filename = script_name
+            exc_stack.append((filename, int(lineno), funcname, ""))
+
+        return exc_type, exc_info, exc_stack if exc_stack else None
+
+    def _cleanup_process(self, process_id: int) -> None:
+        """清理指定进程。"""
+        proc = self.process[process_id]
+        if proc is None:
+            return
+
         try:
-            # 禁用警告
-            import warnings
-
-            warnings.filterwarnings("ignore")
-
-            # 设置工作目录
-            os.chdir(str(working_dir))
-
-            # 添加到 sys.path
-            sys.path.insert(0, str(working_dir))
-
-            # 重定向 stdout/stderr
-            sys.stdout = sys.stderr = RedirectQueue(result_outq)
-
-        except Exception:
-            result_outq.put(f"[子进程初始化错误] {traceback.format_exc()}")
-            raise
-
-    @staticmethod
-    def _run_session(
-        code_inq: Queue,
-        result_outq: Queue,
-        event_outq: Queue,
-        process_id: int,
-        working_dir: Path,
-        agent_file_name: str,
-    ) -> None:
-        """子进程主循环（在独立进程中运行）。
-
-        Args:
-            code_inq: 代码输入队列
-            result_outq: 结果输出队列
-            event_outq: 事件输出队列
-            process_id: 进程 ID
-            working_dir: 工作目录
-            agent_file_name: 脚本文件名
-        """
-        Interpreter._child_proc_setup(result_outq, working_dir)
-
-        global_scope: dict = {"__name__": "__main__"}
-
-        while True:
-            code, node_id = code_inq.get()
-
-            # 确保在正确的工作目录
-            os.chdir(str(working_dir))
-
-            # 写入临时脚本
-            script_path = working_dir / agent_file_name
-            with open(script_path, "w", encoding="utf-8") as f:
-                f.write(code)
-
-            event_outq.put(("state:ready",))
-
-            try:
-                exec(
-                    compile(code, agent_file_name, "exec"),
-                    global_scope,
-                )
-                event_outq.put(("state:finished", None, None, None))
-            except BaseException as e:
-                tb_str, e_cls_name, exc_info, exc_stack = exception_summary(
-                    e, working_dir, agent_file_name
-                )
-                result_outq.put(tb_str)
-
-                if e_cls_name == "KeyboardInterrupt":
-                    e_cls_name = "TimeoutError"
-
-                event_outq.put(("state:finished", e_cls_name, exc_info, exc_stack))
-
-            # 清理脚本文件（避免被 data_preview 包含）
-            if script_path.exists():
+            if proc.poll() is None:  # 仍在运行
+                proc.terminate()
                 try:
-                    os.remove(script_path)
-                except Exception:
-                    pass
-
-            # EOF 标记
-            result_outq.put("<|EOF|>")
-
-    def create_process(self, process_id: int) -> None:
-        """创建子进程。
-
-        Args:
-            process_id: 进程 ID
-        """
-        log_msg("DEBUG", f"创建进程 {process_id}")
-
-        self.code_inq[process_id] = Queue()
-        self.result_outq[process_id] = Queue()
-        self.event_outq[process_id] = Queue()
-
-        self.process[process_id] = Process(
-            target=Interpreter._run_session,
-            args=(
-                self.code_inq[process_id],
-                self.result_outq[process_id],
-                self.event_outq[process_id],
-                process_id,
-                self.working_dir,
-                self.agent_file_name[process_id],
-            ),
-        )
-        self.process[process_id].start()
+                    proc.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    log_msg("WARNING", f"进程 {process_id} 未能优雅终止，强制终止")
+                    proc.kill()
+                    proc.wait()
+        except Exception as e:
+            log_msg("WARNING", f"清理进程 {process_id} 时出错: {e}")
+        finally:
+            self.process[process_id] = None
 
     def cleanup_session(self, process_id: int) -> None:
-        """清理指定进程。
+        """清理指定进程（兼容旧接口）。
 
         Args:
             process_id: 进程 ID，-1 表示清理所有进程
         """
         if process_id == -1:
-            # 清理所有进程
             for pid in range(self.max_parallel_run):
-                self._cleanup_single_process(pid)
+                self._cleanup_process(pid)
         else:
-            self._cleanup_single_process(process_id)
-
-    def _cleanup_single_process(self, process_id: int) -> None:
-        """清理单个进程。
-
-        Args:
-            process_id: 进程 ID
-        """
-        if self.process[process_id] is None:
-            return
-
-        try:
-            # 优雅终止
-            self.process[process_id].terminate()
-            self.process[process_id].join(timeout=2)
-
-            # 强制终止
-            if self.process[process_id].exitcode is None:
-                log_msg("WARNING", f"进程 {process_id} 未能优雅终止，强制终止")
-                self.process[process_id].kill()
-                self.process[process_id].join()
-
-            # 清理资源
-            self.process[process_id].close()
-        except Exception as e:
-            log_msg("WARNING", f"清理进程 {process_id} 时出错: {e}")
-        finally:
-            self.process[process_id] = None
+            self._cleanup_process(process_id)
 
     def run(
         self,
@@ -356,188 +211,124 @@ class Interpreter:
         node_id: str = "",
         reset_session: bool = True,
     ) -> ExecutionResult:
-        """执行 Python 代码（并行安全）。
+        """执行 Python 代码。
 
         Args:
             code: Python 代码字符串
             node_id: 节点 ID（用于 submission 文件隔离）
-            reset_session: 是否重置会话（默认 True）
+            reset_session: 是否重置会话（subprocess 版本始终为独立执行）
 
         Returns:
             ExecutionResult 对象
         """
-        log_msg(
-            "DEBUG",
-            f"执行代码 (reset_session={reset_session}, node_id={node_id[:8] if node_id else 'N/A'})",
-        )
-
         process_id = None
 
-        # Phase 1: 分配进程 ID
+        # Phase 1: 分配槽位
         with self.lock:
-            self.current_parallel_run += 1
             for idx in range(self.max_parallel_run):
                 if self.status_map[idx] == 0:
                     self.status_map[idx] = 1
                     process_id = idx
-                    log_msg("DEBUG", f"分配进程 ID: {process_id}")
+                    self.current_parallel_run += 1
                     break
 
             if process_id is None:
-                self.current_parallel_run -= 1
                 log_msg("ERROR", "达到最大并行数限制")
                 return ExecutionResult(
                     term_out=["错误: 达到最大并行数限制"],
-                    exec_time=0,
                     exc_type="RuntimeError",
                     success=False,
                 )
 
         try:
-            # Phase 2: 创建/重置进程
-            if reset_session:
-                if self.process[process_id] is not None:
-                    try:
-                        self.cleanup_session(process_id)
-                    except Exception as e:
-                        log_msg("WARNING", f"重置进程时出错: {e}")
-
-                self.create_process(process_id)
-            else:
-                assert self.process[process_id] is not None
-
-            assert self.process[process_id].is_alive()
-
-            # Phase 3: 替换 submission 文件名
+            # Phase 2: 替换 submission 文件名
             if node_id:
                 code = self._replace_submission_name(code, node_id)
 
-            # Phase 4: 发送代码到子进程
-            self.code_inq[process_id].put((code, node_id))
+            # Phase 3: 写入脚本文件
+            script_name = self.script_names[process_id]
+            script_path = self.working_dir / script_name
+            script_path.write_text(code, encoding="utf-8")
 
-            # Phase 5: 等待子进程准备就绪
-            try:
-                state = self.event_outq[process_id].get(timeout=30)
-            except queue.Empty:
-                msg = "子进程启动超时"
-                log_msg("ERROR", msg)
-                queue_dump = self._drain_queue(self.result_outq[process_id])
-                self.cleanup_session(process_id)
-                self.current_parallel_run -= 1
-                self.status_map[process_id] = 0
-                return ExecutionResult(
-                    term_out=[msg, queue_dump],
-                    exec_time=0,
-                    exc_type="RuntimeError",
-                    success=False,
-                )
-
-            assert state[0] == "state:ready", state
-
-            # Phase 6: 等待执行完成
-            start_time = time.time()
-            child_in_overtime = False
-
-            while True:
-                try:
-                    state = self.event_outq[process_id].get(timeout=1)
-                    assert state[0] == "state:finished", state
-                    exec_time = time.time() - start_time
-                    break
-                except queue.Empty:
-                    # 检查子进程是否存活
-                    if (
-                        not child_in_overtime
-                        and not self.process[process_id].is_alive()
-                    ):
-                        msg = "子进程意外终止"
-                        log_msg("ERROR", msg)
-                        queue_dump = self._drain_queue(self.result_outq[process_id])
-                        self.cleanup_session(process_id)
-                        self.current_parallel_run -= 1
-                        self.status_map[process_id] = 0
-                        return ExecutionResult(
-                            term_out=[msg, queue_dump],
-                            exec_time=0,
-                            exc_type="RuntimeError",
-                            success=False,
-                        )
-
-                    # 检查超时
-                    if self.timeout is not None:
-                        running_time = time.time() - start_time
-                        if running_time > self.timeout:
-                            assert reset_session, "超时发生在交互式会话中"
-                            os.kill(self.process[process_id].pid, signal.SIGINT)
-                            child_in_overtime = True
-
-                            # 超时超过 1 分钟，强制终止
-                            if running_time > self.timeout + 60:
-                                log_msg("WARNING", "子进程超时未响应，强制终止")
-                                self.cleanup_session(process_id)
-                                state = (None, "TimeoutError", {}, [])
-                                exec_time = self.timeout
-                                break
-
-            # Phase 7: 收集输出
-            output: List[str] = []
-            while (
-                not self.result_outq[process_id].empty()
-                or not output
-                or output[-1] != "<|EOF|>"
-            ):
-                try:
-                    res = self.result_outq[process_id].get(timeout=1)
-                    output.append(res)
-                except queue.Empty:
-                    break
-
-            if output and output[-1] == "<|EOF|>":
-                output.pop()
-
-            e_cls_name, exc_info, exc_stack = state[1:]
-
-            if e_cls_name == "TimeoutError":
-                output.append(f"TimeoutError: 执行超过 {self.timeout} 秒")
-            else:
-                output.append(f"执行时间: {exec_time:.2f} 秒 (限制: {self.timeout} 秒)")
-
-            # Phase 8: 构建结果
-            result = ExecutionResult(
-                term_out=output,
-                exec_time=exec_time,
-                exc_type=e_cls_name,
-                exc_info=exc_info,
-                exc_stack=exc_stack,
-                success=e_cls_name is None,
-                timeout=e_cls_name == "TimeoutError",
+            log_msg(
+                "DEBUG",
+                f"执行代码 (slot={process_id}, node={node_id[:8] if node_id else 'N/A'})",
             )
 
-            return result
+            # Phase 4: 启动子进程
+            start_time = time.time()
+            self.process[process_id] = subprocess.Popen(
+                [self.python_path, script_name],
+                cwd=str(self.working_dir),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                env={**os.environ, "PYTHONUNBUFFERED": "1"},
+            )
+
+            # Phase 5: 等待完成（带超时）
+            try:
+                stdout, _ = self.process[process_id].communicate(timeout=self.timeout)
+                exec_time = time.time() - start_time
+                return_code = self.process[process_id].returncode
+                is_timeout = False
+            except subprocess.TimeoutExpired:
+                # 超时处理
+                log_msg("WARNING", f"执行超时 ({self.timeout}s)，终止进程")
+                os.kill(self.process[process_id].pid, signal.SIGINT)
+                try:
+                    stdout, _ = self.process[process_id].communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    self.process[process_id].kill()
+                    stdout, _ = self.process[process_id].communicate()
+                exec_time = self.timeout
+                return_code = -1
+                is_timeout = True
+
+            # Phase 6: 解析输出
+            output_lines = [stdout] if stdout else []
+            exc_type, exc_info, exc_stack = None, None, None
+
+            if is_timeout:
+                exc_type = "TimeoutError"
+                exc_info = {"args": [f"执行超过 {self.timeout} 秒"]}
+                output_lines.append(f"TimeoutError: 执行超过 {self.timeout} 秒")
+            elif return_code != 0:
+                exc_type, exc_info, exc_stack = self._parse_exception(
+                    stdout or "", script_name
+                )
+                if exc_type == "KeyboardInterrupt":
+                    exc_type = "TimeoutError"
+
+            output_lines.append(
+                f"执行时间: {exec_time:.2f} 秒 (限制: {self.timeout} 秒)"
+            )
+
+            # Phase 7: 构建结果
+            return ExecutionResult(
+                term_out=output_lines,
+                exec_time=exec_time,
+                exc_type=exc_type,
+                exc_info=exc_info,
+                exc_stack=exc_stack,
+                success=return_code == 0 and not is_timeout,
+                timeout=is_timeout,
+            )
 
         finally:
-            # Phase 9: 清理
-            self.current_parallel_run -= 1
-            self.status_map[process_id] = 0
-            if reset_session:
-                self.cleanup_session(process_id)
+            # Phase 8: 清理
+            with self.lock:
+                self.current_parallel_run -= 1
+                self.status_map[process_id] = 0
+            self._cleanup_process(process_id)
 
-    def _drain_queue(self, q: Queue) -> str:
-        """清空队列并返回内容。
-
-        Args:
-            q: 队列
-
-        Returns:
-            队列中的所有内容拼接
-        """
-        items = []
-        while not q.empty():
-            try:
-                items.append(str(q.get_nowait()))
-            except queue.Empty:
-                break
-        return "\n".join(items)
+            # 清理脚本文件
+            script_path = self.working_dir / self.script_names[process_id]
+            if script_path.exists():
+                try:
+                    script_path.unlink()
+                except Exception:
+                    pass
 
     def __del__(self):
         """析构函数，清理所有进程。"""

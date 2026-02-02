@@ -21,7 +21,11 @@ from core.executor.workspace import WorkspaceManager
 from core.backend import query as backend_query
 from utils.config import Config
 from utils.logger_system import log_msg, log_exception
-from utils.system_info import get_hardware_description, get_conda_packages
+from utils.system_info import (
+    get_hardware_description,
+    get_conda_packages,
+    get_conda_python_path,
+)
 
 if TYPE_CHECKING:
     from core.evolution.agent_evolution import AgentEvolution
@@ -93,19 +97,28 @@ class Orchestrator:
         # 初始化工作空间管理器
         self.workspace = WorkspaceManager(config)
 
-        # 初始化代码执行器（修复路径 + 支持并行）
-        self.interpreter = Interpreter(
-            working_dir=str(
-                config.project.workspace_dir
-            ),  # 修复: 使用 workspace 根目录
-            timeout=config.execution.timeout,
-            max_parallel_run=self.max_workers,
-        )
-
         # 获取并缓存环境信息（一次性，启动时获取）
         self.device_info = get_hardware_description()
         self.conda_env_name = getattr(
             getattr(config, "environment", None), "conda_env_name", "Swarm-Evo"
+        )
+
+        # 获取 conda 环境的 Python 路径
+        conda_python = get_conda_python_path(self.conda_env_name)
+        if conda_python:
+            log_msg("INFO", f"使用 conda Python: {conda_python}")
+        else:
+            log_msg(
+                "WARNING",
+                f"无法获取 conda 环境 '{self.conda_env_name}' 的 Python，使用当前解释器",
+            )
+
+        # 初始化代码执行器（使用 conda Python）
+        self.interpreter = Interpreter(
+            working_dir=str(config.project.workspace_dir),
+            timeout=config.execution.timeout,
+            max_parallel_run=self.max_workers,
+            python_path=conda_python,
         )
         self.conda_packages = get_conda_packages(self.conda_env_name)
 

@@ -63,7 +63,9 @@ for i in range(3):
         assert result.success is False
         assert result.exc_type == "ZeroDivisionError"
         assert result.exc_info is not None
-        assert "division by zero" in result.exc_info.lower()
+        # exc_info 是字典，检查 msg 或 args
+        exc_msg = result.exc_info.get("msg", "") or str(result.exc_info.get("args", []))
+        assert "division by zero" in exc_msg.lower()
 
     def test_execution_timeout(self, interpreter):
         """测试超时控制。"""
