@@ -1,103 +1,145 @@
 # Codemap Update Report
-# Generated: 2026-02-02
+# Generated: 2026-02-02 (Session 2)
+# Analyzer: Claude Code (doc-updater agent)
 
 ## Summary
-- Total diff percentage: ~0.5% (below 30% threshold)
-- Auto-update applied: Yes
+- Total diff percentage: ~0.15% (14 lines changed out of ~9350 core lines)
+- Status: AUTO-APPROVED (changes < 30% threshold)
 - User approval required: No
 
-## Key Changes
+## Key Changes This Session
 
-### Module Line Count Updates
+### 1. utils/data_preview.py
+| Metric | Value |
+|--------|-------|
+| Previous | 273 lines |
+| Current | 276 lines |
+| Diff | +3 lines (+1.1%) |
 
-| Module | Previous | Current | Change |
-|--------|----------|---------|--------|
-| config/default.yaml | 111 | 126 | +15 (+13.5%) |
+**Changes:**
+- Added file size display in `get_file_len_size()` function
+  - Text files now show: `"{num_lines} lines, {file_size}"` instead of just `"{num_lines} lines"`
+- Added IMPORTANT header in `generate()` function
+  - New header: `"**IMPORTANT: Use the exact file names listed below in your code.**"`
+  - Purpose: Ensure LLM uses correct file names from data preview
 
-### Totals
+### 2. agents/coder_agent.py
+| Metric | Value |
+|--------|-------|
+| Previous | 375 lines |
+| Current | 386 lines |
+| Diff | +11 lines (+2.9%) |
 
-| Category | Previous | Current | Change |
-|----------|----------|---------|--------|
-| Core code | ~9336 | ~9336 | 0 (0%) |
-| Test code | ~8391 | ~8386 | -5 (~0%) |
-| Test files | 36 | 31 | -5 |
+**Changes:**
+- `_generate_data_preview()` now saves preview to `workspace/logs/data_preview.md`
+- Added docstring: `"Side Effects: saves preview to workspace/logs/data_preview.md"`
+- Purpose: Enable debugging by inspecting the actual content sent to LLM
 
-Note: Test file count discrepancy - previous count may have included __init__.py files.
+### 3. benchmark/mle-bench/skills/static/workspace_rules.md
+| Metric | Value |
+|--------|-------|
+| Lines | 66 |
+| Commit | 755bb3f |
 
-## Verified Module Line Counts
+**Changes:**
+- Removed hardcoded data paths (replaced with `???` placeholders)
+- Added comment: `"CRITICAL: Check Data Overview section above for exact file names!"`
+- Purpose: Prevent LLM from using wrong file names
+
+## Documentation Updates Applied
+
+| File | Change |
+|------|--------|
+| docs/CODEMAPS/architecture.md | Version 0.3.3 -> 0.3.4, updated line counts |
+| docs/CODEMAPS/backend.md | Updated data_preview.py: 273 -> 276, coder_agent.py: 375 -> 386 |
+| docs/CODEMAPS/data.md | Updated timestamp |
+
+## Verified Module Line Counts (Current)
 
 ### Entry Layer
-| Module | Lines | Status |
-|--------|-------|--------|
-| main.py | 560 | verified |
+| Module | Lines |
+|--------|-------|
+| main.py | 560 |
 
-### Utils Layer (3,169 lines total)
-| Module | Lines | Status |
+### Utils Layer (~3,180 lines)
+| Module | Lines | Change |
 |--------|-------|--------|
-| config.py | 603 | verified |
-| system_info.py | 391 | verified |
-| prompt_manager.py | 295 | verified |
-| data_preview.py | 273 | verified |
-| prompt_builder.py | 247 | verified |
-| file_utils.py | 222 | verified |
-| logger_system.py | 180 | verified |
-| response.py | 154 | verified |
-| workspace_builder.py | 127 | verified |
-| metric.py | 117 | verified |
+| config.py | 603 | - |
+| system_info.py | 391 | - |
+| prompt_manager.py | 295 | - |
+| **data_preview.py** | **276** | **+3** |
+| prompt_builder.py | 247 | - |
+| file_utils.py | 222 | - |
+| logger_system.py | 180 | - |
+| response.py | 154 | - |
+| workspace_builder.py | 127 | - |
+| metric.py | 117 | - |
 
-### Core Layer (2,768 lines total)
-| Module | Lines | Status |
+### Agent Layer
+| Module | Lines | Change |
 |--------|-------|--------|
-| orchestrator.py | 1181 | verified |
-| interpreter.py | 338 | verified |
-| journal.py | 300 | verified |
-| workspace.py | 244 | verified |
-| backend_openai.py | 163 | verified |
-| backend_anthropic.py | 142 | verified |
-| backend/__init__.py | 137 | verified |
-| node.py | 121 | verified |
-| utils.py | 80 | verified |
-| task.py | 62 | verified |
+| **coder_agent.py** | **386** | **+11** |
+| base_agent.py | 135 | - |
 
-### Evolution Layer (3,035 lines total)
-| Module | Lines | Status |
-|--------|-------|--------|
-| solution_evolution.py | 541 | verified |
-| agent_evolution.py | 439 | verified |
-| skill_manager.py | 371 | verified |
-| experience_pool.py | 319 | verified |
-| gene_selector.py | 314 | verified |
-| skill_extractor.py | 302 | verified |
-| gene_registry.py | 199 | verified |
-| gene_parser.py | 162 | verified |
-| task_dispatcher.py | 157 | verified |
-| code_embedding_manager.py | 127 | verified |
-| pheromone.py | 104 | verified |
+### Core Layer (~2,768 lines)
+| Module | Lines |
+|--------|-------|
+| orchestrator.py | 1181 |
+| interpreter.py | 338 |
+| journal.py | 300 |
+| workspace.py | 244 |
+| backend_openai.py | 163 |
+| backend_anthropic.py | 142 |
+| backend/__init__.py | 137 |
+| node.py | 121 |
+| utils.py | 80 |
+| task.py | 62 |
 
-### Agent & Search Layer (836 lines total)
-| Module | Lines | Status |
-|--------|-------|--------|
-| coder_agent.py | 375 | verified |
-| parallel_evaluator.py | 245 | verified |
-| base_agent.py | 135 | verified |
-| fitness.py | 81 | verified |
+### Evolution Layer (~3,035 lines)
+| Module | Lines |
+|--------|-------|
+| solution_evolution.py | 541 |
+| agent_evolution.py | 439 |
+| skill_manager.py | 371 |
+| experience_pool.py | 319 |
+| gene_selector.py | 314 |
+| skill_extractor.py | 302 |
+| gene_registry.py | 199 |
+| gene_parser.py | 162 |
+| task_dispatcher.py | 157 |
+| code_embedding_manager.py | 127 |
+| pheromone.py | 104 |
+
+### Search Layer
+| Module | Lines |
+|--------|-------|
+| parallel_evaluator.py | 245 |
+| fitness.py | 81 |
 
 ### Configuration
-| File | Lines | Status |
-|------|-------|--------|
-| config/default.yaml | 126 | **updated** (was 111) |
+| File | Lines |
+|------|-------|
+| config/default.yaml | 126 |
 
 ## Grand Total
 - Core modules: 42 files
-- Core code: ~9,808 lines (excluding __init__.py)
-- Test code: ~8,386 lines
-- Test files: 31 (excluding __init__.py)
+- Core code: ~9,350 lines
+- Test files: 36 files
+- Test code: ~8,391 lines
 
-## Files Updated
-1. docs/CODEMAPS/architecture.md - config.yaml line count
-2. docs/CODEMAPS/backend.md - config.yaml line count
-3. docs/CODEMAPS/data.md - timestamp update
+## Verification Checklist
+- [x] All file paths in codemaps verified to exist
+- [x] Line counts measured from actual source files
+- [x] Changes documented with purpose
+- [x] Freshness timestamps updated
+- [x] No obsolete references found
 
 ## Version
-- Project version: 0.3.3
+- Project version: 0.3.4
 - Phase: 3.5 Skill Evolution (complete) + main.py dual-layer integration
+
+## Notes
+- Changes are incremental improvements for LLM prompt quality
+- No architectural changes
+- No API changes
+- All changes are backward compatible

@@ -1,7 +1,7 @@
 # Swarm-Ev2 项目架构概览
 
-**Last Updated:** 2026-02-02 (config.yaml 行数修正: 111->126)
-**项目版本:** 0.3.3
+**Last Updated:** 2026-02-02 (data_preview +3 行, coder_agent +11 行)
+**项目版本:** 0.3.4
 **当前阶段:** Phase 3.5 Skill 进化（已完成）+ main.py 双层架构集成
 
 ---
@@ -17,7 +17,7 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 | 配置 | OmegaConf + YAML |
 | 日志 | 双通道（文本 + JSON） |
 | 测试 | pytest + pytest-asyncio (36 测试文件, ~8391 行) |
-| 代码行数 | ~9336 行核心代码（42 模块） + 8391 行测试 |
+| 代码行数 | ~9350 行核心代码（42 模块） + 8391 行测试 |
 
 ---
 
@@ -38,7 +38,7 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 |   ParallelEvaluator (245行)                              |  <- Phase 3.4
 +---------------------------------------------------------+
 |                  Agent 层 (Agents)                        |
-|   BaseAgent (135行) + CoderAgent (375行, +merge/mutate)  |  <- Phase 2+
+|   BaseAgent (135行) + CoderAgent (386行, +merge/mutate)  |  <- Phase 2+
 |   PromptBuilder (247行) + PromptManager (295行)          |  <- Phase 3+
 +---------------------------------------------------------+
 |                进化层 (Evolution)                         |
@@ -244,7 +244,7 @@ graph TD
 | **Phase 2: Agent 层** ||||
 | Agent 基类 | `agents/base_agent.py` | 135 | 完成 (+mutate) |
 | **Prompt 构建器** | **`utils/prompt_builder.py`** | **247** | **完成** |
-| **CoderAgent** | **`agents/coder_agent.py`** | **375** | **完成 (+merge/mutate)** |
+| **CoderAgent** | **`agents/coder_agent.py`** | **386** | **完成 (+merge/mutate+logs保存)** |
 | **Phase 2.4: Orchestrator** ||||
 | **任务编排器** | **`core/orchestrator.py`** | **1181** | **完成 (+双层进化)** |
 | **Phase 3: 进化层** ||||
@@ -268,7 +268,7 @@ graph TD
 | **配置文件** ||||
 | YAML 配置 | `config/default.yaml` | 126 | 完成 (+agent进化配置) |
 
-**总计**: 42 个核心模块 | ~9336 行核心代码 + 36 个测试文件（~8391 行测试代码）
+**总计**: 42 个核心模块 | ~9350 行核心代码 + 36 个测试文件（~8391 行测试代码）
 
 ---
 
@@ -344,7 +344,7 @@ Swarm-Ev2/
 │   ├── config.py                  # 配置管理 (+EvolutionConfig)
 │   ├── logger_system.py           # 日志系统
 │   ├── file_utils.py              # 文件工具 (+extract_archives/clean_up_dataset)
-│   ├── data_preview.py            # 数据预览生成
+│   ├── data_preview.py            # 数据预览生成 (276行, +文件大小+IMPORTANT header)
 │   ├── metric.py                  # 评估指标工具
 │   ├── response.py                # LLM 响应解析
 │   ├── prompt_builder.py          # Prompt 构建器 (247行)

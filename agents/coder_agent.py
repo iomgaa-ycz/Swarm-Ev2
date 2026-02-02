@@ -232,6 +232,9 @@ class CoderAgent(BaseAgent):
 
         Returns:
             数据预览字符串，如果失败则返回 None
+
+        Side Effects:
+            保存预览到 workspace/logs/data_preview.md 便于调试检查
         """
         try:
             from utils.data_preview import generate
@@ -242,6 +245,14 @@ class CoderAgent(BaseAgent):
                 return None
 
             preview = generate(input_dir)
+
+            # 保存到 logs 目录，便于调试检查 LLM 收到的实际内容
+            logs_dir = self.config.project.workspace_dir / "logs"
+            logs_dir.mkdir(exist_ok=True)
+            preview_file = logs_dir / "data_preview.md"
+            preview_file.write_text(preview, encoding="utf-8")
+            log_msg("INFO", f"数据预览已保存: {preview_file}")
+
             log_msg("INFO", f"{self.name} 数据预览生成完成 ({len(preview)} chars)")
             return preview
 

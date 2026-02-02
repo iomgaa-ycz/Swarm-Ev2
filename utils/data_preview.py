@@ -29,13 +29,14 @@ def get_file_len_size(f: Path) -> tuple[int, str]:
 
     Returns:
         (行数/字节数, 人类可读字符串)
-        - 文本文件：返回行数
+        - 文本文件：返回行数 + 文件大小（便于 LLM 推理文件用途）
         - 二进制文件：返回字节数
     """
     if f.suffix in plaintext_files:
         try:
             num_lines = sum(1 for _ in open(f, encoding="utf-8", errors="ignore"))
-            return num_lines, f"{num_lines} lines"
+            file_size = humanize.naturalsize(f.stat().st_size)
+            return num_lines, f"{num_lines} lines, {file_size}"
         except Exception as e:
             log_msg("WARNING", f"读取文件 {f} 行数失败: {e}")
             s = f.stat().st_size
@@ -234,7 +235,9 @@ def generate(
         - 输出 > 6000 字符：自动降级到 simple 模式
         - 仍 > 6000 字符：截断并添加 "... (truncated)"
     """
-    tree = f"```\n{file_tree(base_path)}\n```"
+    # 添加强调性声明，确保 LLM 使用正确的文件名
+    header = "**IMPORTANT: Use the exact file names listed below in your code.**\n\n"
+    tree = f"{header}```\n{file_tree(base_path)}\n```"
     out = [tree]
 
     if include_file_details:

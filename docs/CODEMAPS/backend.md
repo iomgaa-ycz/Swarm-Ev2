@@ -1,6 +1,6 @@
 # 后端模块详细说明
 
-**Last Updated:** 2026-02-02 (config.yaml 行数修正: 111->126)
+**Last Updated:** 2026-02-02 (data_preview +3 行, coder_agent +11 行)
 **模块范围:** main.py, utils/, core/state/, core/backend/, core/executor/, core/evolution/, agents/, search/, config/, tests/, benchmark/
 **当前阶段:** Phase 3.5 Skill 进化（已完成）+ main.py 双层架构集成
 
@@ -30,7 +30,7 @@
 | **代码执行器** | **`core/executor/interpreter.py`** | **338** | **沙箱执行（精简重构）** | **完成** |
 | 工作空间管理 | `core/executor/workspace.py` | 244 | 目录管理 + 文件归档 + 数据预处理 | 完成 |
 | **工具层** |||||
-| 数据预览 | `utils/data_preview.py` | 273 | EDA 预览生成 | 完成 |
+| 数据预览 | `utils/data_preview.py` | 276 | EDA 预览生成 (+文件大小+IMPORTANT header) | 完成 |
 | 指标工具 | `utils/metric.py` | 117 | 评估指标容器 | 完成 |
 | 响应解析 | `utils/response.py` | 154 | LLM 响应提取 | 完成 |
 | **Prompt 构建器** | **`utils/prompt_builder.py`** | **247** | **统一 Prompt 生成逻辑** | **完成 (扩展)** |
@@ -39,7 +39,7 @@
 | 工作空间构建器 | `utils/workspace_builder.py` | 127 | 工作空间初始化 | 完成 |
 | **Agent 层** |||||
 | Agent 基类 | `agents/base_agent.py` | 135 | Agent 抽象基类 (+mutate task_type) | 完成 |
-| **CoderAgent** | **`agents/coder_agent.py`** | **375** | **代码生成 Agent (+merge/mutate 任务)** | **完成 (扩展)** |
+| **CoderAgent** | **`agents/coder_agent.py`** | **386** | **代码生成 Agent (+merge/mutate+logs保存)** | **完成 (扩展)** |
 | **编排层** |||||
 | **Orchestrator** | **`core/orchestrator.py`** | **1181** | **任务编排器 (+双层进化+merge/mutate 任务)** | **完成 (扩展)** |
 | **进化层 (Phase 3)** |||||
@@ -841,9 +841,9 @@ class BaseAgent(ABC):
 - `"merge"`: 合并两个方案（GA 交叉）
 - `"mutate"`: 变异现有方案（GA 变异）
 
-### 8.2 CoderAgent (`agents/coder_agent.py`) - 375 行 [+merge/mutate 任务支持]
+### 8.2 CoderAgent (`agents/coder_agent.py`) - 386 行 [+merge/mutate 任务支持]
 
-> **重大更新**: CoderAgent 从 272 行扩展至 375 行（+38%），新增 merge 和 mutate 任务支持。
+> **重大更新**: CoderAgent 从 272 行扩展至 386 行（+42%），新增 merge 和 mutate 任务支持，以及 data_preview 保存到 logs 目录功能。
 
 代码生成 Agent，继承 BaseAgent，支持三种任务类型。
 
