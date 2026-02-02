@@ -40,7 +40,9 @@ from sklearn.model_selection import cross_val_score
 # ... other imports
 
 # [SECTION: DATA]
-train = pd.read_csv('./input/train.csv')
+# NOTE: Check "Data Overview" section for actual file names in ./input/
+train = pd.read_csv('./input/<train_file>')  # e.g., train.csv, labels.csv
+test = pd.read_csv('./input/<test_file>')    # e.g., test.csv
 # ... data preprocessing
 
 # [SECTION: MODEL]

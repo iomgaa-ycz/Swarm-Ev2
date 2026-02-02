@@ -1,6 +1,6 @@
 # 后端模块详细说明
 
-**Last Updated:** 2026-02-02 (模块行数更新: Interpreter 精简重构)
+**Last Updated:** 2026-02-02 (config.yaml 行数修正: 111->126)
 **模块范围:** main.py, utils/, core/state/, core/backend/, core/executor/, core/evolution/, agents/, search/, config/, tests/, benchmark/
 **当前阶段:** Phase 3.5 Skill 进化（已完成）+ main.py 双层架构集成
 
@@ -58,7 +58,7 @@
 | **Skill 提取器** | **`core/evolution/skill_extractor.py`** | **302** | **HDBSCAN 聚类 + LLM 总结** | **完成 (P3.5)** |
 | **Skill 管理器** | **`core/evolution/skill_manager.py`** | **371** | **Skill 质量评估、演化、元数据** | **完成 (P3.5)** |
 | **配置文件** |||||
-| YAML 配置 | `config/default.yaml` | 111 | 项目主配置 (+agent进化配置) | 完成 |
+| YAML 配置 | `config/default.yaml` | 126 | 项目主配置 (+agent进化配置) | 完成 |
 | 环境变量 | `.env.example` | 36 | API Keys 模板 | 完成 |
 | **Benchmark 资源 (NEW)** |||||
 | Prompt 模板 | `benchmark/mle-bench/prompt_templates/` | - | Jinja2 模板 (explore/merge/mutate) | 完成 |

@@ -1,6 +1,6 @@
 # Swarm-Ev2 项目架构概览
 
-**Last Updated:** 2026-02-02 (模块行数更新: Interpreter 精简重构)
+**Last Updated:** 2026-02-02 (config.yaml 行数修正: 111->126)
 **项目版本:** 0.3.3
 **当前阶段:** Phase 3.5 Skill 进化（已完成）+ main.py 双层架构集成
 
@@ -266,7 +266,7 @@ graph TD
 | **Prompt 管理器** | **`utils/prompt_manager.py`** | **295** | **完成** |
 | **Benchmark 资源** | **`benchmark/mle-bench/`** | **-** | **完成** |
 | **配置文件** ||||
-| YAML 配置 | `config/default.yaml` | 111 | 完成 (+agent进化配置) |
+| YAML 配置 | `config/default.yaml` | 126 | 完成 (+agent进化配置) |
 
 **总计**: 42 个核心模块 | ~9336 行核心代码 + 36 个测试文件（~8391 行测试代码）
 
