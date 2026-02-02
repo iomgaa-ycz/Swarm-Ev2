@@ -1,6 +1,6 @@
 # 后端模块详细说明
 
-**Last Updated:** 2026-02-02 (模块行数更新: Orchestrator/Interpreter/CoderAgent 扩展)
+**Last Updated:** 2026-02-02 (模块行数更新: Interpreter 精简重构)
 **模块范围:** main.py, utils/, core/state/, core/backend/, core/executor/, core/evolution/, agents/, search/, config/, tests/, benchmark/
 **当前阶段:** Phase 3.5 Skill 进化（已完成）+ main.py 双层架构集成
 
@@ -16,7 +16,7 @@
 | 配置系统 | `utils/config.py` | 603 | OmegaConf 配置加载与验证 (+EvolutionConfig) | 完成 |
 | 日志系统 | `utils/logger_system.py` | 180 | 双通道日志输出 | 完成 |
 | 文件工具 | `utils/file_utils.py` | 222 | 目录复制/链接/解压/清理 | 完成 |
-| **系统信息** | **`utils/system_info.py`** | **329** | **系统环境信息收集** | **完成 (NEW)** |
+| **系统信息** | **`utils/system_info.py`** | **391** | **系统环境信息收集** | **完成** |
 | **数据结构层** |||||
 | Node 数据类 | `core/state/node.py` | 121 | 解决方案 DAG 节点 | 完成 |
 | Journal 数据类 | `core/state/journal.py` | 300 | DAG 容器与查询 (+get_best_k) | 完成 |
@@ -27,7 +27,7 @@
 | Anthropic 后端 | `core/backend/backend_anthropic.py` | 142 | Claude 系列支持 | 完成 |
 | 后端工具 | `core/backend/utils.py` | 80 | 消息格式化 + 重试机制 | 完成 |
 | **执行层** |||||
-| **代码执行器** | **`core/executor/interpreter.py`** | **547** | **沙箱执行 + 并行支持 + pickle 修复** | **完成 (扩展)** |
+| **代码执行器** | **`core/executor/interpreter.py`** | **338** | **沙箱执行（精简重构）** | **完成** |
 | 工作空间管理 | `core/executor/workspace.py` | 244 | 目录管理 + 文件归档 + 数据预处理 | 完成 |
 | **工具层** |||||
 | 数据预览 | `utils/data_preview.py` | 273 | EDA 预览生成 | 完成 |
@@ -41,7 +41,7 @@
 | Agent 基类 | `agents/base_agent.py` | 135 | Agent 抽象基类 (+mutate task_type) | 完成 |
 | **CoderAgent** | **`agents/coder_agent.py`** | **375** | **代码生成 Agent (+merge/mutate 任务)** | **完成 (扩展)** |
 | **编排层** |||||
-| **Orchestrator** | **`core/orchestrator.py`** | **1168** | **任务编排器 (+双层进化+merge/mutate 任务)** | **完成 (扩展)** |
+| **Orchestrator** | **`core/orchestrator.py`** | **1181** | **任务编排器 (+双层进化+merge/mutate 任务)** | **完成 (扩展)** |
 | **进化层 (Phase 3)** |||||
 | **基因解析器** | **`core/evolution/gene_parser.py`** | **162** | **解析 7 基因块，支持 GA 交叉** | **完成** |
 | **共享经验池** | **`core/evolution/experience_pool.py`** | **319** | **线程安全存储 + Top-K 查询 + 扩展过滤** | **完成** |
@@ -191,9 +191,9 @@ main.py
 
 ---
 
-## 3. Orchestrator 编排器 (`core/orchestrator.py`) [1168 行, +双层进化]
+## 3. Orchestrator 编排器 (`core/orchestrator.py`) [1181 行, +双层进化]
 
-> **重大更新**: Orchestrator 从 534 行扩展至 1168 行（+119%），新增双层进化架构支持和 merge/mutate 任务执行能力。
+> **重大更新**: Orchestrator 从 534 行扩展至 1181 行（+119%），新增双层进化架构支持和 merge/mutate 任务执行能力。
 
 ### 3.1 核心职责
 
@@ -324,7 +324,7 @@ _select_parent_node()
 ### 3.8 依赖关系
 
 ```
-Orchestrator (1168行)
+Orchestrator (1181行)
 +-- agents.base_agent.BaseAgent, AgentContext
 +-- core.state.Node, Journal
 +-- core.executor.interpreter.Interpreter, ExecutionResult
@@ -637,9 +637,9 @@ class Journal(DataClassJsonMixin):
 
 ## 8. 执行层模块 (`core/executor/`)
 
-### 7.1 Interpreter (`core/executor/interpreter.py`) - 547 行 [+并行执行支持]
+### 7.1 Interpreter (`core/executor/interpreter.py`) - 338 行
 
-> **重大更新**: Interpreter 从 176 行扩展至 547 行（+211%），新增并行执行支持和 pickle 序列化问题修复。
+代码执行沙箱，经过精简重构，移除冗余代码。
 
 Python 代码执行沙箱，使用独立的 subprocess/进程池执行代码。
 
@@ -665,17 +665,13 @@ class Interpreter:
 
     def __init__(self, working_dir: Path, timeout: int = 300): ...
     def run(self, code: str, reset_session: bool = True) -> ExecutionResult: ...
-    def run_parallel(self, codes: List[str]) -> List[ExecutionResult]: ...  # NEW
-    def _execute_in_subprocess(self, code: str) -> ExecutionResult: ...  # 重构
-    def _serialize_result(self, result: ExecutionResult) -> Dict: ...  # NEW
-    def _deserialize_result(self, data: Dict) -> ExecutionResult: ...  # NEW
+    def _execute_in_subprocess(self, code: str) -> ExecutionResult: ...
 ```
 
-**并行执行特性 (NEW)**:
-- 使用 ProcessPoolExecutor 进行多进程并行执行
-- 修复 pickle 序列化问题（ExecutionResult 现在可序列化）
-- 支持批量代码执行（用于 ParallelEvaluator）
-- 改进错误处理和超时控制
+**核心特性**:
+- 使用 subprocess 在独立进程中执行代码
+- 超时控制和错误处理
+- 支持代码执行结果捕获
 
 ### 7.2 WorkspaceManager (`core/executor/workspace.py`) - 244 行
 
@@ -772,7 +768,7 @@ def clean_up_dataset(path: Path) -> int:
 - 支持处理 Kaggle 竞赛下载的 zip 数据集
 - 自动清理 macOS 产生的元数据文件
 
-### 7.4 系统信息工具 (`utils/system_info.py`) - 329 行 [NEW]
+### 7.4 系统信息工具 (`utils/system_info.py`) - 391 行
 
 **职责**: 收集系统运行环境信息，用于调试和日志记录。
 

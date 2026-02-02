@@ -1,7 +1,7 @@
 # Swarm-Ev2 项目架构概览
 
-**Last Updated:** 2026-02-02 (模块行数更新: Orchestrator/Interpreter/CoderAgent 扩展)
-**项目版本:** 0.3.2
+**Last Updated:** 2026-02-02 (模块行数更新: Interpreter 精简重构)
+**项目版本:** 0.3.3
 **当前阶段:** Phase 3.5 Skill 进化（已完成）+ main.py 双层架构集成
 
 ---
@@ -16,8 +16,8 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 | 架构 | 纯后端，asyncio + 多线程 |
 | 配置 | OmegaConf + YAML |
 | 日志 | 双通道（文本 + JSON） |
-| 测试 | pytest + pytest-asyncio (35 测试文件, ~8388 行) |
-| 代码行数 | ~9729 行核心代码（42 模块） + 8388 行测试 |
+| 测试 | pytest + pytest-asyncio (36 测试文件, ~8391 行) |
+| 代码行数 | ~9336 行核心代码（42 模块） + 8391 行测试 |
 
 ---
 
@@ -34,7 +34,7 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 |   - print_evolution_statistics() 打印进化统计               |
 +---------------------------------------------------------+
 |                编排层 (Orchestration)                     |
-|   Orchestrator (1168行, +双层进化+merge/mutate任务)        |  <- Phase 2.4+
+|   Orchestrator (1181行, +双层进化+merge/mutate任务)        |  <- Phase 2.4+
 |   ParallelEvaluator (245行)                              |  <- Phase 3.4
 +---------------------------------------------------------+
 |                  Agent 层 (Agents)                        |
@@ -56,7 +56,7 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 |   SkillManager (371行)                                   |  <- P3.5
 +---------------------------------------------------------+
 |                  执行层 (Execution)                       |
-|   Interpreter (547行, +并行执行支持)                      |  <- Phase 2+
+|   Interpreter (338行, 精简重构)                          |  <- Phase 2+
 |   WorkspaceManager (244行)                               |  <- Phase 2
 +---------------------------------------------------------+
 |                核心数据层 (State)                          |
@@ -64,7 +64,7 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 +---------------------------------------------------------+
 |              基础设施层 (Infrastructure)                   |
 |   config.py (603行) + logger (180行) + file (222行)      |  <- Phase 1
-|   system_info.py (329行) [NEW] - 系统信息收集工具         |
+|   system_info.py (391行) - 系统信息收集工具              |
 +---------------------------------------------------------+
 |               Benchmark 资源 (NEW)                        |
 |   benchmark/mle-bench/                                   |
@@ -84,7 +84,7 @@ graph TD
         CFG[utils/config.py<br/>配置管理 603行<br/>+EvolutionConfig]
         LOG[utils/logger_system.py<br/>日志系统 180行]
         FU[utils/file_utils.py<br/>文件工具 222行<br/>+extract/clean]
-        SYSINFO[utils/system_info.py<br/>系统信息 329行 NEW]
+        SYSINFO[utils/system_info.py<br/>系统信息 391行]
         YAML[config/default.yaml<br/>YAML 配置]
         ENV[.env<br/>环境变量]
     end
@@ -103,7 +103,7 @@ graph TD
     end
 
     subgraph "Phase 2 - 执行层"
-        INTERP[core/executor/interpreter.py<br/>代码执行沙箱 547行<br/>+并行执行支持]
+        INTERP[core/executor/interpreter.py<br/>代码执行沙箱 338行<br/>精简重构]
         WS[core/executor/workspace.py<br/>工作空间管理 244行<br/>+preprocess]
     end
 
@@ -115,7 +115,7 @@ graph TD
     end
 
     subgraph "Phase 2.4 - 编排层"
-        ORCH[core/orchestrator.py<br/>任务编排器 1168行<br/>+双层进化模式]
+        ORCH[core/orchestrator.py<br/>任务编排器 1181行<br/>+双层进化模式]
     end
 
     subgraph "Phase 3 - 进化层"
@@ -207,10 +207,10 @@ graph TD
 | **1** | 基础设施重构 | **完成** | config.py, logger_system.py, file_utils.py |
 | **1** | 核心数据结构 | **完成** | Node (121行), Journal (300行), Task (62行) |
 | **1** | 后端抽象层 | **完成** | Backend + Function Calling |
-| **2** | 执行层 | **完成** | Interpreter (547行), WorkspaceManager (244行) |
+| **2** | 执行层 | **完成** | Interpreter (338行), WorkspaceManager (244行) |
 | **2** | Agent 抽象 | **完成** | BaseAgent (135行), PromptBuilder (247行) |
 | **2** | CoderAgent | **完成** | CoderAgent (375行, +merge/mutate) |
-| **2.4** | Orchestrator | **完成** | Orchestrator (1168行, +双层进化) |
+| **2.4** | Orchestrator | **完成** | Orchestrator (1181行, +双层进化) |
 | **3.1** | **基因解析器** | **完成** | **gene_parser.py (162行)** |
 | **3.2** | **经验池+适应度** | **完成** | **experience_pool.py (319行), fitness.py (81行)** |
 | **3+** | **PromptManager** | **完成** | **prompt_manager.py (295行) + benchmark/** |
@@ -228,7 +228,7 @@ graph TD
 | 配置管理 | `utils/config.py` | 603 | 完成 (+EvolutionConfig) |
 | 日志系统 | `utils/logger_system.py` | 180 | 完成 |
 | 文件工具 | `utils/file_utils.py` | 222 | 完成 (+extract/clean) |
-| **系统信息** | **`utils/system_info.py`** | **329** | **完成 (NEW)** |
+| **系统信息** | **`utils/system_info.py`** | **391** | **完成** |
 | **Phase 1: 数据结构** ||||
 | Node 数据类 | `core/state/node.py` | 121 | 完成 |
 | Journal 数据类 | `core/state/journal.py` | 300 | 完成 (+get_best_k) |
@@ -239,14 +239,14 @@ graph TD
 | Anthropic 后端 | `core/backend/backend_anthropic.py` | 142 | 完成 |
 | 后端工具 | `core/backend/utils.py` | 80 | 完成 |
 | **Phase 2: 执行层** ||||
-| **代码执行器** | **`core/executor/interpreter.py`** | **547** | **完成 (+并行执行)** |
+| **代码执行器** | **`core/executor/interpreter.py`** | **338** | **完成 (精简重构)** |
 | 工作空间管理 | `core/executor/workspace.py` | 244 | 完成 (+preprocess) |
 | **Phase 2: Agent 层** ||||
 | Agent 基类 | `agents/base_agent.py` | 135 | 完成 (+mutate) |
 | **Prompt 构建器** | **`utils/prompt_builder.py`** | **247** | **完成** |
 | **CoderAgent** | **`agents/coder_agent.py`** | **375** | **完成 (+merge/mutate)** |
 | **Phase 2.4: Orchestrator** ||||
-| **任务编排器** | **`core/orchestrator.py`** | **1168** | **完成 (+双层进化)** |
+| **任务编排器** | **`core/orchestrator.py`** | **1181** | **完成 (+双层进化)** |
 | **Phase 3: 进化层** ||||
 | **基因解析器** | **`core/evolution/gene_parser.py`** | **162** | **完成** |
 | **共享经验池** | **`core/evolution/experience_pool.py`** | **319** | **完成** (+query扩展) |
@@ -268,7 +268,7 @@ graph TD
 | **配置文件** ||||
 | YAML 配置 | `config/default.yaml` | 111 | 完成 (+agent进化配置) |
 
-**总计**: 42 个核心模块 | ~9729 行核心代码 + 35 个测试文件（~8388 行测试代码）
+**总计**: 42 个核心模块 | ~9336 行核心代码 + 36 个测试文件（~8391 行测试代码）
 
 ---
 
@@ -320,9 +320,9 @@ Swarm-Ev2/
 │   │   └── utils.py               # 消息格式 + 重试
 │   ├── executor/                  # 代码执行
 │   │   ├── __init__.py            # 模块导出
-│   │   ├── interpreter.py         # 执行沙箱 (547行, +并行执行)
+│   │   ├── interpreter.py         # 执行沙箱 (338行, 精简重构)
 │   │   └── workspace.py           # 工作空间管理 (244行)
-│   ├── orchestrator.py            # 编排器（1168行, +双层进化）
+│   ├── orchestrator.py            # 编排器（1181行, +双层进化）
 │   └── evolution/                 # 进化机制
 │       ├── __init__.py            # 模块导出
 │       ├── gene_parser.py         # 基因解析器 (162行)
@@ -349,7 +349,7 @@ Swarm-Ev2/
 │   ├── response.py                # LLM 响应解析
 │   ├── prompt_builder.py          # Prompt 构建器 (247行)
 │   ├── prompt_manager.py          # Prompt 管理器 (295行)
-│   ├── system_info.py             # 系统信息收集 (329行) NEW
+│   ├── system_info.py             # 系统信息收集 (391行)
 │   └── workspace_builder.py       # 工作空间构建器 (127行)
 ├── tests/                         # 测试
 │   ├── unit/                      # 单元测试 (19 个测试文件)
