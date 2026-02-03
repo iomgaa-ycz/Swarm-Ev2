@@ -60,7 +60,6 @@ class Node(DataClassJsonMixin):
 
     # ---- LLM 调试信息 ----
     prompt_data: Optional[Dict] = field(default=None, kw_only=True)  # LLM 请求数据
-    thinking: str = field(default="", kw_only=True)  # 思考过程
 
     # ---- 执行信息 ----
     logs: str = field(default="", kw_only=True)

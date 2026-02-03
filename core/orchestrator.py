@@ -905,10 +905,10 @@ Please analyze the execution results and call the `submit_review` function with 
                 with open(node_dir / "prompt.json", "w", encoding="utf-8") as f:
                     json.dump(node.prompt_data, f, ensure_ascii=False, indent=2)
 
-            # 保存 thinking.txt（思考过程）
-            if node.thinking:
-                with open(node_dir / "thinking.txt", "w", encoding="utf-8") as f:
-                    f.write(node.thinking)
+            # 保存 plan.txt（方案说明）
+            if node.plan:
+                with open(node_dir / "plan.txt", "w", encoding="utf-8") as f:
+                    f.write(node.plan)
 
             log_msg("INFO", f"节点 {node.id[:8]} 已保存到 {node_dir}")
 

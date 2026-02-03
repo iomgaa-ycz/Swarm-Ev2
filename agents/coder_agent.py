@@ -3,7 +3,6 @@
 提供基于 LLM 的代码生成、执行、评估功能。
 """
 
-import re
 import time
 from datetime import datetime
 from typing import Optional, Tuple, Dict
@@ -124,7 +123,7 @@ class CoderAgent(BaseAgent):
         response = self._call_llm_with_retry(prompt, max_retries=5)
 
         # Phase 4: 解析响应（带重试）
-        plan, code, thinking = self._parse_response_with_retry(response, max_retries=5)
+        plan, code = self._parse_response_with_retry(response, max_retries=5)
 
         # Phase 5: 创建 Node 对象（代码执行由 Orchestrator 负责）
         node = Node(
@@ -133,7 +132,6 @@ class CoderAgent(BaseAgent):
             parent_id=context.parent_node.id if context.parent_node else None,
             task_type=context.task_type,
             prompt_data=prompt_data,
-            thinking=thinking,
         )
 
         log_msg(
@@ -196,7 +194,7 @@ class CoderAgent(BaseAgent):
 
     def _parse_response_with_retry(
         self, response: str, max_retries: int = 5
-    ) -> Tuple[str, str, str]:
+    ) -> Tuple[str, str]:
         """解析 LLM 响应并实现重试机制（针对软格式失败）。
 
         Args:
@@ -204,7 +202,7 @@ class CoderAgent(BaseAgent):
             max_retries: 最大重试次数（默认 5 次，但硬格式失败不重试）
 
         Returns:
-            (plan, code, thinking) 元组
+            (plan, code) 元组
 
         Raises:
             ValueError: 如果解析失败（硬格式失败）
@@ -221,37 +219,11 @@ class CoderAgent(BaseAgent):
         # 提取 plan（代码块之前的文本）
         plan = extract_text_up_to_code(response)
 
-        # 提取 thinking 部分
-        thinking = self._extract_thinking(response)
-
         log_msg(
             "INFO",
-            f"{self.name} 响应解析成功: plan={len(plan)} chars, code={len(code)} chars, thinking={len(thinking)} chars",
+            f"{self.name} 响应解析成功: plan={len(plan)} chars, code={len(code)} chars",
         )
-        return plan, code, thinking
-
-    def _extract_thinking(self, response: str) -> str:
-        """从 LLM 响应中提取 Thinking 部分。
-
-        Args:
-            response: LLM 响应字符串
-
-        Returns:
-            提取的 thinking 文本，如果未找到则返回空字符串
-        """
-        # 匹配 **Thinking**: 后到下一个段落或代码块之前的内容
-        pattern = r"\*\*Thinking\*\*:\s*(.+?)(?=\n\n[A-Z]|\n\n\*\*|\n```|\nI propose|\n\d+\.)"
-        match = re.search(pattern, response, re.DOTALL | re.IGNORECASE)
-        if match:
-            return match.group(1).strip()
-
-        # 备用：匹配 Thinking: 变体
-        pattern_alt = r"Thinking:\s*(.+?)(?=\n\n|\n```)"
-        match_alt = re.search(pattern_alt, response, re.DOTALL | re.IGNORECASE)
-        if match_alt:
-            return match_alt.group(1).strip()
-
-        return ""
+        return plan, code
 
     def _generate_data_preview(self) -> Optional[str]:
         """生成数据预览（与 AIDE 一致的实现）。
@@ -332,7 +304,7 @@ class CoderAgent(BaseAgent):
         response = self._call_llm_with_retry(prompt, max_retries=5)
 
         # 解析响应
-        plan, code, thinking = self._parse_response_with_retry(response, max_retries=5)
+        plan, code = self._parse_response_with_retry(response, max_retries=5)
 
         # 创建 Node
         node = Node(
@@ -341,7 +313,6 @@ class CoderAgent(BaseAgent):
             parent_id=context.parent_a.id,  # 主父代
             task_type=context.task_type,
             prompt_data=prompt_data,
-            thinking=thinking,
         )
 
         log_msg("INFO", f"{self.name} merge 完成")
@@ -389,7 +360,7 @@ class CoderAgent(BaseAgent):
         response = self._call_llm_with_retry(prompt, max_retries=5)
 
         # 解析响应
-        plan, code, thinking = self._parse_response_with_retry(response, max_retries=5)
+        plan, code = self._parse_response_with_retry(response, max_retries=5)
 
         # 创建 Node
         node = Node(
@@ -398,7 +369,6 @@ class CoderAgent(BaseAgent):
             parent_id=context.parent_node.id,
             task_type=context.task_type,
             prompt_data=prompt_data,
-            thinking=thinking,
         )
 
         log_msg("INFO", f"{self.name} mutate 完成")
