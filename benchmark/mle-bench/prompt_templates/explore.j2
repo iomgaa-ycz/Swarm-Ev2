@@ -23,6 +23,17 @@
 
 {% if parent_node.is_buggy %}
 **Status**: ❌ This solution encountered an error during execution.
+
+{% if parent_node.exc_type %}
+## Error Type
+**{{ parent_node.exc_type }}**{% if parent_node.exc_info and parent_node.exc_info.msg %}: {{ parent_node.exc_info.msg }}{% endif %}
+
+{% endif %}
+{% if parent_node.analysis %}
+## Review Feedback
+{{ parent_node.analysis }}
+
+{% endif %}
 {% else %}
 **Status**: ✅ This solution executed successfully.
 **Validation Metric**: {{ parent_node.metric_value if parent_node.metric_value else "N/A" }}
@@ -33,13 +44,27 @@
 {{ parent_node.code }}
 ```
 
-## Execution Result
+## Execution Output
 ```
 {{ parent_node.term_out }}
 ```
 
 {% if parent_node.is_buggy %}
 **Your Task**: Fix the bug and ensure the code executes successfully.
+
+{% if parent_node.exc_type == "MemoryError" %}
+> **Likely Cause**: Memory exhaustion (OOM Kill). The process was terminated while handling large data.
+> **Recommended Actions**:
+> 1. Sample training data: `df.sample(frac=0.1)` or `pd.read_csv(..., nrows=100000)`
+> 2. Reduce batch size for neural networks
+> 3. Use memory-efficient data types: `df.astype({'col': 'float32'})`
+> 4. Process data in chunks if possible
+{% elif parent_node.exc_type == "ProcessKilled" and parent_node.exc_info and parent_node.exc_info.oom_likelihood == "medium" %}
+> **Possible Cause**: The process may have been killed due to memory limits or other resource constraints.
+> **Suggestion**: Check if data size is appropriate and consider sampling or reducing batch size.
+{% elif parent_node.exc_type == "ProcessKilled" %}
+> **Note**: The process was forcefully terminated (SIGKILL). The cause is unclear - could be memory, resource limits, or other system factors.
+{% endif %}
 {% else %}
 **Your Task**: Improve the solution to achieve better validation performance.
 {% endif %}

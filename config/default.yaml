@@ -56,7 +56,7 @@ execution:
 # Agent 配置
 # ============================================================
 agent:
-  max_steps: 10  # 最大迭代步数（测试用，生产环境建议 50+）
+  max_steps: 150  # 最大迭代步数（测试用，生产环境建议 50+）
   time_limit: 43200  # 总时间限制（秒，12 小时）
   k_fold_validation: 5  # K-fold 交叉验证折数
   expose_prediction: false  # 是否暴露预测结果给 Agent

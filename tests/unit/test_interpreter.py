@@ -114,3 +114,74 @@ with open('test_file.txt', 'r') as f:
         assert result.success is True
         assert "test content" in "".join(result.term_out)
         assert (tmp_path / "test_file.txt").exists()
+
+
+class TestSignalDetection:
+    """测试 signal 终止检测功能。"""
+
+    @pytest.fixture
+    def interpreter(self, tmp_path):
+        """创建测试用的 Interpreter。"""
+        return Interpreter(working_dir=tmp_path, timeout=10)
+
+    def test_detect_signal_termination_oom_high(self, interpreter):
+        """测试 OOM Kill 检测（高置信度）。"""
+        stdout = "Loading data...\nTrain shape: (55413942, 8)\nFold 1/5"
+        exc_type, exc_info = interpreter._detect_signal_termination(-9, stdout)
+
+        assert exc_type == "MemoryError"
+        assert exc_info["signal"] == 9
+        assert exc_info["oom_likelihood"] == "high"
+        assert "采样" in exc_info["msg"] or "batch" in exc_info["msg"]
+
+    def test_detect_signal_termination_oom_medium(self, interpreter):
+        """测试 OOM Kill 检测（中等置信度）。"""
+        stdout = "Loading data...\nTraining model..."
+        exc_type, exc_info = interpreter._detect_signal_termination(-9, stdout)
+
+        assert exc_type == "ProcessKilled"
+        assert exc_info["signal"] == 9
+        assert exc_info["oom_likelihood"] == "medium"
+
+    def test_detect_signal_termination_oom_low(self, interpreter):
+        """测试 OOM Kill 检测（低置信度）。"""
+        stdout = "Hello World"
+        exc_type, exc_info = interpreter._detect_signal_termination(-9, stdout)
+
+        assert exc_type == "ProcessKilled"
+        assert exc_info["signal"] == 9
+        assert exc_info["oom_likelihood"] == "low"
+
+    def test_detect_signal_termination_sigterm(self, interpreter):
+        """测试 SIGTERM 检测。"""
+        exc_type, exc_info = interpreter._detect_signal_termination(-15, "")
+
+        assert exc_type == "ProcessTerminated"
+        assert exc_info["signal"] == 15
+
+    def test_detect_signal_termination_other(self, interpreter):
+        """测试其他 signal 检测。"""
+        exc_type, exc_info = interpreter._detect_signal_termination(-11, "")  # SIGSEGV
+
+        assert exc_type == "SignalError"
+        assert exc_info["signal"] == 11
+
+    def test_estimate_oom_likelihood_high(self, interpreter):
+        """测试 OOM 可能性估算（高）。"""
+        # 超过 1000 万行
+        assert interpreter._estimate_oom_likelihood("Train shape: (55413942, 8)") == "high"
+        assert interpreter._estimate_oom_likelihood("Loading 10000000 rows") == "high"
+
+    def test_estimate_oom_likelihood_medium(self, interpreter):
+        """测试 OOM 可能性估算（中）。"""
+        # 超过 100 万行但不到 1000 万
+        assert interpreter._estimate_oom_likelihood("Train shape: (1500000, 8)") == "medium"
+        # 训练相关操作
+        assert interpreter._estimate_oom_likelihood("Fold 1/5\nTraining...") == "medium"
+        assert interpreter._estimate_oom_likelihood("Loading data...") == "medium"
+
+    def test_estimate_oom_likelihood_low(self, interpreter):
+        """测试 OOM 可能性估算（低）。"""
+        assert interpreter._estimate_oom_likelihood("Hello World") == "low"
+        assert interpreter._estimate_oom_likelihood("Train shape: (1000, 8)") == "low"
+        assert interpreter._estimate_oom_likelihood("") == "low"

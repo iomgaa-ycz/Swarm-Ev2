@@ -173,6 +173,121 @@ class Interpreter:
 
         return exc_type, exc_info, exc_stack if exc_stack else None
 
+    def _detect_signal_termination(
+        self, return_code: int, stdout: str
+    ) -> Tuple[Optional[str], Optional[dict]]:
+        """检测进程是否被 signal 终止（如 OOM Kill）。
+
+        采用两层推断策略：
+        1. 通过 returncode 判断是哪个 signal
+        2. 通过输出线索估算 OOM 可能性
+
+        Args:
+            return_code: 进程返回码（负数表示被 signal 终止）
+            stdout: 终端输出
+
+        Returns:
+            (exc_type, exc_info) 元组
+        """
+        signal_num = -return_code
+
+        if signal_num == 9:  # SIGKILL
+            # 通过输出线索推断是否可能是 OOM
+            oom_likelihood = self._estimate_oom_likelihood(stdout)
+
+            if oom_likelihood == "high":
+                return "MemoryError", {
+                    "args": ["进程被 SIGKILL 终止，极可能因内存不足 (OOM Kill)"],
+                    "msg": "进程在处理大规模数据时被系统终止，强烈建议对数据进行采样或减小 batch size",
+                    "signal": 9,
+                    "oom_likelihood": "high",
+                }
+            elif oom_likelihood == "medium":
+                return "ProcessKilled", {
+                    "args": ["进程被 SIGKILL 终止，可能因内存不足"],
+                    "msg": "进程被系统强制终止，可能是内存不足或其他资源限制，建议检查数据规模",
+                    "signal": 9,
+                    "oom_likelihood": "medium",
+                }
+            else:
+                return "ProcessKilled", {
+                    "args": ["进程被 SIGKILL 终止"],
+                    "msg": "进程被系统强制终止，原因未知",
+                    "signal": 9,
+                    "oom_likelihood": "low",
+                }
+        elif signal_num == 15:  # SIGTERM
+            return "ProcessTerminated", {
+                "args": ["进程被 SIGTERM 终止"],
+                "msg": "进程被系统请求终止",
+                "signal": 15,
+            }
+        else:
+            return "SignalError", {
+                "args": [f"进程被信号 {signal_num} 终止"],
+                "msg": f"进程被信号 {signal_num} 终止",
+                "signal": signal_num,
+            }
+
+    def _estimate_oom_likelihood(self, stdout: str) -> str:
+        """估算 OOM 的可能性。
+
+        通过检测输出中的大数据规模线索来推断。
+
+        Args:
+            stdout: 终端输出
+
+        Returns:
+            "high" | "medium" | "low"
+        """
+        if not stdout:
+            return "low"
+
+        score = 0
+
+        # 检测数据规模：提取所有数字并判断
+        # 匹配 shape=(xxx, yyy) 或 xxx rows/samples 等格式
+        size_patterns = [
+            r"shape.*\((\d+),",                              # DataFrame shape
+            r"(\d+)\s*(rows|samples|records|entries)",       # 行数
+        ]
+
+        max_size = 0
+        for pattern in size_patterns:
+            matches = re.findall(pattern, stdout, re.IGNORECASE)
+            for match in matches:
+                # match 可能是 tuple 或 string
+                num_str = match[0] if isinstance(match, tuple) else match
+                try:
+                    size = int(num_str)
+                    max_size = max(max_size, size)
+                except ValueError:
+                    pass
+
+        # 根据数据规模评分
+        if max_size >= 10_000_000:  # 超过 1000 万
+            score += 3
+        elif max_size >= 1_000_000:  # 超过 100 万
+            score += 2
+
+        # 中权重线索：训练相关操作
+        medium_patterns = [
+            r"Training|Fold \d+/\d+",                       # 正在训练
+            r"Loading.*data|读取.*数据",                    # 正在加载数据
+            r"fit\(|\.fit\s*\(",                            # 模型训练
+        ]
+
+        for pattern in medium_patterns:
+            if re.search(pattern, stdout, re.IGNORECASE):
+                score += 1
+
+        if score >= 3:
+            return "high"
+        elif score >= 1:
+            return "medium"
+        else:
+            return "low"
+
     def _cleanup_process(self, process_id: int) -> None:
         """清理指定进程。"""
         proc = self.process[process_id]
@@ -293,6 +408,16 @@ class Interpreter:
                 exc_type = "TimeoutError"
                 exc_info = {"args": [f"执行超过 {self.timeout} 秒"]}
                 output_lines.append(f"TimeoutError: 执行超过 {self.timeout} 秒")
+            elif return_code < 0:
+                # 被 signal 终止（如 OOM Kill = SIGKILL = -9）
+                exc_type, exc_info = self._detect_signal_termination(
+                    return_code, stdout or ""
+                )
+                log_msg(
+                    "WARNING",
+                    f"进程被信号终止: signal={-return_code}, "
+                    f"exc_type={exc_type}, oom_likelihood={exc_info.get('oom_likelihood', 'N/A')}",
+                )
             elif return_code != 0:
                 exc_type, exc_info, exc_stack = self._parse_exception(
                     stdout or "", script_name
