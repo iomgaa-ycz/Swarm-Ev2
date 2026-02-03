@@ -557,19 +557,47 @@ class Orchestrator:
         # Phase 1: 文件存在检查
         has_submission = self._check_submission_exists(node.id)
 
-        # Phase 2: LLM Function Calling
+        # Phase 2: LLM Function Calling（收集调试数据）
         review_data = None
+        review_debug = {
+            "method": None,
+            "input": None,
+            "output_raw": None,
+            "output_parsed": None,
+            "error": None,
+        }
+
+        # 构建 Review 输入
+        review_input = self._build_review_messages(node, change_context)
+        review_debug["input"] = {
+            "user_message": review_input,
+            "model": self.config.llm.feedback.model,
+            "provider": self.config.llm.feedback.provider,
+        }
+
         try:
-            review_data = self._call_review_with_tool(node, change_context)
+            review_debug["method"] = "function_calling"
+            raw_response, parsed_data = self._call_review_with_tool_debug(
+                node, change_context, review_input
+            )
+            review_debug["output_raw"] = raw_response
+            review_debug["output_parsed"] = parsed_data
+            review_data = parsed_data
         except Exception as e:
             log_msg("WARNING", f"Function Calling 失败: {e}，尝试回退方案")
+            review_debug["error"] = str(e)
 
         # Phase 3: 回退到无 Tool 方案
         if review_data is None:
             try:
-                review_data = self._review_node_without_tool(node)
+                review_debug["method"] = "fallback"
+                raw_response, parsed_data = self._review_node_without_tool_debug(node)
+                review_debug["output_raw"] = raw_response
+                review_debug["output_parsed"] = parsed_data
+                review_data = parsed_data
             except Exception as e:
                 log_exception(e, "回退方案也失败")
+                review_debug["error"] = str(e)
                 review_data = {
                     "is_bug": True,
                     "metric": None,
@@ -577,6 +605,7 @@ class Orchestrator:
                     "lower_is_better": False,
                     "has_csv_submission": False,
                 }
+                review_debug["output_parsed"] = review_data
 
         # Phase 4: 验证响应
         review_data = self._validate_review_response(review_data, node, has_submission)
@@ -618,6 +647,9 @@ class Orchestrator:
             "suggested_direction": review_data.get("suggested_direction"),
         }
 
+        # Phase 8: 存储 Review 调试数据（用于排查问题）
+        node.metadata["review_debug"] = review_debug
+
         log_msg(
             "INFO",
             f"Review 完成: 节点 {node.id[:8]}, is_buggy={node.is_buggy}, "
@@ -656,6 +688,65 @@ class Orchestrator:
         )
 
         return json.loads(response)
+
+    def _call_review_with_tool_debug(
+        self, node: Node, change_context: str, review_input: str
+    ) -> tuple:
+        """Function Calling 调用 Review LLM（返回调试信息）。
+
+        Args:
+            node: 待评估的节点
+            change_context: 变更上下文
+            review_input: 已构建的输入消息
+
+        Returns:
+            (原始响应字符串, 解析后的 dict) 元组
+        """
+        tool_schema = self._get_review_tool_schema()
+
+        response = backend_query(
+            system_message=None,
+            user_message=review_input,
+            model=self.config.llm.feedback.model,
+            provider=self.config.llm.feedback.provider,
+            temperature=self.config.llm.feedback.temperature,
+            api_key=self.config.llm.feedback.api_key,
+            base_url=getattr(self.config.llm.feedback, "base_url", None),
+            tools=[{"type": "function", "function": tool_schema}],
+            tool_choice={
+                "type": "function",
+                "function": {"name": "submit_review"},
+            },
+        )
+
+        return response, json.loads(response)
+
+    def _review_node_without_tool_debug(self, node: Node) -> tuple:
+        """回退方案（返回调试信息）。
+
+        Args:
+            node: 待评估的节点
+
+        Returns:
+            (原始响应字符串, 解析后的 dict) 元组
+        """
+        from utils.response import extract_review
+
+        prompt = self._build_review_prompt_without_tool(node)
+
+        response_text = backend_query(
+            system_message=None,
+            user_message=prompt,
+            model=self.config.llm.feedback.model,
+            provider=self.config.llm.feedback.provider,
+            temperature=self.config.llm.feedback.temperature,
+            api_key=self.config.llm.feedback.api_key,
+            base_url=getattr(self.config.llm.feedback, "base_url", None),
+            tools=None,
+            tool_choice=None,
+        )
+
+        return response_text, extract_review(response_text)
 
     def _review_node_without_tool(self, node: Node) -> Dict:
         """回退方案：无 Tool 的 LLM 调用 + JSON 提取。
@@ -1077,6 +1168,13 @@ Call `submit_review` with your detailed analysis.
             if node.plan:
                 with open(node_dir / "plan.txt", "w", encoding="utf-8") as f:
                     f.write(node.plan)
+
+            # 保存 review.json（Review 调试数据）
+            if node.metadata.get("review_debug"):
+                with open(node_dir / "review.json", "w", encoding="utf-8") as f:
+                    json.dump(
+                        node.metadata["review_debug"], f, ensure_ascii=False, indent=2
+                    )
 
             log_msg("INFO", f"节点 {node.id[:8]} 已保存到 {node_dir}")
 
