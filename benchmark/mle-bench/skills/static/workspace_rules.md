@@ -25,7 +25,7 @@
 - **CRITICAL**: ONLY use packages listed in the "Installed Packages" section of System Environment
 - Do NOT assume any package is available unless explicitly listed
 - If a desired package is not listed, use an alternative from the installed packages
-- For deep learning, check GPU availability gracefully (fallback to CPU if unavailable)
+- For deep learning, prefer using GPU when available, and gracefully fall back to CPU if not. (GPU > Multi-core CPU > Single-core CPU)
 
 ### Best Practices
 - Set random seeds for reproducibility
