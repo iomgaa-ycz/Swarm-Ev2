@@ -1,145 +1,57 @@
-# Codemap Update Report
-# Generated: 2026-02-02 (Session 2)
-# Analyzer: Claude Code (doc-updater agent)
+# Codemap 差异报告
+生成时间: 2026-02-03
 
-## Summary
-- Total diff percentage: ~0.15% (14 lines changed out of ~9350 core lines)
-- Status: AUTO-APPROVED (changes < 30% threshold)
-- User approval required: No
+## 变更摘要
 
-## Key Changes This Session
+### 上次版本 (2026-02-02)
+- 项目版本: 0.3.4
+- 核心代码: ~9350 行
+- 测试文件: 36 个 (~8391 行)
 
-### 1. utils/data_preview.py
-| Metric | Value |
-|--------|-------|
-| Previous | 273 lines |
-| Current | 276 lines |
-| Diff | +3 lines (+1.1%) |
+### 当前版本 (2026-02-03)
+- 项目版本: 0.3.5
+- 核心代码: ~9800 行
+- 测试文件: 36 个 (~8517 行)
 
-**Changes:**
-- Added file size display in `get_file_len_size()` function
-  - Text files now show: `"{num_lines} lines, {file_size}"` instead of just `"{num_lines} lines"`
-- Added IMPORTANT header in `generate()` function
-  - New header: `"**IMPORTANT: Use the exact file names listed below in your code.**"`
-  - Purpose: Ensure LLM uses correct file names from data preview
+## 差异比例
 
-### 2. agents/coder_agent.py
-| Metric | Value |
-|--------|-------|
-| Previous | 375 lines |
-| Current | 386 lines |
-| Diff | +11 lines (+2.9%) |
+| 模块 | 上次行数 | 当前行数 | 变化 |
+|------|---------|---------|------|
+| main.py | 560 | 560 | 0 |
+| core/orchestrator.py | 1181 | 1354 | +173 (+14.7%) |
+| core/state/node.py | 121 | 125 | +4 (+3.3%) |
+| core/state/journal.py | 300 | 362 | +62 (+20.7%) |
+| agents/coder_agent.py | 386 | 415 | +29 (+7.5%) |
+| utils/system_info.py | 391 | 408 | +17 (+4.3%) |
 
-**Changes:**
-- `_generate_data_preview()` now saves preview to `workspace/logs/data_preview.md`
-- Added docstring: `"Side Effects: saves preview to workspace/logs/data_preview.md"`
-- Purpose: Enable debugging by inspecting the actual content sent to LLM
+**总差异: ~10%** (低于 30% 阈值，自动更新)
 
-### 3. benchmark/mle-bench/skills/static/workspace_rules.md
-| Metric | Value |
-|--------|-------|
-| Lines | 66 |
-| Commit | 755bb3f |
+## 主要变更
 
-**Changes:**
-- Removed hardcoded data paths (replaced with `???` placeholders)
-- Added comment: `"CRITICAL: Check Data Overview section above for exact file names!"`
-- Purpose: Prevent LLM from using wrong file names
+### 1. Memory 进化机制重构 (core/orchestrator.py)
+- 新增 `_generate_code_diff()`: 生成父子代码的 unified diff
+- 新增 `_format_gene_selection()`: 格式化基因选择方案
 
-## Documentation Updates Applied
+### 2. Review Schema 增强
+- 新增字段: key_change, metric_delta, insight, bottleneck, suggested_direction
+- Node 新增 analysis_detail 字段存储结构化分析
 
-| File | Change |
-|------|--------|
-| docs/CODEMAPS/architecture.md | Version 0.3.3 -> 0.3.4, updated line counts |
-| docs/CODEMAPS/backend.md | Updated data_preview.py: 273 -> 276, coder_agent.py: 375 -> 386 |
-| docs/CODEMAPS/data.md | Updated timestamp |
+### 3. Journal Summary 重写 (core/state/journal.py)
+- generate_summary() 重写为 Changelog 格式
+- 新增 4 个 Section: Current Best, Changelog, Constraints, Unexplored
+- 新增辅助方法: _format_current_best(), _format_changelog(), _extract_constraints(), _collect_unexplored_directions()
 
-## Verified Module Line Counts (Current)
+### 4. 移除 Thinking 机制
+- Node 移除 thinking 字段，简化数据结构
+- Prompt 模板更新，避免 Thinking 同质化
 
-### Entry Layer
-| Module | Lines |
-|--------|-------|
-| main.py | 560 |
+## 文件变更列表 (最近提交)
 
-### Utils Layer (~3,180 lines)
-| Module | Lines | Change |
-|--------|-------|--------|
-| config.py | 603 | - |
-| system_info.py | 391 | - |
-| prompt_manager.py | 295 | - |
-| **data_preview.py** | **276** | **+3** |
-| prompt_builder.py | 247 | - |
-| file_utils.py | 222 | - |
-| logger_system.py | 180 | - |
-| response.py | 154 | - |
-| workspace_builder.py | 127 | - |
-| metric.py | 117 | - |
-
-### Agent Layer
-| Module | Lines | Change |
-|--------|-------|--------|
-| **coder_agent.py** | **386** | **+11** |
-| base_agent.py | 135 | - |
-
-### Core Layer (~2,768 lines)
-| Module | Lines |
-|--------|-------|
-| orchestrator.py | 1181 |
-| interpreter.py | 338 |
-| journal.py | 300 |
-| workspace.py | 244 |
-| backend_openai.py | 163 |
-| backend_anthropic.py | 142 |
-| backend/__init__.py | 137 |
-| node.py | 121 |
-| utils.py | 80 |
-| task.py | 62 |
-
-### Evolution Layer (~3,035 lines)
-| Module | Lines |
-|--------|-------|
-| solution_evolution.py | 541 |
-| agent_evolution.py | 439 |
-| skill_manager.py | 371 |
-| experience_pool.py | 319 |
-| gene_selector.py | 314 |
-| skill_extractor.py | 302 |
-| gene_registry.py | 199 |
-| gene_parser.py | 162 |
-| task_dispatcher.py | 157 |
-| code_embedding_manager.py | 127 |
-| pheromone.py | 104 |
-
-### Search Layer
-| Module | Lines |
-|--------|-------|
-| parallel_evaluator.py | 245 |
-| fitness.py | 81 |
-
-### Configuration
-| File | Lines |
-|------|-------|
-| config/default.yaml | 126 |
-
-## Grand Total
-- Core modules: 42 files
-- Core code: ~9,350 lines
-- Test files: 36 files
-- Test code: ~8,391 lines
-
-## Verification Checklist
-- [x] All file paths in codemaps verified to exist
-- [x] Line counts measured from actual source files
-- [x] Changes documented with purpose
-- [x] Freshness timestamps updated
-- [x] No obsolete references found
-
-## Version
-- Project version: 0.3.4
-- Phase: 3.5 Skill Evolution (complete) + main.py dual-layer integration
-
-## Notes
-- Changes are incremental improvements for LLM prompt quality
-- No architectural changes
-- No API changes
-- All changes are backward compatible
+1. benchmark/mle-bench/prompt_templates/explore.j2
+2. benchmark/mle-bench/skills/static/output_format.md
+3. core/orchestrator.py (+173 行)
+4. core/state/journal.py (+62 行)
+5. core/state/node.py (+4 行)
+6. docs/plans/memory_evolution_refactor.md (新增)
+7. tests/unit/test_orchestrator.py (更新)
+8. tests/unit/test_prompt_builder.py (更新)

@@ -1,8 +1,8 @@
 # 后端模块详细说明
 
-**Last Updated:** 2026-02-02 (data_preview +3 行, coder_agent +11 行)
+**Last Updated:** 2026-02-03 (Memory 进化重构，Review Schema 增强)
 **模块范围:** main.py, utils/, core/state/, core/backend/, core/executor/, core/evolution/, agents/, search/, config/, tests/, benchmark/
-**当前阶段:** Phase 3.5 Skill 进化（已完成）+ main.py 双层架构集成
+**当前阶段:** Phase 3.5 Skill 进化（已完成）+ Memory 进化机制重构
 
 ---
 
@@ -16,10 +16,10 @@
 | 配置系统 | `utils/config.py` | 603 | OmegaConf 配置加载与验证 (+EvolutionConfig) | 完成 |
 | 日志系统 | `utils/logger_system.py` | 180 | 双通道日志输出 | 完成 |
 | 文件工具 | `utils/file_utils.py` | 222 | 目录复制/链接/解压/清理 | 完成 |
-| **系统信息** | **`utils/system_info.py`** | **391** | **系统环境信息收集** | **完成** |
+| **系统信息** | **`utils/system_info.py`** | **408** | **系统环境信息收集** | **完成** |
 | **数据结构层** |||||
-| Node 数据类 | `core/state/node.py` | 121 | 解决方案 DAG 节点 | 完成 |
-| Journal 数据类 | `core/state/journal.py` | 300 | DAG 容器与查询 (+get_best_k) | 完成 |
+| Node 数据类 | `core/state/node.py` | 125 | 解决方案 DAG 节点 (+analysis_detail) | 完成 |
+| Journal 数据类 | `core/state/journal.py` | 362 | DAG 容器与查询 (+Changelog格式) | 完成 |
 | Task 数据类 | `core/state/task.py` | 62 | Agent 任务定义 | 完成 |
 | **后端抽象层** |||||
 | 后端抽象层 | `core/backend/__init__.py` | 137 | 统一 LLM 查询接口 (Function Calling) | 完成 |
@@ -39,9 +39,9 @@
 | 工作空间构建器 | `utils/workspace_builder.py` | 127 | 工作空间初始化 | 完成 |
 | **Agent 层** |||||
 | Agent 基类 | `agents/base_agent.py` | 135 | Agent 抽象基类 (+mutate task_type) | 完成 |
-| **CoderAgent** | **`agents/coder_agent.py`** | **386** | **代码生成 Agent (+merge/mutate+logs保存)** | **完成 (扩展)** |
+| **CoderAgent** | **`agents/coder_agent.py`** | **415** | **代码生成 Agent (+merge/mutate+logs保存)** | **完成 (扩展)** |
 | **编排层** |||||
-| **Orchestrator** | **`core/orchestrator.py`** | **1181** | **任务编排器 (+双层进化+merge/mutate 任务)** | **完成 (扩展)** |
+| **Orchestrator** | **`core/orchestrator.py`** | **1354** | **任务编排器 (+Memory进化+Review增强)** | **完成 (扩展)** |
 | **进化层 (Phase 3)** |||||
 | **基因解析器** | **`core/evolution/gene_parser.py`** | **162** | **解析 7 基因块，支持 GA 交叉** | **完成** |
 | **共享经验池** | **`core/evolution/experience_pool.py`** | **319** | **线程安全存储 + Top-K 查询 + 扩展过滤** | **完成** |
@@ -191,9 +191,9 @@ main.py
 
 ---
 
-## 3. Orchestrator 编排器 (`core/orchestrator.py`) [1181 行, +双层进化]
+## 3. Orchestrator 编排器 (`core/orchestrator.py`) [1354 行, +Memory进化+Review增强]
 
-> **重大更新**: Orchestrator 从 534 行扩展至 1181 行（+119%），新增双层进化架构支持和 merge/mutate 任务执行能力。
+> **重大更新**: Orchestrator 从 1181 行扩展至 1354 行（+14.7%），新增 Memory 进化机制、代码 Diff 生成、Review Schema 增强。
 
 ### 3.1 核心职责
 
@@ -235,8 +235,10 @@ class Orchestrator:
 | `_execute_code` | `(code: str, node_id: str) -> ExecutionResult` | 执行代码（含路径重写） |
 | `_review_node` | `(node: Node) -> None` | Function Calling Review |
 | `_update_best_node` | `(node: Node) -> None` | 更新最佳节点（支持 lower_is_better） |
-| **`execute_merge_task`** | **`(parent1, parent2) -> Node`** | **执行 merge 任务（GA 交叉）NEW** |
-| **`execute_mutate_task`** | **`(parent) -> Node`** | **执行 mutate 任务（GA 变异）NEW** |
+| **`execute_merge_task`** | **`(parent1, parent2) -> Node`** | **执行 merge 任务（GA 交叉）** |
+| **`execute_mutate_task`** | **`(parent) -> Node`** | **执行 mutate 任务（GA 变异）** |
+| **`_generate_code_diff`** | **`(parent_code, current_code) -> str`** | **生成父子代码 unified diff [NEW]** |
+| **`_format_gene_selection`** | **`(gene_plan: Dict) -> str`** | **格式化基因选择方案 [NEW]** |
 
 ### 3.4 双层进化模式运行流程
 

@@ -1,8 +1,8 @@
 # Swarm-Ev2 项目架构概览
 
-**Last Updated:** 2026-02-02 (data_preview +3 行, coder_agent +11 行)
-**项目版本:** 0.3.4
-**当前阶段:** Phase 3.5 Skill 进化（已完成）+ main.py 双层架构集成
+**Last Updated:** 2026-02-03 (Memory 进化重构，Review Schema 增强)
+**项目版本:** 0.3.5
+**当前阶段:** Phase 3.5 Skill 进化（已完成）+ Memory 进化机制重构
 
 ---
 
@@ -16,8 +16,8 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 | 架构 | 纯后端，asyncio + 多线程 |
 | 配置 | OmegaConf + YAML |
 | 日志 | 双通道（文本 + JSON） |
-| 测试 | pytest + pytest-asyncio (36 测试文件, ~8391 行) |
-| 代码行数 | ~9350 行核心代码（42 模块） + 8391 行测试 |
+| 测试 | pytest + pytest-asyncio (36 测试文件, ~8517 行) |
+| 代码行数 | ~9800 行核心代码（42 模块） + 8517 行测试 |
 
 ---
 
@@ -34,7 +34,7 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 |   - print_evolution_statistics() 打印进化统计               |
 +---------------------------------------------------------+
 |                编排层 (Orchestration)                     |
-|   Orchestrator (1181行, +双层进化+merge/mutate任务)        |  <- Phase 2.4+
+|   Orchestrator (1354行, +Memory进化+Review增强)           |  <- Phase 2.4+
 |   ParallelEvaluator (245行)                              |  <- Phase 3.4
 +---------------------------------------------------------+
 |                  Agent 层 (Agents)                        |
@@ -60,7 +60,7 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 |   WorkspaceManager (244行)                               |  <- Phase 2
 +---------------------------------------------------------+
 |                核心数据层 (State)                          |
-|   Node + Journal (+get_best_k) + Task                    |  <- Phase 1
+|   Node (125行, +analysis_detail) + Journal (362行, +Changelog) + Task |  <- Phase 1
 +---------------------------------------------------------+
 |              基础设施层 (Infrastructure)                   |
 |   config.py (603行) + logger (180行) + file (222行)      |  <- Phase 1
@@ -90,8 +90,8 @@ graph TD
     end
 
     subgraph "Phase 1 - 数据结构"
-        NODE[core/state/node.py<br/>Node 数据类 121行]
-        JOURNAL[core/state/journal.py<br/>Journal DAG 300行<br/>+get_best_k]
+        NODE[core/state/node.py<br/>Node 数据类 125行<br/>+analysis_detail]
+        JOURNAL[core/state/journal.py<br/>Journal DAG 362行<br/>+Changelog格式]
         TASK[core/state/task.py<br/>Task 定义 62行]
     end
 
@@ -115,7 +115,7 @@ graph TD
     end
 
     subgraph "Phase 2.4 - 编排层"
-        ORCH[core/orchestrator.py<br/>任务编排器 1181行<br/>+双层进化模式]
+        ORCH[core/orchestrator.py<br/>任务编排器 1354行<br/>+Memory进化+Review增强]
     end
 
     subgraph "Phase 3 - 进化层"
@@ -228,10 +228,10 @@ graph TD
 | 配置管理 | `utils/config.py` | 603 | 完成 (+EvolutionConfig) |
 | 日志系统 | `utils/logger_system.py` | 180 | 完成 |
 | 文件工具 | `utils/file_utils.py` | 222 | 完成 (+extract/clean) |
-| **系统信息** | **`utils/system_info.py`** | **391** | **完成** |
+| **系统信息** | **`utils/system_info.py`** | **408** | **完成** |
 | **Phase 1: 数据结构** ||||
-| Node 数据类 | `core/state/node.py` | 121 | 完成 |
-| Journal 数据类 | `core/state/journal.py` | 300 | 完成 (+get_best_k) |
+| Node 数据类 | `core/state/node.py` | 125 | 完成 (+analysis_detail) |
+| Journal 数据类 | `core/state/journal.py` | 362 | 完成 (+Changelog格式) |
 | Task 数据类 | `core/state/task.py` | 62 | 完成 |
 | **Phase 1: 后端抽象** ||||
 | 后端抽象层 | `core/backend/__init__.py` | 137 | 完成 |
@@ -244,9 +244,9 @@ graph TD
 | **Phase 2: Agent 层** ||||
 | Agent 基类 | `agents/base_agent.py` | 135 | 完成 (+mutate) |
 | **Prompt 构建器** | **`utils/prompt_builder.py`** | **247** | **完成** |
-| **CoderAgent** | **`agents/coder_agent.py`** | **386** | **完成 (+merge/mutate+logs保存)** |
+| **CoderAgent** | **`agents/coder_agent.py`** | **415** | **完成 (+merge/mutate+logs保存)** |
 | **Phase 2.4: Orchestrator** ||||
-| **任务编排器** | **`core/orchestrator.py`** | **1181** | **完成 (+双层进化)** |
+| **任务编排器** | **`core/orchestrator.py`** | **1354** | **完成 (+Memory进化+Review增强)** |
 | **Phase 3: 进化层** ||||
 | **基因解析器** | **`core/evolution/gene_parser.py`** | **162** | **完成** |
 | **共享经验池** | **`core/evolution/experience_pool.py`** | **319** | **完成** (+query扩展) |
@@ -268,7 +268,7 @@ graph TD
 | **配置文件** ||||
 | YAML 配置 | `config/default.yaml` | 126 | 完成 (+agent进化配置) |
 
-**总计**: 42 个核心模块 | ~9350 行核心代码 + 36 个测试文件（~8391 行测试代码）
+**总计**: 42 个核心模块 | ~9800 行核心代码 + 36 个测试文件（~8517 行测试代码）
 
 ---
 
@@ -723,6 +723,59 @@ class SkillManager:
 **综合评分公式**:
 ```python
 composite_score = 0.6 × avg_accuracy + 0.4 × avg_generation_rate
+```
+
+### 6.15 Memory 进化机制 [NEW - 2026-02-03]
+
+**职责**: 增强 Review 信息密度，让 Memory 成为真正的 Evolution Log。
+
+#### 6.15.1 核心变更
+
+| 模块 | 新增函数/字段 | 说明 |
+|------|--------------|------|
+| `orchestrator.py` | `_generate_code_diff()` | 生成父子代码的 unified diff |
+| `orchestrator.py` | `_format_gene_selection()` | 格式化基因选择方案（merge 专用） |
+| `node.py` | `analysis_detail: Dict` | 存储结构化 Review 分析 |
+| `journal.py` | `generate_summary()` 重写 | Changelog 格式的 Evolution Log |
+
+#### 6.15.2 Review Schema 增强
+
+```python
+# 新增字段
+node.analysis_detail = {
+    "key_change": str,         # 关键变更描述（一句话）
+    "metric_delta": str,       # 指标变化（如 "+0.02" 或 "-5%"）
+    "insight": str,            # 成功/失败原因分析
+    "bottleneck": str,         # 当前瓶颈（可选）
+    "suggested_direction": str # 建议的下一步方向（可选）
+}
+```
+
+#### 6.15.3 Journal Changelog 格式
+
+```markdown
+## Current Best: 0.8523 (Step 15, Node abc12345)
+**Key Approach**: XGBoost with feature engineering
+**Bottleneck**: Class imbalance
+
+## Changelog (Recent Changes)
+### Step 15: 0.8523 BEST
+- **Change**: Added SMOTE for handling imbalance
+- **Delta**: +0.012
+- **Insight**: Minority class recall improved from 0.6 to 0.75
+
+### Step 14: 0.8403
+- **Change**: Feature selection using mutual information
+- **Delta**: +0.008
+- **Insight**: Removed 20% features without performance drop
+
+## Constraints (Learned from Failures)
+- Step 8: OOM when using full dataset - must sample first
+- Step 5: Timeout with nested cross-validation
+
+## Unexplored Directions
+- [ ] Try LightGBM with GPU acceleration
+- [ ] Ensemble with neural network
 ```
 
 ---
