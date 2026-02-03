@@ -900,6 +900,16 @@ Please analyze the execution results and call the `submit_review` function with 
             if submission_src.exists():
                 shutil.copy(submission_src, node_dir / "submission.csv")
 
+            # 保存 prompt.json（LLM 请求数据）
+            if node.prompt_data:
+                with open(node_dir / "prompt.json", "w", encoding="utf-8") as f:
+                    json.dump(node.prompt_data, f, ensure_ascii=False, indent=2)
+
+            # 保存 thinking.txt（思考过程）
+            if node.thinking:
+                with open(node_dir / "thinking.txt", "w", encoding="utf-8") as f:
+                    f.write(node.thinking)
+
             log_msg("INFO", f"节点 {node.id[:8]} 已保存到 {node_dir}")
 
         except Exception as e:
