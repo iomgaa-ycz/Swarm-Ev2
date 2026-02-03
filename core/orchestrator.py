@@ -229,7 +229,11 @@ class Orchestrator:
         Returns:
             是否正常完成（False 表示因时间限制提前退出）
         """
-        completed = 0
+        # 记录 Epoch 开始时的节点数，用于计算当前 Epoch 完成的任务数
+        with self.journal_lock:
+            epoch_start_count = len(self.journal.nodes)
+
+        completed = 0  # 当前 Epoch 完成的任务数（局部计数）
 
         with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
             # 初始提交任务
@@ -258,9 +262,10 @@ class Orchestrator:
                     except Exception as e:
                         log_msg("WARNING", f"任务执行失败: {e}")
 
-                    # 更新完成计数
+                    # 更新完成计数（当前 Epoch 的完成数 = 总节点数 - Epoch 开始时的节点数）
                     with self.journal_lock:
-                        completed = len(self.journal.nodes)
+                        total_nodes = len(self.journal.nodes)
+                    completed = total_nodes - epoch_start_count
 
                     log_msg(
                         "INFO",
