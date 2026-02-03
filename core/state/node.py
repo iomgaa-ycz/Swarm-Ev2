@@ -71,7 +71,8 @@ class Node(DataClassJsonMixin):
     # exc_stack: Optional[list[tuple]] = field(default=None, kw_only=True)
 
     # ---- 评估 ----
-    analysis: str = field(default="", kw_only=True)
+    analysis: str = field(default="", kw_only=True)  # 保留兼容（存储 key_change）
+    analysis_detail: Optional[Dict] = field(default=None, kw_only=True)  # 结构化分析
     metric_value: Optional[float] = field(default=None, kw_only=True)
     is_buggy: bool = field(default=False, kw_only=True)
     is_valid: bool = field(default=True, kw_only=True)

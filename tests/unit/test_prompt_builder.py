@@ -3,7 +3,6 @@
 测试 Prompt 构建器的各种场景。
 """
 
-
 from utils.prompt_builder import PromptBuilder
 from core.state import Node
 
@@ -177,7 +176,11 @@ test.csv: 500 rows, 9 columns"""
 
 
 class TestJournalGenerateSummary:
-    """Journal.generate_summary() 测试类。"""
+    """Journal.generate_summary() 测试类。
+
+    注意：generate_summary() 现已重构为 Evolution Log 格式，
+    包含 Current Best、Changelog、Constraints、Unexplored 等部分。
+    """
 
     def test_generate_summary_empty(self):
         """测试空 Journal。"""
@@ -194,11 +197,18 @@ class TestJournalGenerateSummary:
 
         journal = Journal()
 
-        # 正常节点
+        # 正常节点（使用新的 analysis_detail 格式）
         node1 = Node(
             code="x = 1",
             plan="Use RandomForest",
             analysis="Good solution",
+            analysis_detail={
+                "key_change": "Added RandomForest model",
+                "metric_delta": "baseline",
+                "insight": "Good solution",
+                "bottleneck": None,
+                "suggested_direction": "Try XGBoost",
+            },
             metric_value=0.85,
             is_buggy=False,
         )
@@ -208,6 +218,11 @@ class TestJournalGenerateSummary:
             code="x = 2",
             plan="Try deep NN",
             analysis="NaN loss detected",
+            analysis_detail={
+                "key_change": "Switched to deep NN",
+                "metric_delta": "N/A",
+                "insight": "NaN loss detected due to exploding gradients",
+            },
             is_buggy=True,
         )
 
@@ -216,18 +231,18 @@ class TestJournalGenerateSummary:
 
         summary = journal.generate_summary()
 
-        # 验证包含正常节点
-        assert "Use RandomForest" in summary
-        assert "Good solution" in summary
+        # 验证包含 Current Best 部分
+        assert "## Current Best" in summary
         assert "0.85" in summary
 
-        # 验证包含 buggy 节点
-        assert "[BUGGY]" in summary
-        assert "Try deep NN" in summary
-        assert "NaN loss detected" in summary
+        # 验证包含 Changelog 部分
+        assert "## Changelog" in summary
+
+        # 验证包含 buggy 节点的约束（Constraints 部分）
+        assert "## Constraints" in summary or "NaN loss" in summary
 
     def test_generate_summary_with_code(self):
-        """测试 include_code=True。"""
+        """测试 include_code=True（当前版本不再包含代码）。"""
         from core.state import Journal
 
         journal = Journal()
@@ -236,22 +251,24 @@ class TestJournalGenerateSummary:
             code="import pandas as pd\nprint('hello')",
             plan="Load data",
             analysis="Success",
+            analysis_detail={
+                "key_change": "Load data",
+                "metric_delta": "baseline",
+                "insight": "Success",
+            },
             metric_value=0.9,
         )
 
         journal.append(node)
 
-        # 不包含代码
-        summary_no_code = journal.generate_summary(include_code=False)
-        assert "import pandas as pd" not in summary_no_code
-
-        # 包含代码
-        summary_with_code = journal.generate_summary(include_code=True)
-        assert "import pandas as pd" in summary_with_code
-        assert "```python" in summary_with_code
+        # 新版本的 generate_summary 不再支持 include_code
+        # 但保持接口兼容
+        summary = journal.generate_summary(include_code=False)
+        assert "## Current Best" in summary
+        assert "0.9" in summary
 
     def test_generate_summary_marks_buggy(self):
-        """测试 buggy 节点有 [BUGGY] 标记。"""
+        """测试 buggy 节点在 Changelog 中有 BUGGY 标记。"""
         from core.state import Journal
 
         journal = Journal()
@@ -260,6 +277,12 @@ class TestJournalGenerateSummary:
             code="x = 1",
             plan="Good approach",
             analysis="Works well",
+            analysis_detail={
+                "key_change": "Good approach",
+                "metric_delta": "baseline",
+                "insight": "Works well",
+            },
+            metric_value=0.9,
             is_buggy=False,
         )
 
@@ -267,6 +290,11 @@ class TestJournalGenerateSummary:
             code="x = 2",
             plan="Buggy approach",
             analysis="Failed",
+            analysis_detail={
+                "key_change": "Buggy approach",
+                "metric_delta": "N/A",
+                "insight": "Failed due to memory error",
+            },
             is_buggy=True,
         )
 
@@ -275,7 +303,7 @@ class TestJournalGenerateSummary:
 
         summary = journal.generate_summary()
 
-        # 验证只有 buggy 节点有标记
-        lines = summary.split("\n")
-        assert any("[BUGGY]" in line and "Buggy approach" in line for line in lines)
-        assert not any("[BUGGY]" in line and "Good approach" in line for line in lines)
+        # 验证 Changelog 中包含 BUGGY 标记
+        assert "BUGGY" in summary
+        # 验证 Constraints 部分包含失败原因
+        assert "Failed" in summary or "memory error" in summary

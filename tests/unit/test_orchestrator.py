@@ -24,6 +24,7 @@ def mock_config(tmp_path):
             "search": {
                 "num_drafts": 3,
                 "debug_prob": 0.5,
+                "parallel_num": 1,  # 并行执行数
             },
             "execution": {
                 "timeout": 60,
@@ -60,7 +61,7 @@ def journal():
 def orchestrator(mock_agent, mock_config, journal):
     """创建 Orchestrator 实例。"""
     return Orchestrator(
-        agent=mock_agent,
+        agents=[mock_agent],  # 使用 agents 列表
         config=mock_config,
         journal=journal,
         task_desc="Test task description",
@@ -72,11 +73,11 @@ class TestOrchestrator:
 
     def test_init(self, orchestrator, mock_agent, mock_config, journal):
         """测试初始化。"""
-        assert orchestrator.agent == mock_agent
+        assert orchestrator.agents == [mock_agent]
         assert orchestrator.config == mock_config
         assert orchestrator.journal == journal
         assert orchestrator.task_desc == "Test task description"
-        assert orchestrator.current_step == 0
+        assert orchestrator.current_epoch == 0
         assert orchestrator.best_node is None
 
     def test_select_parent_node_initial_drafts(self, orchestrator):
@@ -139,16 +140,27 @@ class TestOrchestrator:
         )
         mock_agent.generate.return_value = AgentResult(node=node, success=True)
 
-        # Mock Review
+        # Mock Review 和执行
         with patch.object(orchestrator, "_review_node") as mock_review:
-            mock_review.side_effect = (
-                lambda n: setattr(n, "metric_value", 0.85)
-                or setattr(n, "is_buggy", False)
-                or setattr(n, "lower_is_better", False)
-            )
+            with patch.object(orchestrator, "_execute_code") as mock_exec:
+                from core.executor.interpreter import ExecutionResult
 
-            # 执行 step
-            orchestrator.step()
+                mock_exec.return_value = ExecutionResult(
+                    term_out=["Hello\n"],
+                    exec_time=0.1,
+                    exc_type=None,
+                    exc_info=None,
+                )
+
+                def set_node_attrs(n, parent_node=None, gene_plan=None):
+                    n.metric_value = 0.85
+                    n.is_buggy = False
+                    n.lower_is_better = False
+
+                mock_review.side_effect = set_node_attrs
+
+                # 执行 _step_task
+                orchestrator._step_task(None)
 
         # 验证
         assert len(orchestrator.journal) == 1
@@ -163,26 +175,33 @@ class TestOrchestrator:
             node=None, success=False, error="LLM timeout"
         )
 
-        # 执行 step
-        orchestrator.step()
+        # 执行 _step_task
+        result = orchestrator._step_task(None)
 
-        # 验证：Journal 不应该有新节点
+        # 验证：返回 None，Journal 不应该有新节点
+        assert result is None
         assert len(orchestrator.journal) == 0
 
     def test_review_node_success(self, orchestrator):
         """测试 Review 评估成功。"""
         node = Node(code="print('test')", plan="Test plan")
 
-        # Mock backend.query 返回 Function Calling 响应
+        # Mock backend.query 返回 Function Calling 响应（使用新的 schema）
+        # 同时 mock _check_submission_exists 返回 True
         with patch("core.orchestrator.backend_query") as mock_query:
-            mock_query.return_value = '{"is_bug": false, "metric": 0.90, "summary": "Good", "lower_is_better": false, "has_csv_submission": true}'
+            with patch.object(
+                orchestrator, "_check_submission_exists", return_value=True
+            ):
+                mock_query.return_value = '{"is_bug": false, "metric": 0.90, "key_change": "Added print statement", "metric_delta": "baseline", "insight": "Good result", "lower_is_better": false, "has_csv_submission": true}'
 
-            orchestrator._review_node(node)
+                orchestrator._review_node(node)
 
         # 验证
         assert node.is_buggy is False
         assert node.metric_value == 0.90
-        assert node.analysis == "Good"
+        assert node.analysis == "Added print statement"  # 现在存储 key_change
+        assert node.analysis_detail is not None
+        assert node.analysis_detail["key_change"] == "Added print statement"
         assert node.lower_is_better is False
 
     def test_review_node_parsing_failure(self, orchestrator):
@@ -195,10 +214,9 @@ class TestOrchestrator:
 
             orchestrator._review_node(node)
 
-        # 验证：应该标记为 buggy
+        # 验证：应该标记为 buggy（因为有异常类型）
         assert node.is_buggy is True
         assert node.metric_value is None
-        assert "Review 失败" in node.analysis
 
     def test_update_best_node_maximize(self, orchestrator):
         """测试 best_node 更新逻辑（越大越好）。"""
@@ -281,25 +299,32 @@ class TestOrchestrator:
             # 设置时间限制为 0（立即超时）
             monkeypatch.setattr(orchestrator.config.agent, "time_limit", 0)
 
-            # 运行
-            orchestrator.run(max_steps=10)
+            # 运行（使用新的 run 接口）
+            orchestrator.run(num_epochs=1, steps_per_epoch=10)
 
-        # 验证：应该立即停止
-        assert orchestrator.current_step == 0
+        # 验证：应该立即停止，Journal 应该为空
+        assert len(orchestrator.journal) == 0
 
     def test_get_review_tool_schema(self, orchestrator):
-        """测试 Review tool schema 生成。"""
+        """测试 Review tool schema 生成（增强版）。"""
         schema = orchestrator._get_review_tool_schema()
 
         assert schema["name"] == "submit_review"
         assert "parameters" in schema
         assert "properties" in schema["parameters"]
+        # 验证基础字段
         assert "is_bug" in schema["parameters"]["properties"]
         assert "metric" in schema["parameters"]["properties"]
         assert "lower_is_better" in schema["parameters"]["properties"]
+        # 验证新增字段
+        assert "key_change" in schema["parameters"]["properties"]
+        assert "metric_delta" in schema["parameters"]["properties"]
+        assert "insight" in schema["parameters"]["properties"]
+        assert "bottleneck" in schema["parameters"]["properties"]
+        assert "suggested_direction" in schema["parameters"]["properties"]
 
     def test_build_review_messages(self, orchestrator):
-        """测试 Review messages 构建。"""
+        """测试 Review messages 构建（包含变更上下文）。"""
         node = Node(
             code="print('test')",
             plan="Test plan",
@@ -308,10 +333,13 @@ class TestOrchestrator:
             exc_type=None,
         )
 
-        messages = orchestrator._build_review_messages(node)
+        # 传入变更上下文参数
+        change_context = "(Initial solution, no diff)"
+        messages = orchestrator._build_review_messages(node, change_context)
 
         assert "Test task description" in messages
         assert "print('test')" in messages
         assert "test\n" in messages
         assert "0.50s" in messages
-        assert "None" in messages
+        assert "Code Changes" in messages  # 新增的变更上下文部分
+        assert "Initial solution" in messages

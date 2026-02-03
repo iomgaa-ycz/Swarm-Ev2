@@ -77,11 +77,27 @@
 {% endif %}
 
 {% if memory %}
-# Memory
+# Evolution Log
 
-The following is a summary of past solution attempts:
+> **CRITICAL**: You MUST read and use this Evolution Log to inform your approach.
 
 {{ memory }}
+
+## Instructions for Using Evolution Log
+
+You MUST:
+1. **Read the Changelog** - Understand what changes improved/degraded performance
+2. **Respect Constraints** - NEVER repeat errors listed in Constraints section
+3. **Build on Insights** - Your approach should address identified bottlenecks
+4. **Explore New Directions** - Pick from Unexplored Directions or propose new ones
+
+Your **Thinking** section MUST reference:
+- Which insight from Changelog informed your approach
+- What specific bottleneck you're targeting
+- Why your proposed change should help
+
+**DO NOT** copy previous Thinking verbatim. Your analysis must be specific to this attempt.
+
 {% endif %}
 
 {% if data_preview %}

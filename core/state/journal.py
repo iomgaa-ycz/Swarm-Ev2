@@ -236,65 +236,127 @@ class Journal(DataClassJsonMixin):
                     parent.children_ids.append(node.id)
 
     def generate_summary(self, include_code: bool = False) -> str:
-        """生成 Journal 摘要用于 Memory 机制。
+        """生成 Evolution Log 格式的 Memory。
 
-        包含所有节点（good + buggy），因为对错误的反思也是有价值的学习模式。
+        新格式包含:
+        1. Current Best: 当前最佳方案概览
+        2. Changelog: 按时间倒序的改进记录 (类似 git log)
+        3. Constraints: 从 BUGGY 中提取的硬约束
+        4. Unexplored: 未尝试的方向建议
 
         Args:
-            include_code: 是否包含完整代码（默认 False，减少 token 消耗）
+            include_code: 是否包含完整代码
 
         Returns:
-            格式化的摘要字符串，可直接插入 prompt
-
-        时间复杂度: O(n)
-
-        示例输出:
-            >>> journal = Journal()
-            >>> node1 = Node(code="x = 1", plan="Use RF", analysis="Good", metric_value=0.85)
-            >>> node2 = Node(code="x = 2", plan="Try NN", is_buggy=True, analysis="NaN loss")
-            >>> journal.append(node1)
-            >>> journal.append(node2)
-            >>> summary = journal.generate_summary()
-            >>> print(summary)
-            Design: Use RF
-            Results: Good
-            Validation Metric: 0.85
-
-            -------------------------------
-
-            [BUGGY] Design: Try NN
-            Results: NaN loss
-            Validation Metric: None
+            格式化的 Evolution Log 字符串
         """
         if not self.nodes:
             return "No previous solutions."
 
-        summaries = []
-        for node in self.nodes:
-            parts = []
+        sections = []
 
-            # 添加 [BUGGY] 标记
-            prefix = "[BUGGY] " if node.is_buggy else ""
+        # Section 1: Current Best
+        best = self.get_best_node()
+        if best:
+            sections.append(self._format_current_best(best))
 
-            # 设计方案
-            if node.plan:
-                parts.append(f"{prefix}Design: {node.plan}")
+        # Section 2: Changelog (最近 10 条，倒序)
+        sections.append(self._format_changelog(limit=10))
 
-            # 完整代码（可选）
-            if include_code and node.code:
-                parts.append(f"Code:\n```python\n{node.code}\n```")
+        # Section 3: Constraints (从 BUGGY 提取)
+        constraints = self._extract_constraints()
+        if constraints:
+            sections.append(self._format_constraints(constraints))
 
-            # 分析结果
-            if node.analysis:
-                parts.append(f"Results: {node.analysis}")
+        # Section 4: Unexplored Directions
+        unexplored = self._collect_unexplored_directions()
+        if unexplored:
+            sections.append(self._format_unexplored(unexplored))
 
-            # 评估指标
-            metric_str = (
-                str(node.metric_value) if node.metric_value is not None else "None"
+        return "\n\n".join(sections)
+
+    def _format_current_best(self, node: "Node") -> str:
+        """格式化当前最佳方案。"""
+        detail = node.analysis_detail or {}
+        metric_str = f"{node.metric_value:.4f}" if node.metric_value else "N/A"
+        return f"""## Current Best: {metric_str} (Step {node.step}, Node {node.id[:8]})
+
+**Key Approach**: {detail.get("key_change", node.plan[:100] if node.plan else "N/A")}
+**Bottleneck**: {detail.get("bottleneck", "Unknown")}
+"""
+
+    def _format_changelog(self, limit: int = 10) -> str:
+        """格式化 Changelog (类似 git log)。"""
+        lines = ["## Changelog (Recent Changes)\n"]
+
+        # 按 step 倒序
+        sorted_nodes = sorted(self.nodes, key=lambda n: n.step, reverse=True)[:limit]
+
+        for node in sorted_nodes:
+            detail = node.analysis_detail or {}
+
+            # 状态标记
+            if node.is_buggy:
+                status = "BUGGY"
+            elif node == self.get_best_node():
+                status = "BEST"
+            else:
+                status = ""
+
+            metric_str = f"{node.metric_value:.4f}" if node.metric_value else "N/A"
+            delta_str = detail.get("metric_delta", "N/A")
+
+            lines.append(f"### Step {node.step}: {metric_str} {status}")
+            lines.append(
+                f"- **Change**: {detail.get('key_change', node.plan[:100] if node.plan else 'N/A')}"
             )
-            parts.append(f"Validation Metric: {metric_str}")
+            lines.append(f"- **Delta**: {delta_str}")
+            lines.append(f"- **Insight**: {detail.get('insight', 'N/A')}")
+            lines.append("")
 
-            if parts:
-                summaries.append("\n".join(parts))
+        return "\n".join(lines)
 
-        return "\n\n-------------------------------\n\n".join(summaries)
+    def _extract_constraints(self) -> list:
+        """从 BUGGY 节点提取硬约束。"""
+        constraints = []
+
+        for node in self.buggy_nodes:
+            detail = node.analysis_detail or {}
+
+            # 从 insight 中提取约束（如果 Review 分析了失败原因）
+            insight = detail.get("insight", "")
+            if insight and len(insight) > 10:
+                constraints.append(f"Step {node.step}: {insight[:150]}")
+            elif node.exc_type:
+                # 回退：基于异常类型生成通用约束
+                constraints.append(
+                    f"Step {node.step}: {node.exc_type} - {node.analysis[:100] if node.analysis else 'Unknown error'}"
+                )
+
+        return list(set(constraints))[:10]  # 去重，最多 10 条
+
+    def _format_constraints(self, constraints: list) -> str:
+        """格式化约束列表。"""
+        lines = ["## Constraints (Learned from Failures)\n"]
+        for c in constraints:
+            lines.append(f"- {c}")
+        return "\n".join(lines)
+
+    def _collect_unexplored_directions(self) -> list:
+        """收集未尝试的方向建议。"""
+        directions = set()
+
+        for node in self.good_nodes:
+            detail = node.analysis_detail or {}
+            suggested = detail.get("suggested_direction")
+            if suggested and len(suggested) > 5:
+                directions.add(suggested)
+
+        return list(directions)[:5]  # 最多 5 个
+
+    def _format_unexplored(self, directions: list) -> str:
+        """格式化未尝试方向。"""
+        lines = ["## Unexplored Directions\n"]
+        for d in directions:
+            lines.append(f"- [ ] {d}")
+        return "\n".join(lines)

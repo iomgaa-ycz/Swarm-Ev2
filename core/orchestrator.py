@@ -6,6 +6,7 @@
 参考: Reference/ML-Master-main/main_mcts.py
 """
 
+import difflib
 import random
 import json
 import shutil
@@ -13,6 +14,8 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from typing import Optional, Dict, List, TYPE_CHECKING
+
+from core.evolution.gene_selector import LOCUS_TO_FIELD
 
 from agents.base_agent import BaseAgent, AgentContext
 from core.state import Node, Journal
@@ -332,7 +335,7 @@ class Orchestrator:
             node.exc_info = str(exec_result.exc_info) if exec_result.exc_info else None
 
             # Phase 5: Review 评估
-            self._review_node(node)
+            self._review_node(node, parent_node=parent_node)
 
             # Phase 6: 保存节点
             with self.save_lock:
@@ -438,10 +441,90 @@ class Orchestrator:
         # 执行代码（并行安全）
         return self.interpreter.run(modified_code, node_id=node_id, reset_session=True)
 
-    def _review_node(self, node: Node) -> None:
+    def _generate_code_diff(
+        self,
+        parent_code: Optional[str],
+        current_code: str,
+        context_lines: int = 3,
+    ) -> str:
+        """生成父子代码的 unified diff。
+
+        Args:
+            parent_code: 父节点代码（None 表示首次生成）
+            current_code: 当前节点代码
+            context_lines: diff 上下文行数（默认 3）
+
+        Returns:
+            unified diff 格式字符串，首次生成返回 "(Initial solution, no diff)"
+        """
+        if parent_code is None:
+            return "(Initial solution, no diff)"
+
+        parent_lines = parent_code.splitlines(keepends=True)
+        current_lines = current_code.splitlines(keepends=True)
+
+        diff = difflib.unified_diff(
+            parent_lines,
+            current_lines,
+            fromfile="parent_solution.py",
+            tofile="current_solution.py",
+            n=context_lines,
+        )
+
+        diff_text = "".join(diff)
+
+        # 如果 diff 过长，截断并提示
+        max_diff_lines = 100
+        diff_lines = diff_text.splitlines()
+        if len(diff_lines) > max_diff_lines:
+            diff_text = "\n".join(diff_lines[:max_diff_lines])
+            diff_text += (
+                f"\n... (truncated, {len(diff_lines) - max_diff_lines} more lines)"
+            )
+
+        return diff_text if diff_text.strip() else "(No changes detected)"
+
+    def _format_gene_selection(self, gene_plan: Dict) -> str:
+        """格式化基因选择方案（用于 merge Review）。
+
+        将 gene_plan 转换为人类可读的格式，展示每个基因位点：
+        - 选自哪个父节点
+        - 具体的代码片段
+
+        Args:
+            gene_plan: 基因选择计划，包含 data_source, model_source 等字段
+
+        Returns:
+            格式化的基因选择说明字符串
+        """
+        lines = ["## Gene Selection\n"]
+
+        for field in LOCUS_TO_FIELD.values():  # data_source, model_source, ...
+            if field not in gene_plan:
+                continue
+
+            item = gene_plan[field]
+            locus = item["locus"]  # "DATA", "MODEL", ...
+            node_id = item["source_node_id"]  # 来源节点 ID
+            code = item["code"]  # 基因片段代码
+
+            lines.append(f"### {locus} (from Node {node_id[:8]})")
+            # 截断过长的代码片段，防止占用过多 token
+            code_preview = code[:500] + "..." if len(code) > 500 else code
+            lines.append(f"```python\n{code_preview}\n```\n")
+
+        return "\n".join(lines)
+
+    def _review_node(
+        self,
+        node: Node,
+        parent_node: Optional[Node] = None,
+        gene_plan: Optional[Dict] = None,
+    ) -> None:
         """Review 评估节点（多层验证 + 回退机制）。
 
         流程:
+        0. 生成变更上下文（根据任务类型选择策略）
         1. 检查 submission 文件是否存在
         2. 调用 LLM Function Calling
         3. 失败时回退到无 Tool 方案
@@ -452,14 +535,27 @@ class Orchestrator:
 
         Args:
             node: 待评估的节点对象
+            parent_node: 父节点（用于 explore/mutate 的代码 diff）
+            gene_plan: 基因选择计划（用于 merge 的变更上下文）
         """
+        # Phase 0: 生成变更上下文（根据任务类型选择策略）
+        if gene_plan:
+            # merge 模式：展示基因选择方案
+            change_context = self._format_gene_selection(gene_plan)
+        elif parent_node:
+            # explore/mutate 模式：代码 diff
+            change_context = self._generate_code_diff(parent_node.code, node.code)
+        else:
+            # 初稿模式
+            change_context = "(Initial solution, no diff)"
+
         # Phase 1: 文件存在检查
         has_submission = self._check_submission_exists(node.id)
 
         # Phase 2: LLM Function Calling
         review_data = None
         try:
-            review_data = self._call_review_with_tool(node)
+            review_data = self._call_review_with_tool(node, change_context)
         except Exception as e:
             log_msg("WARNING", f"Function Calling 失败: {e}，尝试回退方案")
 
@@ -508,7 +604,14 @@ class Orchestrator:
             node.metric_value = metric_value
 
         node.lower_is_better = review_data.get("lower_is_better", False)
-        node.analysis = review_data.get("summary", "")
+        node.analysis = review_data.get("key_change", "")  # 兼容旧字段
+        node.analysis_detail = {
+            "key_change": review_data.get("key_change", ""),
+            "metric_delta": review_data.get("metric_delta", ""),
+            "insight": review_data.get("insight", ""),
+            "bottleneck": review_data.get("bottleneck"),
+            "suggested_direction": review_data.get("suggested_direction"),
+        }
 
         log_msg(
             "INFO",
@@ -516,11 +619,12 @@ class Orchestrator:
             f"metric={node.metric_value}, lower_is_better={node.lower_is_better}",
         )
 
-    def _call_review_with_tool(self, node: Node) -> Dict:
+    def _call_review_with_tool(self, node: Node, change_context: str) -> Dict:
         """使用 Function Calling 调用 Review LLM。
 
         Args:
             node: 待评估的节点
+            change_context: 变更上下文（diff 或 gene selection）
 
         Returns:
             LLM 返回的 review 数据 dict
@@ -528,7 +632,7 @@ class Orchestrator:
         Raises:
             Exception: LLM 调用或解析失败
         """
-        messages_content = self._build_review_messages(node)
+        messages_content = self._build_review_messages(node, change_context)
         tool_schema = self._get_review_tool_schema()
 
         response = backend_query(
@@ -722,26 +826,49 @@ Please analyze and provide your JSON review:
         ratio = max(abs(best_value), abs(metric)) / min(abs(best_value), abs(metric))
         return ratio <= upper_bound
 
-    def _build_review_messages(self, node: Node) -> str:
-        """构建 Review 消息。
+    def _build_review_messages(self, node: Node, change_context: str) -> str:
+        """构建 Review 消息（包含代码变更上下文和最佳指标）。
 
         Args:
             node: 节点对象
+            change_context: 变更上下文（diff 或 gene selection）
 
         Returns:
             消息内容字符串
         """
-        return f"""You are evaluating a machine learning solution.
+        # 获取当前最佳指标
+        best_metric = self.best_node.metric_value if self.best_node else None
+        best_metric_str = f"{best_metric:.4f}" if best_metric else "N/A (first run)"
+
+        return f"""You are evaluating a machine learning solution for a Kaggle competition.
+
+**Goal**: Achieve Kaggle Gold Medal (Top 1%)
+
+**Current Best Metric**: {best_metric_str}
 
 **Task Description:**
 {self.task_desc}
 
-**Code:**
+---
+
+## Code Changes (Diff from Parent)
+
+```diff
+{change_context}
+```
+
+---
+
+## Current Solution
+
 ```python
 {node.code}
 ```
 
-**Execution Output:**
+---
+
+## Execution Output
+
 ```
 {node.term_out}
 ```
@@ -752,18 +879,28 @@ Please analyze and provide your JSON review:
 
 ---
 
-Please analyze the execution results and call the `submit_review` function with your assessment.
+## Your Task
+
+Analyze the execution results based on the **Code Changes** above. Focus on:
+
+1. **Key Change**: Summarize the main modification in 1-2 sentences (based on the diff)
+2. **Metric Delta**: Compare with Current Best ({best_metric_str})
+3. **Insight**: What did we learn from this experiment? (what worked/didn't work and why)
+4. **Bottleneck**: What is preventing better performance?
+5. **Next Direction**: What should we try next?
+
+Call `submit_review` with your detailed analysis.
 """
 
     def _get_review_tool_schema(self) -> Dict:
-        """获取 Review Function Calling 的 schema。
+        """获取 Review Function Calling 的 schema（增强版）。
 
         Returns:
             tool schema 字典
         """
         return {
             "name": "submit_review",
-            "description": "提交代码评估结果",
+            "description": "提交代码评估结果（包含详细分析）",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -775,21 +912,47 @@ Please analyze the execution results and call the `submit_review` function with 
                         "type": "boolean",
                         "description": "代码是否生成了 submission.csv 文件",
                     },
-                    "summary": {
-                        "type": "string",
-                        "description": "2-3 句话的结果摘要",
-                    },
                     "metric": {
                         "type": "number",
-                        "description": "验证集指标值（如准确率、RMSE），失败时为 null",
+                        "description": "验证集指标值（如 RMSE），失败时为 null",
                         "nullable": True,
                     },
                     "lower_is_better": {
                         "type": "boolean",
-                        "description": "指标是否越小越好（如 RMSE=true, Accuracy=false）",
+                        "description": "指标是否越小越好（如 RMSE=true）",
+                    },
+                    # ===== 新增字段 =====
+                    "key_change": {
+                        "type": "string",
+                        "description": "本次方案的核心改动点（基于 diff 总结，1-2 句话）",
+                    },
+                    "metric_delta": {
+                        "type": "string",
+                        "description": "与当前最佳的指标对比，格式: 'X.XX → Y.YY (↓Z%)'，首次运行填 'baseline'",
+                    },
+                    "insight": {
+                        "type": "string",
+                        "description": "从本次实验得到的洞察（什么有效/无效，为什么）",
+                    },
+                    "bottleneck": {
+                        "type": "string",
+                        "description": "当前方案的主要瓶颈或限制",
+                        "nullable": True,
+                    },
+                    "suggested_direction": {
+                        "type": "string",
+                        "description": "建议的下一步优化方向",
+                        "nullable": True,
                     },
                 },
-                "required": ["is_bug", "summary", "lower_is_better"],
+                "required": [
+                    "is_bug",
+                    "has_csv_submission",
+                    "lower_is_better",
+                    "key_change",
+                    "metric_delta",
+                    "insight",
+                ],
             },
         }
 
@@ -1051,8 +1214,8 @@ Please analyze the execution results and call the `submit_review` function with 
             node.exc_type = exec_result.exc_type
             node.exc_info = str(exec_result.exc_info) if exec_result.exc_info else None
 
-            # Review 评估
-            self._review_node(node)
+            # Review 评估（merge 使用基因选择方案而非代码 diff）
+            self._review_node(node, gene_plan=gene_plan)
 
             # 保存节点
             with self.save_lock:
@@ -1134,8 +1297,8 @@ Please analyze the execution results and call the `submit_review` function with 
             node.exc_type = exec_result.exc_type
             node.exc_info = str(exec_result.exc_info) if exec_result.exc_info else None
 
-            # Review 评估
-            self._review_node(node)
+            # Review 评估（mutate 使用代码 diff）
+            self._review_node(node, parent_node=parent)
 
             # 保存节点
             with self.save_lock:

@@ -2,9 +2,11 @@
 
 **Your response should contain:**
 
-1. **Thinking** (2-3 sentences, REQUIRED)
-   - Briefly state your analysis of the problem/data
-   - Identify the key insight driving your approach
+1. **Thinking** (3-5 sentences, REQUIRED)
+   - Reference specific insights from the Changelog (if available)
+   - Identify the bottleneck you're addressing
+   - Explain why your proposed change should help
+   - **DO NOT** use generic descriptions like "The dataset has X rows..."
 
 2. **A brief outline** (3-5 sentences) of your proposed solution
    - Explain the key idea and approach
@@ -18,23 +20,14 @@
 
 **CRITICAL Requirements:**
 
-- ❌ **DO NOT** include additional headings or explanations outside the code block
-- ❌ **DO NOT** add multiple code blocks or fragments
-- ✅ **DO** ensure the code is a single-file Python program
-- ✅ **DO** make the code executable without modifications
+- **DO NOT** include additional headings or explanations outside the code block
+- **DO NOT** add multiple code blocks or fragments
+- **DO** ensure the code is a single-file Python program
+- **DO** make the code executable without modifications
 
-**Example Structure:**
+**Example Thinking (DO NOT copy this content, adapt to your situation):**
 
-```
-**Thinking**: The dataset has [X rows] with [key features]. The target is [type].
-Key insight: [what pattern/approach should work well and why].
-
-I propose a solution using [technique] to address [problem]. The approach consists of:
-1) [preprocessing step], 2) [model selection], 3) [validation strategy]. This should
-achieve good performance because [reasoning].
-
-​```python
-import pandas as pd
-# ... (implementation)
-​```
-```
+> "Based on Changelog Step 8's insight that airport features improved RMSE by 12%,
+> I will explore additional location-based features. The current bottleneck is
+> long-distance prediction accuracy. I propose adding zone-based target encoding
+> to capture neighborhood-level fare patterns."
