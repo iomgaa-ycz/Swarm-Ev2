@@ -641,7 +641,6 @@ class Orchestrator:
         node.analysis = review_data.get("key_change", "")  # 兼容旧字段
         node.analysis_detail = {
             "key_change": review_data.get("key_change", ""),
-            "metric_delta": review_data.get("metric_delta", ""),
             "insight": review_data.get("insight", ""),
             "bottleneck": review_data.get("bottleneck"),
             "suggested_direction": review_data.get("suggested_direction"),
@@ -1022,10 +1021,6 @@ Call `submit_review` with your detailed analysis.
                         "type": "string",
                         "description": "本次方案的核心改动点（基于 diff 总结，1-2 句话）",
                     },
-                    "metric_delta": {
-                        "type": "string",
-                        "description": "与当前最佳的指标对比，格式: 'X.XX → Y.YY (↓Z%)'，首次运行填 'baseline'",
-                    },
                     "insight": {
                         "type": "string",
                         "description": "从本次实验得到的洞察（什么有效/无效，为什么）",
@@ -1044,9 +1039,9 @@ Call `submit_review` with your detailed analysis.
                 "required": [
                     "is_bug",
                     "has_csv_submission",
+                    "metric",
                     "lower_is_better",
                     "key_change",
-                    "metric_delta",
                     "insight",
                 ],
             },

@@ -204,7 +204,6 @@ class TestJournalGenerateSummary:
             analysis="Good solution",
             analysis_detail={
                 "key_change": "Added RandomForest model",
-                "metric_delta": "baseline",
                 "insight": "Good solution",
                 "bottleneck": None,
                 "suggested_direction": "Try XGBoost",
@@ -220,7 +219,6 @@ class TestJournalGenerateSummary:
             analysis="NaN loss detected",
             analysis_detail={
                 "key_change": "Switched to deep NN",
-                "metric_delta": "N/A",
                 "insight": "NaN loss detected due to exploding gradients",
             },
             is_buggy=True,
@@ -253,7 +251,6 @@ class TestJournalGenerateSummary:
             analysis="Success",
             analysis_detail={
                 "key_change": "Load data",
-                "metric_delta": "baseline",
                 "insight": "Success",
             },
             metric_value=0.9,
@@ -279,7 +276,6 @@ class TestJournalGenerateSummary:
             analysis="Works well",
             analysis_detail={
                 "key_change": "Good approach",
-                "metric_delta": "baseline",
                 "insight": "Works well",
             },
             metric_value=0.9,
@@ -292,7 +288,6 @@ class TestJournalGenerateSummary:
             analysis="Failed",
             analysis_detail={
                 "key_change": "Buggy approach",
-                "metric_delta": "N/A",
                 "insight": "Failed due to memory error",
             },
             is_buggy=True,

@@ -192,7 +192,7 @@ class TestOrchestrator:
             with patch.object(
                 orchestrator, "_check_submission_exists", return_value=True
             ):
-                mock_query.return_value = '{"is_bug": false, "metric": 0.90, "key_change": "Added print statement", "metric_delta": "baseline", "insight": "Good result", "lower_is_better": false, "has_csv_submission": true}'
+                mock_query.return_value = '{"is_bug": false, "metric": 0.90, "key_change": "Added print statement", "insight": "Good result", "lower_is_better": false, "has_csv_submission": true}'
 
                 orchestrator._review_node(node)
 
@@ -318,7 +318,7 @@ class TestOrchestrator:
         assert "lower_is_better" in schema["parameters"]["properties"]
         # 验证新增字段
         assert "key_change" in schema["parameters"]["properties"]
-        assert "metric_delta" in schema["parameters"]["properties"]
+        assert "metric_delta" not in schema["parameters"]["properties"]
         assert "insight" in schema["parameters"]["properties"]
         assert "bottleneck" in schema["parameters"]["properties"]
         assert "suggested_direction" in schema["parameters"]["properties"]

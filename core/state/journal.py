@@ -304,13 +304,11 @@ class Journal(DataClassJsonMixin):
                 status = ""
 
             metric_str = f"{node.metric_value:.4f}" if node.metric_value else "N/A"
-            delta_str = detail.get("metric_delta", "N/A")
 
             lines.append(f"### Step {node.step}: {metric_str} {status}")
             lines.append(
                 f"- **Change**: {detail.get('key_change', node.plan[:100] if node.plan else 'N/A')}"
             )
-            lines.append(f"- **Delta**: {delta_str}")
             lines.append(f"- **Insight**: {detail.get('insight', 'N/A')}")
             lines.append("")
 
