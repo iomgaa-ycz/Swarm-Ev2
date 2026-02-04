@@ -78,10 +78,13 @@ class Orchestrator:
             task_dispatcher: 任务分发器（Phase 3）
             experience_pool: 经验池（Phase 3）
         """
+        from utils.text_utils import compress_task_desc
+
         self.agents = agents
         self.config = config
         self.journal = journal
         self.task_desc = task_desc
+        self._task_desc_compressed = compress_task_desc(task_desc)
         self.agent_evolution = agent_evolution
         self.task_dispatcher = task_dispatcher
         self.experience_pool = experience_pool
@@ -568,7 +571,7 @@ class Orchestrator:
         }
 
         # 构建 Review 输入
-        review_input = self._build_review_messages(node, change_context)
+        review_input = self._build_review_messages(node, change_context, parent_node)
         review_debug["input"] = {
             "user_message": review_input,
             "model": self.config.llm.feedback.model,
@@ -777,9 +780,7 @@ class Orchestrator:
         return extract_review(response_text)
 
     def _build_review_prompt_without_tool(self, node: Node) -> str:
-        """构建回退方案的 Prompt（要求 LLM 输出 JSON）。
-
-        参考: ML-Master parse_exec_result_without_tool()
+        """构建回退方案的 Prompt（压缩版，要求 LLM 输出 JSON）。
 
         Args:
             node: 节点对象
@@ -787,49 +788,29 @@ class Orchestrator:
         Returns:
             Prompt 字符串
         """
-        return f"""You are evaluating a machine learning solution.
+        return f"""You are evaluating a ML solution.
 
-**Task Description:**
-{self.task_desc}
-
-**Code:**
-```python
-{node.code}
-```
+**Task Summary:**
+{self._task_desc_compressed}
 
 **Execution Output:**
 ```
 {node.term_out}
 ```
 
-**Execution Status:**
-- Execution Time: {node.exec_time:.2f}s
-- Exception: {node.exc_type or "None"}
+**Status**: Time={node.exec_time:.0f}s, Exception={node.exc_type or "None"}
 
 ---
 
-# Evaluation Instructions
-
-You must evaluate the output and submit your review in the following JSON format wrapped in ```json ... ```:
-
+Respond with JSON:
 ```json
 {{
-    "is_bug": true,
-    "has_csv_submission": false,
-    "summary": "The code encountered an error during execution. The CSV file was not generated.",
-    "metric": null,
-    "lower_is_better": true
+    "is_bug": <bool>,
+    "has_csv_submission": <bool>,
+    "metric": <number|null>,
+    "lower_is_better": <bool>
 }}
 ```
-
-**Field Descriptions:**
-- **is_bug** (boolean): true if execution failed or has bugs, otherwise false.
-- **has_csv_submission** (boolean): true if submission.csv was saved in ./submission/ directory.
-- **summary** (string): 2-3 sentences describing the results. If buggy, explain the error.
-- **metric** (number or null): The validation metric value. Set to null if execution failed.
-- **lower_is_better** (boolean): true if lower metric is better (e.g., RMSE), false otherwise (e.g., Accuracy).
-
-Please analyze and provide your JSON review:
 """
 
     def _validate_review_response(
@@ -921,71 +902,86 @@ Please analyze and provide your JSON review:
         ratio = max(abs(best_value), abs(metric)) / min(abs(best_value), abs(metric))
         return ratio <= upper_bound
 
-    def _build_review_messages(self, node: Node, change_context: str) -> str:
-        """构建 Review 消息（包含代码变更上下文和最佳指标）。
+    def _build_review_messages(
+        self,
+        node: Node,
+        change_context: str,
+        parent_node: Optional[Node] = None,
+    ) -> str:
+        """构建 Review 消息（压缩版，减少 token 消耗）。
+
+        优化点:
+        1. 使用压缩后的 task_desc（~500B vs ~7KB）
+        2. 有 Diff 时省略完整代码（节省 4-8KB）
+        3. 包含父节点基准信息（metric + 异常状态）
 
         Args:
             node: 节点对象
             change_context: 变更上下文（diff 或 gene selection）
+            parent_node: 父节点（用于基准对比）
 
         Returns:
             消息内容字符串
         """
-        # 获取当前最佳指标
         best_metric = self.best_node.metric_value if self.best_node else None
-        best_metric_str = f"{best_metric:.4f}" if best_metric else "N/A (first run)"
+        best_metric_str = f"{best_metric:.4f}" if best_metric else "N/A"
 
-        return f"""You are evaluating a machine learning solution for a Kaggle competition.
+        # 父节点基准信息
+        if parent_node:
+            p_metric = (
+                f"{parent_node.metric_value:.4f}" if parent_node.metric_value else "N/A"
+            )
+            p_exc = parent_node.exc_type or "None"
+            baseline_str = f"**Baseline (Parent)**: metric={p_metric}, exc={p_exc}"
+        else:
+            baseline_str = "**Baseline (Parent)**: N/A (Initial)"
 
-**Goal**: Achieve Kaggle Gold Medal (Top 1%)
+        # 判断是否为初稿（无 Diff）
+        is_initial = change_context == "(Initial solution, no diff)"
 
-**Current Best Metric**: {best_metric_str}
+        # 核心模板
+        prompt = f"""You are evaluating a ML solution.
 
-**Task Description:**
-{self.task_desc}
+**Task Summary:**
+{self._task_desc_compressed}
+
+{baseline_str}
+**Current Best**: {best_metric_str}
 
 ---
 
-## Code Changes (Diff from Parent)
+## Code Changes
 
 ```diff
 {change_context}
 ```
+"""
 
----
-
-## Current Solution
+        # 仅初稿时包含完整代码（因为无 Diff 可参考）
+        if is_initial:
+            prompt += f"""
+## Solution Code
 
 ```python
 {node.code}
 ```
+"""
 
----
-
+        # 执行输出（必须保留）
+        prompt += f"""
 ## Execution Output
 
 ```
 {node.term_out}
 ```
 
-**Execution Status:**
-- Execution Time: {node.exec_time:.2f}s
-- Exception: {node.exc_type or "None"}
+**Status**: Time={node.exec_time:.0f}s, Exception={node.exc_type or "None"}
 
 ---
 
-## Your Task
-
-Analyze the execution results based on the **Code Changes** above. Focus on:
-
-1. **Key Change**: Summarize the main modification in 1-2 sentences (based on the diff)
-2. **Metric Delta**: Compare with Current Best ({best_metric_str})
-3. **Insight**: What did we learn from this experiment? (what worked/didn't work and why)
-4. **Bottleneck**: What is preventing better performance?
-5. **Next Direction**: What should we try next?
-
-Call `submit_review` with your detailed analysis.
+Call `submit_review` with your analysis.
 """
+        return prompt
 
     def _get_review_tool_schema(self) -> Dict:
         """获取 Review Function Calling 的 schema（增强版）。
