@@ -139,9 +139,7 @@ class TestInitializePopulation:
             nodes.append(node)
 
         # Mock batch_generate 返回成功结果
-        results = [
-            AgentResult(node=node, success=True) for node in nodes
-        ]
+        results = [AgentResult(node=node, success=True) for node in nodes]
         mock_evaluator.batch_generate.return_value = results
 
         # Mock batch_evaluate
@@ -166,12 +164,20 @@ class TestInitializePopulation:
         # Mock batch_generate 返回部分失败结果
         nodes = [Node(id=f"node_{i}", code="test", step=i) for i in range(8)]
         for node in nodes:
-            node.genes = {"DATA": "data", "MODEL": "model", "LOSS": "loss",
-                         "OPTIMIZER": "opt", "REGULARIZATION": "reg",
-                         "INITIALIZATION": "init", "TRAINING_TRICKS": "tricks"}
+            node.genes = {
+                "DATA": "data",
+                "MODEL": "model",
+                "LOSS": "loss",
+                "OPTIMIZER": "opt",
+                "REGULARIZATION": "reg",
+                "INITIALIZATION": "init",
+                "TRAINING_TRICKS": "tricks",
+            }
 
         results = [AgentResult(node=node, success=True) for node in nodes]
-        results.extend([AgentResult(node=None, success=False, error="failed") for _ in range(4)])
+        results.extend(
+            [AgentResult(node=None, success=False, error="failed") for _ in range(4)]
+        )
 
         mock_evaluator.batch_generate.return_value = results
         mock_evaluator.batch_evaluate.side_effect = lambda nodes, step: None
@@ -251,7 +257,9 @@ class TestTournamentSelect:
 class TestCrossover:
     """测试基因交叉。"""
 
-    def test_crossover_random_strategy(self, solution_evolution, mock_task_dispatcher, mock_agents):
+    def test_crossover_random_strategy(
+        self, solution_evolution, mock_task_dispatcher, mock_agents
+    ):
         """测试随机交叉策略。"""
         solution_evolution.crossover_strategy = "random"
 
@@ -260,10 +268,18 @@ class TestCrossover:
 
         # Mock merge Agent
         child_node = Node(id="child", code="child_code", step=2)
-        child_node.genes = {"DATA": "data", "MODEL": "model", "LOSS": "loss",
-                           "OPTIMIZER": "opt", "REGULARIZATION": "reg",
-                           "INITIALIZATION": "init", "TRAINING_TRICKS": "tricks"}
-        mock_agents[0].generate.return_value = AgentResult(node=child_node, success=True)
+        child_node.genes = {
+            "DATA": "data",
+            "MODEL": "model",
+            "LOSS": "loss",
+            "OPTIMIZER": "opt",
+            "REGULARIZATION": "reg",
+            "INITIALIZATION": "init",
+            "TRAINING_TRICKS": "tricks",
+        }
+        mock_agents[0].generate.return_value = AgentResult(
+            node=child_node, success=True
+        )
         mock_task_dispatcher.select_agent.return_value = mock_agents[0]
 
         # 执行
@@ -274,7 +290,9 @@ class TestCrossover:
         assert child.id == "child"
         assert child.genes is not None
 
-    def test_crossover_failure(self, solution_evolution, mock_task_dispatcher, mock_agents):
+    def test_crossover_failure(
+        self, solution_evolution, mock_task_dispatcher, mock_agents
+    ):
         """测试交叉失败。"""
         parent_a = Node(id="parent_a", code="code_a", step=0)
         parent_b = Node(id="parent_b", code="code_b", step=1)
@@ -295,7 +313,9 @@ class TestCrossover:
 class TestMutate:
     """测试基因变异。"""
 
-    def test_mutate_success(self, solution_evolution, mock_task_dispatcher, mock_agents):
+    def test_mutate_success(
+        self, solution_evolution, mock_task_dispatcher, mock_agents
+    ):
         """测试成功变异。"""
         node = Node(id="test_node", code="original_code", step=0)
         node.genes = {"DATA": "data"}
@@ -316,7 +336,9 @@ class TestMutate:
         assert node.code == mutated_code
         assert node.plan == "mutated plan"
 
-    def test_mutate_failure(self, solution_evolution, mock_task_dispatcher, mock_agents):
+    def test_mutate_failure(
+        self, solution_evolution, mock_task_dispatcher, mock_agents
+    ):
         """测试变异失败（节点保持不变）。"""
         node = Node(id="test_node", code="original_code", step=0)
 
@@ -343,8 +365,18 @@ class TestGenerateCrossoverPlan:
         # 验证
         assert isinstance(plan, dict)
         assert len(plan) == 7  # 7 个基因位点
-        assert all(gene in plan for gene in ["DATA", "MODEL", "LOSS", "OPTIMIZER",
-                                             "REGULARIZATION", "INITIALIZATION", "TRAINING_TRICKS"])
+        assert all(
+            gene in plan
+            for gene in [
+                "DATA",
+                "MODEL",
+                "LOSS",
+                "OPTIMIZER",
+                "REGULARIZATION",
+                "INITIALIZATION",
+                "TRAINING_TRICKS",
+            ]
+        )
         assert all(choice in ["A", "B"] for choice in plan.values())
 
     def test_generate_pheromone_plan(self, solution_evolution, journal, gene_registry):
@@ -402,7 +434,9 @@ class TestRecordToExperiencePool:
 class TestStep:
     """测试完整单步进化。"""
 
-    def test_step_basic(self, solution_evolution, mock_evaluator, mock_task_dispatcher, mock_agents):
+    def test_step_basic(
+        self, solution_evolution, mock_evaluator, mock_task_dispatcher, mock_agents
+    ):
         """测试基本单步进化流程。"""
         # 初始化种群
         solution_evolution.population = []
@@ -414,9 +448,15 @@ class TestStep:
         # Mock crossover
         def mock_crossover(pa, pb, st, td):
             child = Node(id=f"child_{pa.id}_{pb.id}", code="child_code", step=100)
-            child.genes = {"DATA": "data", "MODEL": "model", "LOSS": "loss",
-                          "OPTIMIZER": "opt", "REGULARIZATION": "reg",
-                          "INITIALIZATION": "init", "TRAINING_TRICKS": "tricks"}
+            child.genes = {
+                "DATA": "data",
+                "MODEL": "model",
+                "LOSS": "loss",
+                "OPTIMIZER": "opt",
+                "REGULARIZATION": "reg",
+                "INITIALIZATION": "init",
+                "TRAINING_TRICKS": "tricks",
+            }
             return child
 
         solution_evolution._crossover = mock_crossover
@@ -497,7 +537,9 @@ class TestBuildGenePlanMarkdown:
             "TRAINING_TRICKS": "lr_schedule = True",
         }
 
-        md = solution_evolution._build_gene_plan_markdown_from_random(parent_a, parent_b)
+        md = solution_evolution._build_gene_plan_markdown_from_random(
+            parent_a, parent_b
+        )
 
         # 验证格式
         assert isinstance(md, str)
@@ -546,16 +588,32 @@ class TestBuildGenePlanMarkdown:
 
         parent_a = Node(id="aaaaaaaa", code="code_a", step=0)
         parent_a.metric_value = 0.85
-        parent_a.genes = {g: f"code_{g}" for g in [
-            "DATA", "MODEL", "LOSS", "OPTIMIZER",
-            "REGULARIZATION", "INITIALIZATION", "TRAINING_TRICKS"
-        ]}
+        parent_a.genes = {
+            g: f"code_{g}"
+            for g in [
+                "DATA",
+                "MODEL",
+                "LOSS",
+                "OPTIMIZER",
+                "REGULARIZATION",
+                "INITIALIZATION",
+                "TRAINING_TRICKS",
+            ]
+        }
         parent_b = Node(id="bbbbbbbb", code="code_b", step=1)
         parent_b.metric_value = 0.80
-        parent_b.genes = {g: f"code_{g}_b" for g in [
-            "DATA", "MODEL", "LOSS", "OPTIMIZER",
-            "REGULARIZATION", "INITIALIZATION", "TRAINING_TRICKS"
-        ]}
+        parent_b.genes = {
+            g: f"code_{g}_b"
+            for g in [
+                "DATA",
+                "MODEL",
+                "LOSS",
+                "OPTIMIZER",
+                "REGULARIZATION",
+                "INITIALIZATION",
+                "TRAINING_TRICKS",
+            ]
+        }
 
         child = solution_evolution._crossover_mvp(parent_a, parent_b)
 

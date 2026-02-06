@@ -248,8 +248,8 @@ class Interpreter:
         # 检测数据规模：提取所有数字并判断
         # 匹配 shape=(xxx, yyy) 或 xxx rows/samples 等格式
         size_patterns = [
-            r"shape.*\((\d+),",                              # DataFrame shape
-            r"(\d+)\s*(rows|samples|records|entries)",       # 行数
+            r"shape.*\((\d+),",  # DataFrame shape
+            r"(\d+)\s*(rows|samples|records|entries)",  # 行数
         ]
 
         max_size = 0
@@ -272,9 +272,9 @@ class Interpreter:
 
         # 中权重线索：训练相关操作
         medium_patterns = [
-            r"Training|Fold \d+/\d+",                       # 正在训练
-            r"Loading.*data|读取.*数据",                    # 正在加载数据
-            r"fit\(|\.fit\s*\(",                            # 模型训练
+            r"Training|Fold \d+/\d+",  # 正在训练
+            r"Loading.*data|读取.*数据",  # 正在加载数据
+            r"fit\(|\.fit\s*\(",  # 模型训练
         ]
 
         for pattern in medium_patterns:

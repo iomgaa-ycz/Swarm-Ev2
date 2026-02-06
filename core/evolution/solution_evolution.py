@@ -518,7 +518,9 @@ class SolutionEvolution:
             log_msg("INFO", f"信息素驱动交叉: {len(REQUIRED_GENES)} 个基因位点")
         else:
             # 随机策略：从两个父代中随机选基因
-            gene_plan_md = self._build_gene_plan_markdown_from_random(parent_a, parent_b)
+            gene_plan_md = self._build_gene_plan_markdown_from_random(
+                parent_a, parent_b
+            )
             log_msg("INFO", f"随机交叉: {len(REQUIRED_GENES)} 个基因位点")
 
         # 调用 Orchestrator 执行 merge 任务（gene_plan 为 Markdown 字符串）
@@ -526,9 +528,7 @@ class SolutionEvolution:
 
         return child
 
-    def _build_gene_plan_markdown_from_pheromone(
-        self, raw_plan: Dict[str, Any]
-    ) -> str:
+    def _build_gene_plan_markdown_from_pheromone(self, raw_plan: Dict[str, Any]) -> str:
         """将信息素选择结果格式化为统一 Markdown。
 
         Args:

@@ -165,7 +165,9 @@ def build_decision_gene_pools(
     pools: Dict[str, Dict[str, GeneItem]] = {locus: {} for locus in ALL_LOCI}
 
     # 处理 Journal.nodes (list)
-    nodes_iter = journal.nodes if isinstance(journal.nodes, list) else journal.nodes.values()
+    nodes_iter = (
+        journal.nodes if isinstance(journal.nodes, list) else journal.nodes.values()
+    )
     for node in nodes_iter:
         if not _is_valid_node(node):
             continue
@@ -199,7 +201,9 @@ def build_decision_gene_pools(
                 source_node_id=node.id,
                 gene_pheromone=float(gene_pheromone),
                 node_pheromone=float(node_pheromone),
-                source_score=float(node.metric_value if node.metric_value is not None else 0.0),
+                source_score=float(
+                    node.metric_value if node.metric_value is not None else 0.0
+                ),
                 created_step=int(node.step),
             )
             item.quality = _compute_quality(item)
@@ -312,4 +316,7 @@ def _compute_quality(item: GeneItem) -> float:
     Returns:
         质量值
     """
-    return QUALITY_BLEND * item.gene_pheromone + (1.0 - QUALITY_BLEND) * item.node_pheromone
+    return (
+        QUALITY_BLEND * item.gene_pheromone
+        + (1.0 - QUALITY_BLEND) * item.node_pheromone
+    )

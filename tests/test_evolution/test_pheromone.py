@@ -167,7 +167,6 @@ class TestComputeNodePheromone:
         )
 
         # step_diff = 0, recency = exp(0) = 1.0
-        import math
 
         expected = 0.5 * 0.8 + 0.3 * 0.0 + 0.2 * 1.0
 

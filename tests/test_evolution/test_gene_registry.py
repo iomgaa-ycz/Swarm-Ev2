@@ -186,9 +186,7 @@ class TestGeneRegistry:
         """测试获取不存在基因的信息素返回默认值。"""
         registry = GeneRegistry()
 
-        pheromone = registry.get_gene_pheromone(
-            "DATA", "nonexistent", default_init=0.5
-        )
+        pheromone = registry.get_gene_pheromone("DATA", "nonexistent", default_init=0.5)
 
         assert pheromone == 0.5
 

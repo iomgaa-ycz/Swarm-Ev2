@@ -1,8 +1,7 @@
 """ParallelEvaluator 模块单元测试。"""
 
 import pytest
-from unittest.mock import Mock, MagicMock, patch
-from pathlib import Path
+from unittest.mock import Mock
 
 from search.parallel_evaluator import ParallelEvaluator
 from core.state import Node

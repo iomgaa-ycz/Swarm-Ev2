@@ -67,7 +67,12 @@ class TestPromptSystemIntegration:
         """测试 Agent 配置文件存在。"""
         # 检查所有 4 个 Agent 的配置
         for agent_id in ["agent_0", "agent_1", "agent_2", "agent_3"]:
-            configs = ["role.md", "strategy_explore.md", "strategy_merge.md", "strategy_mutate.md"]
+            configs = [
+                "role.md",
+                "strategy_explore.md",
+                "strategy_merge.md",
+                "strategy_mutate.md",
+            ]
             for config in configs:
                 path = base_dir / "agent_configs" / agent_id / config
                 assert path.exists(), f"Agent 配置缺失: {agent_id}/{config}"
@@ -111,6 +116,7 @@ class TestPromptSystemIntegration:
 
     def test_build_explore_prompt_with_parent(self, prompt_manager):
         """测试构建带父节点的 Explore Prompt。"""
+
         # 创建 Mock Node
         class MockNode:
             def __init__(self):
@@ -138,7 +144,12 @@ class TestPromptSystemIntegration:
     def test_all_agents_have_configs(self, base_dir):
         """测试所有 4 个 Agent 都有完整配置。"""
         for agent_id in ["agent_0", "agent_1", "agent_2", "agent_3"]:
-            for section in ["role", "strategy_explore", "strategy_merge", "strategy_mutate"]:
+            for section in [
+                "role",
+                "strategy_explore",
+                "strategy_merge",
+                "strategy_mutate",
+            ]:
                 path = base_dir / "agent_configs" / agent_id / f"{section}.md"
                 assert path.exists(), f"{agent_id} 缺少 {section} 配置"
 

@@ -169,13 +169,18 @@ class TestSignalDetection:
     def test_estimate_oom_likelihood_high(self, interpreter):
         """测试 OOM 可能性估算（高）。"""
         # 超过 1000 万行
-        assert interpreter._estimate_oom_likelihood("Train shape: (55413942, 8)") == "high"
+        assert (
+            interpreter._estimate_oom_likelihood("Train shape: (55413942, 8)") == "high"
+        )
         assert interpreter._estimate_oom_likelihood("Loading 10000000 rows") == "high"
 
     def test_estimate_oom_likelihood_medium(self, interpreter):
         """测试 OOM 可能性估算（中）。"""
         # 超过 100 万行但不到 1000 万
-        assert interpreter._estimate_oom_likelihood("Train shape: (1500000, 8)") == "medium"
+        assert (
+            interpreter._estimate_oom_likelihood("Train shape: (1500000, 8)")
+            == "medium"
+        )
         # 训练相关操作
         assert interpreter._estimate_oom_likelihood("Fold 1/5\nTraining...") == "medium"
         assert interpreter._estimate_oom_likelihood("Loading data...") == "medium"
