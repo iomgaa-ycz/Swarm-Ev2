@@ -552,6 +552,11 @@ def main() -> None:
         # 打印进化统计
         print_evolution_statistics(journal, experience_pool, task_dispatcher, best_node)
 
+        # 保存 Journal
+        journal_path = config.project.workspace_dir / "logs" / "journal.json"
+        journal_path.write_text(journal.to_json(indent=2), encoding="utf-8")
+        log_msg("INFO", f"Journal 已保存: {journal_path}")
+
         # 保存经验池
         experience_pool.save()
         log_msg("INFO", f"经验池已保存: {experience_pool.save_path}")

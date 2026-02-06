@@ -94,8 +94,23 @@ def setup_workspace(config: Config, description: str) -> None:
     ws = config.project.workspace_dir
     data_dir = config.data.data_dir
 
-    for subdir in ["input", "working", "submission", "best_solution", "logs"]:
+    for subdir in ["input", "submission", "best_solution", "evolution"]:
         (ws / subdir).mkdir(parents=True, exist_ok=True)
+
+    # logs/ → symlink 到 /home/logs/（MLE-Bench 标准日志目录）
+    # 写入 workspace/logs/ 的文件自动落地到 /home/logs/
+    logs_target = Path("/home/logs")
+    logs_target.mkdir(parents=True, exist_ok=True)
+    logs_link = ws / "logs"
+    if not logs_link.exists():
+        logs_link.symlink_to(logs_target)
+
+    # working/ → symlink 到 /home/logs/working/（保留节点调试记录供提取）
+    working_target = logs_target / "working"
+    working_target.mkdir(parents=True, exist_ok=True)
+    working_link = ws / "working"
+    if not working_link.exists():
+        working_link.symlink_to(working_target)
 
     # 写入 description.md
     (ws / "description.md").write_text(description, encoding="utf-8")
@@ -113,7 +128,12 @@ def setup_workspace(config: Config, description: str) -> None:
 
 
 def copy_results(journal: Journal, config: Config) -> None:
-    """复制结果到 MLE-Bench 标准目录。
+    """复制结果到 MLE-Bench 标准目录并保存 Journal。
+
+    策略：
+    1. Journal → workspace/logs/journal.json（通过 symlink 自动落地到 /home/logs/）
+    2. submission.csv → /home/submission/（按 best_node.id 精确匹配）
+    3. solution.py → /home/code/
 
     Args:
         journal: Journal 实例
@@ -121,54 +141,45 @@ def copy_results(journal: Journal, config: Config) -> None:
     """
     submission_dir = Path("/home/submission")
     code_dir = Path("/home/code")
-    logs_dir = Path("/home/logs")
     ws = config.project.workspace_dir
 
     submission_dir.mkdir(parents=True, exist_ok=True)
     code_dir.mkdir(parents=True, exist_ok=True)
 
-    # 从最佳方案恢复归档
+    # [1] 保存 journal.json（通过 logs symlink 自动落地到 /home/logs/）
+    try:
+        journal_path = ws / "logs" / "journal.json"
+        journal_path.write_text(journal.to_json(indent=2), encoding="utf-8")
+        log_msg("INFO", f"Journal 已保存: {journal_path}")
+    except Exception as e:
+        log_msg("WARNING", f"Journal 保存失败: {e}")
+
+    # [2] 精确复制 submission.csv（基于 best_node.id）
     best_node = journal.get_best_node(only_good=True)
-    if best_node and getattr(best_node, "archive_path", None):
-        archive = Path(best_node.archive_path)
-        if archive.exists():
-            import zipfile
-
-            with zipfile.ZipFile(archive, "r") as zf:
-                zf.extractall(ws)
-            log_msg("INFO", f"已从归档恢复最佳方案: {archive}")
-
-    # 复制 submission.csv
     sub_file = submission_dir / "submission.csv"
-    if not sub_file.exists():
-        for candidate in [
-            ws / "submission" / "submission.csv",
-            ws / "best_solution" / "submission.csv",
-        ]:
-            if candidate.exists():
-                shutil.copy2(candidate, sub_file)
-                break
+
+    if best_node:
+        # 优先：按 node ID 精确匹配
+        precise_src = ws / "submission" / f"submission_{best_node.id}.csv"
+        if precise_src.exists():
+            shutil.copy2(precise_src, sub_file)
+            log_msg("INFO", f"提交文件就绪（精确匹配）: {precise_src.name}")
+        # 回退：best_solution 目录中的副本
+        elif (ws / "best_solution" / "submission.csv").exists():
+            shutil.copy2(ws / "best_solution" / "submission.csv", sub_file)
+            log_msg("INFO", "提交文件就绪（回退到 best_solution）")
         else:
-            # 兜底搜索
-            for found in ws.glob("**/submission.csv"):
-                shutil.copy2(found, sub_file)
-                break
-
-    if sub_file.exists():
-        log_msg("INFO", f"提交文件就绪: {sub_file}")
+            log_msg("WARNING", f"未找到 best_node {best_node.id[:8]} 的 submission.csv")
     else:
-        log_msg("WARNING", "未找到 submission.csv")
+        log_msg("WARNING", "未找到有效方案，无 submission.csv 可复制")
 
-    # 复制 solution.py
-    for src in [ws / "best_solution" / "solution.py", ws / "solution.py"]:
-        if src.exists():
-            shutil.copy2(src, code_dir / "solution.py")
-            break
+    # [3] 复制 solution.py
+    best_code = ws / "best_solution" / "solution.py"
+    if best_code.exists():
+        shutil.copy2(best_code, code_dir / "solution.py")
+        log_msg("INFO", f"代码文件就绪: {code_dir / 'solution.py'}")
 
-    # 保存 journal
-    journal_path = ws / "journal.json"
-    if journal_path.exists():
-        shutil.copy2(journal_path, logs_dir / "journal.json")
+    # 日志已通过 symlink 直接写入 /home/logs/，无需复制
 
 
 # ============================================================
