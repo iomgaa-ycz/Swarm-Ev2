@@ -133,5 +133,36 @@ def query(
         raise
 
 
+def query_with_config(
+    llm_config: Any,
+    user_message: str,
+    system_message: str | None = None,
+    temperature: float | None = None,
+    **kwargs: Any,
+) -> str:
+    """从 LLMStageConfig 直接查询（消除样板代码）。
+
+    Args:
+        llm_config: LLMStageConfig 实例（含 model/provider/api_key/base_url）
+        user_message: 用户消息
+        system_message: 系统消息（默认 None）
+        temperature: 采样温度（默认使用 config 中的值）
+        **kwargs: 额外参数传递给 query()
+
+    Returns:
+        LLM 响应文本
+    """
+    return query(
+        system_message=system_message,
+        user_message=user_message,
+        model=llm_config.model,
+        provider=llm_config.provider,
+        temperature=temperature if temperature is not None else llm_config.temperature,
+        api_key=llm_config.api_key,
+        base_url=llm_config.base_url,
+        **kwargs,
+    )
+
+
 # 导出公共接口
-__all__ = ["query", "PROVIDER_TO_QUERY"]
+__all__ = ["query", "query_with_config", "PROVIDER_TO_QUERY"]
