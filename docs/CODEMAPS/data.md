@@ -1,7 +1,8 @@
 # 数据流与配置管理
 
-**Last Updated:** 2026-02-06 (Codemap 同步: interpreter 重构 463 行)
-**模块范围:** main.py (562行), config/, .env, utils/, core/executor/, core/orchestrator.py (1437行), core/evolution/, search/, benchmark/
+**Last Updated:** 2026-02-06 (Codemap 同步: SkillManager 三组件链集成 + 死代码清理)
+**Version:** 0.4.0
+**模块范围:** main.py (584行), config/, .env, utils/, core/executor/, core/orchestrator.py (1444行), core/evolution/ (solution_evolution.py 287行), benchmark/
 **当前阶段:** Phase 3.5 Skill 进化（已完成）+ Phase 3.6 Review 系统优化
 
 ---
@@ -468,9 +469,10 @@ config.yaml --> Config 对象 --> Agent 配置
         |       Orchestrator(agent_evolution=...)  |
         |                                          |
         |  [Phase 4] 双层进化主循环                 |
-        |       orchestrator.run(epochs, steps)    |
-        |         +-- Agent 层: 任务分发 + 进化     |
-        |         +-- Solution 层: GA 操作          |
+        |       for epoch in range(num_epochs):    |
+        |         orchestrator._run_single_epoch() |
+        |         solution_evolution.run_epoch()    |
+        |         agent_evolution.evolve(epoch)     |
         |                                          |
         |  [Phase 5] 生成测试报告                   |
         |       generate_markdown_report()         |
@@ -500,23 +502,26 @@ main.py 组件初始化流程
     +-- init_logger(log_dir)
     |   初始化日志系统
     |
-    +-- Interpreter(working_dir, timeout)
-    |   代码执行沙箱
-    |
     +-- WorkspaceManager(config)
-    |   工作空间管理器
+    |   工作空间管理器（Interpreter 由 Orchestrator 内部创建）
     |
-    +-- PromptBuilder(obfuscate=False)
-    |   Prompt 构建器
+    +-- CodeEmbeddingManager(model_path=...)
+    |   向量化管理器
     |
-    +-- initialize_agents(config, prompt_builder, interpreter)
+    +-- SkillManager(skills_dir, meta_dir, config, embedding_manager)
+    |   Skill 管理器（三组件链第 1 环）
+    |
+    +-- PromptManager(template_dir, skills_dir, agent_configs_dir, skill_manager)
+    |   Prompt 管理器（三组件链第 2 环，替代旧 PromptBuilder）
+    |
+    +-- initialize_agents(config, prompt_manager)
     |   |
     |   +-- for i in range(num_agents):
-    |   |       CoderAgent(name=f"agent_{i}", ...)
+    |   |       CoderAgent(name=f"agent_{i}", config, prompt_manager)
     |   |
     |   +-- 返回 4 个 Agent 列表
     |
-    +-- initialize_evolution_components(agents, config, workspace, interpreter)
+    +-- initialize_evolution_components(agents, config, workspace, skill_manager)
     |   |
     |   +-- ExperiencePool(config)
     |   |   从 save_path 加载历史记录
@@ -527,7 +532,7 @@ main.py 组件初始化流程
     |   +-- GeneRegistry()
     |   |   初始化基因信息素
     |   |
-    |   +-- AgentEvolution(agents, experience_pool, config, skill_manager=None)
+    |   +-- AgentEvolution(agents, experience_pool, config, skill_manager)
     |   |   条件: configs_dir 存在
     |   |
     |   +-- 返回 (experience_pool, task_dispatcher, gene_registry, agent_evolution)
@@ -535,34 +540,46 @@ main.py 组件初始化流程
     +-- Journal()
     |   初始化空的历史记录
     |
-    +-- Orchestrator(agent, config, journal, task_desc, agent_evolution)
-        双层进化模式编排器
+    +-- Orchestrator(agents, config, journal, task_desc, agent_evolution,
+    |               task_dispatcher, experience_pool, gene_registry)
+    |   双层进化模式编排器（接收全部进化组件）
+    |
+    +-- SolutionEvolution(config, journal, orchestrator, gene_registry)
+        Solution 层遗传算法（MVP 简化版）
 ```
 
 **组件依赖图**:
 
 ```
-                    Config
-                      |
-        +-------------+-------------+
-        |             |             |
-   Interpreter   WorkspaceManager  PromptBuilder
-        |             |             |
-        +-------------+-------------+
-                      |
-                  initialize_agents()
-                      |
-                  [Agent_0, Agent_1, Agent_2, Agent_3]
-                      |
-              initialize_evolution_components()
-                      |
+                        Config
+                          |
+          +---------------+---------------+
+          |               |               |
+     WorkspaceManager  CodeEmbeddingManager  ...
+          |               |
+          |          SkillManager
+          |               |
+          |          PromptManager
+          |               |
+          +-------+-------+
+                  |
+            initialize_agents(config, prompt_manager)
+                  |
+            [Agent_0, Agent_1, Agent_2, Agent_3]
+                  |
+        initialize_evolution_components(agents, config, workspace, skill_manager)
+                  |
     +--------+--------+--------+--------+
     |        |        |        |        |
 ExperiencePool TaskDispatcher GeneRegistry AgentEvolution
-                      |
-                  Orchestrator
-                      |
-                  main loop
+                  |
+    Orchestrator(agents, config, journal, task_desc,
+                 agent_evolution, task_dispatcher,
+                 experience_pool, gene_registry)
+                  |
+    SolutionEvolution(config, journal, orchestrator, gene_registry)
+                  |
+              main loop
 ```
 
 ### 6.3 Prompt 系统数据流 [NEW]
@@ -673,7 +690,7 @@ TaskRecord 创建
     - agent_id: "agent_0"
     - task_type: "explore" | "merge" | "mutate"
     - input_hash: hashlib.md5(...)
-    - output_quality: normalize_fitness(metric, lower_is_better)
+    - output_quality: float (归一化适应度)
     - strategy_summary: node.plan
     - timestamp: time.time()
     |
@@ -726,12 +743,10 @@ SolutionEvolution.evolve_epoch(epoch)
     +-- 调用 Agent 生成新基因
     |
     v
-[3] 并行评估新种群
-    ParallelEvaluator.evaluate_batch(population)
-    +-- ThreadPoolExecutor (max_workers=3)
-    +-- 并发执行所有节点代码
+[3] 评估新种群
+    Orchestrator 执行并评估节点
     +-- 提取 metric_value
-    +-- 计算 fitness = normalize_fitness(metric, lower_is_better)
+    +-- 计算 fitness
     +-- 计算节点信息素
         pheromone = score_weight × score_term +
                     success_weight × success_rate +
@@ -920,11 +935,13 @@ conda run -n Swarm-Evo python main.py \
 **main.py 自动完成的工作**:
 1. 加载配置并验证数据集
 2. 构建工作空间
-3. 初始化 4 个 Agent 种群
-4. 初始化进化组件（ExperiencePool, TaskDispatcher, GeneRegistry, AgentEvolution）
-5. 运行双层进化主循环
-6. 生成 Markdown 测试报告到 `tests/outputs/`
-7. 保存经验池并打印统计信息
+3. 初始化 SkillManager 三组件链（CodeEmbeddingManager -> SkillManager -> PromptManager）
+4. 初始化 4 个 Agent 种群
+5. 初始化进化组件（ExperiencePool, TaskDispatcher, GeneRegistry, AgentEvolution）
+6. 初始化 Orchestrator + SolutionEvolution
+7. 运行双层进化主循环（Orchestrator + SolutionEvolution + AgentEvolution 交替执行）
+8. 生成 Markdown 测试报告到 `tests/outputs/`
+9. 保存经验池并打印统计信息
 
 ### 9.2 手动初始化流程（高级用法）
 
@@ -935,10 +952,11 @@ from utils.logger_system import init_logger, log_msg
 from utils.prompt_manager import PromptManager
 from agents.coder_agent import CoderAgent
 from core.state import Journal
-from core.executor.interpreter import Interpreter
 from core.orchestrator import Orchestrator
-from utils.prompt_builder import PromptBuilder
-from core.evolution import ExperiencePool, TaskDispatcher, GeneRegistry, AgentEvolution
+from core.evolution import (
+    ExperiencePool, TaskDispatcher, GeneRegistry,
+    AgentEvolution, SolutionEvolution, CodeEmbeddingManager, SkillManager,
+)
 
 # 1. 加载配置
 cfg = load_config(use_cli=True)
@@ -950,27 +968,29 @@ init_logger(cfg.project.log_dir)
 # 3. 设置工作空间
 setup_workspace(cfg)
 
-# 4. 初始化 Prompt 系统 (可选，用于高级场景)
+# 4. 初始化 SkillManager 三组件链
+base_dir = Path("benchmark/mle-bench")
+embedding_manager = CodeEmbeddingManager(model_path=None)
+skill_manager = SkillManager(
+    skills_dir=base_dir / "skills",
+    meta_dir=base_dir / "skills" / "meta",
+    config=cfg,
+    embedding_manager=embedding_manager,
+)
 prompt_manager = PromptManager(
-    template_dir=Path("benchmark/mle-bench/prompt_templates"),
-    skills_dir=Path("benchmark/mle-bench/skills"),
-    agent_configs_dir=Path("benchmark/mle-bench/agent_configs"),
+    template_dir=base_dir / "prompt_templates",
+    skills_dir=base_dir / "skills",
+    agent_configs_dir=base_dir / "agent_configs",
+    skill_manager=skill_manager,
 )
 
-# 5. 初始化 Agent 种群（双层架构）
-prompt_builder = PromptBuilder()
-interpreter = Interpreter(
-    working_dir=cfg.project.workspace_dir / "working",
-    timeout=cfg.execution.timeout,
-)
-
+# 5. 初始化 Agent 种群（Interpreter 由 Orchestrator 内部创建）
 agents = []
 for i in range(cfg.evolution.agent.num_agents):
     agent = CoderAgent(
         name=f"agent_{i}",
         config=cfg,
-        prompt_builder=prompt_builder,
-        interpreter=interpreter,
+        prompt_manager=prompt_manager,
     )
     agents.append(agent)
 
@@ -986,28 +1006,42 @@ agent_evolution = AgentEvolution(
     agents=agents,
     experience_pool=experience_pool,
     config=cfg,
-    skill_manager=None,
+    skill_manager=skill_manager,
 )
 
-# 7. 初始化 Orchestrator（双层进化模式）
+# 7. 初始化 Orchestrator + SolutionEvolution
 journal = Journal()
 task_desc = open(cfg.data.desc_file).read()
 
 orchestrator = Orchestrator(
-    agent=agents[0],  # 主 Agent
+    agents=agents,
     config=cfg,
     journal=journal,
     task_desc=task_desc,
-    agent_evolution=agent_evolution,  # 启用双层进化
+    agent_evolution=agent_evolution,
+    task_dispatcher=task_dispatcher,
+    experience_pool=experience_pool,
+    gene_registry=gene_registry,
+)
+
+solution_evolution = SolutionEvolution(
+    config=cfg,
+    journal=journal,
+    orchestrator=orchestrator,
+    gene_registry=gene_registry,
 )
 
 # 8. 运行双层进化主循环
 num_epochs = max(1, cfg.agent.max_steps // cfg.evolution.solution.steps_per_epoch)
-best_node = orchestrator.run(
-    num_epochs=num_epochs,
-    steps_per_epoch=cfg.evolution.solution.steps_per_epoch,
-)
+steps_per_epoch = cfg.evolution.solution.steps_per_epoch
 
+for epoch in range(num_epochs):
+    orchestrator._run_single_epoch(steps_per_epoch)
+    solution_evolution.run_epoch(steps_per_epoch)
+    if agent_evolution:
+        agent_evolution.evolve(epoch)
+
+best_node = journal.get_best_node(only_good=True)
 if best_node:
     print(f"最佳方案: metric={best_node.metric_value}")
 

@@ -1,55 +1,74 @@
 # Codemap 差异报告
-生成时间: 2026-02-06
+生成时间: 2026-02-06 (第二次更新)
 
 ## 变更摘要
 
-### 上次版本 (2026-02-03)
-- 项目版本: 0.3.7
-- 核心代码: ~10100 行
-- 测试文件: 36 个 (~8517 行)
-
-### 当前版本 (2026-02-06)
+### 上次版本 (2026-02-06 v0.3.8)
 - 项目版本: 0.3.8
 - 核心代码: ~10545 行
 - 测试文件: 37 个 (~8757 行)
+- 包含模块: search/ (fitness.py + parallel_evaluator.py), utils/prompt_builder.py
+
+### 当前版本 (2026-02-06 v0.4.0)
+- 项目版本: 0.4.0
+- 核心代码: ~8889 行（40 模块，排除已删除文件）
+- 测试文件: 34 个 (~7742 行)
+- 删除模块: search/ 目录, utils/prompt_builder.py
 
 ## 差异比例
 
 | 模块 | 上次行数 | 当前行数 | 变化 |
 |------|---------|---------|------|
-| main.py | 560 | 562 | +2 (+0.4%) |
-| core/orchestrator.py | 1354 | 1437 | +83 (+6.1%) |
-| core/executor/interpreter.py | 338 | 463 | +125 (+37.0%) |
-| agents/coder_agent.py | 386 | 415 | +29 (+7.5%) |
-| utils/response.py | - | 154 | 数据对齐 |
+| main.py | 562 | 584 | +22 (+3.9%) |
+| core/orchestrator.py | 1437 | 1444 | +7 (+0.5%) |
+| core/evolution/solution_evolution.py | 610 | 287 | **-323 (-53%)** |
+| core/evolution/skill_manager.py | 371 | 429 | +58 (+15.6%) |
+| core/backend/__init__.py | 137 | 168 | +31 (+22.6%) |
+| agents/coder_agent.py | 415 | 416 | +1 |
+| agents/base_agent.py | 135 | 139 | +4 |
+| core/evolution/code_embedding_manager.py | 127 | 130 | +3 |
+| core/evolution/gene_selector.py | 315 | 322 | +7 |
+| **search/fitness.py** | **81** | **已删除** | **-81** |
+| **search/parallel_evaluator.py** | **245** | **已删除** | **-245** |
+| **utils/prompt_builder.py** | **247** | **已删除** | **-247** |
 
-**总差异: ~8%** (低于 30% 阈值，自动更新)
+**总差异: ~28%** (接近 30% 阈值，需审查后更新)
 
 ## 主要变更
 
-### 1. Interpreter 并行增强 (core/executor/interpreter.py, 338→463)
-- 进程池并行执行支持扩展
-- 新增并行评估相关方法
-- 文档中旧记录 338 行，实际已增长至 463 行
+### 1. search/ 模块完全删除 (commit: 7fdb251)
+- `search/fitness.py` (81行) - 已删除
+- `search/parallel_evaluator.py` (245行) - 已删除
+- 对应的 `__init__.py` 也已清理
+- Fitness 功能可能已内联或合并到其他模块
 
-### 2. Orchestrator 信息素计算集成 (core/orchestrator.py, 1354→1437)
-- 信息素驱动交叉集成至 MVP 管线
-- 统一 Markdown gene_plan 格式
-- Prompt 压缩优化
+### 2. PromptBuilder 删除，SkillManager 三组件链集成 (commit: 5adbf9a)
+- `utils/prompt_builder.py` (247行) - 已删除
+- `main.py` 现在使用 PromptManager 替代 PromptBuilder
+- CoderAgent 构造函数参数从 `prompt_builder` 改为 `prompt_manager`
+- 新增 SkillManager 三组件链: CodeEmbeddingManager → SkillManager → PromptManager
 
-### 3. Review 系统优化
-- 新增 utils/text_utils.py (72行): Review Prompt 压缩
-- Token 消耗降低 >80%
-- Review 调试数据记录 (review.json)
+### 3. SolutionEvolution 旧方法清理 (commit: 7fdb251)
+- 从 610 行精简至 287 行 (-53%)
+- 删除了 `_evaluate_population`, `_crossover`, `_mutate` 等旧方法
+- MVP 简化：使用 Orchestrator 执行任务而非直接调用 Evaluator
+- 新增 `run_epoch()` 方法作为入口
 
-### 4. 测试新增
-- 新增 1 个测试文件 (tests/unit/test_text_utils.py)
-- 测试总行数: 8517 → 8757 (+240 行)
+### 4. main.py 架构重构
+- 不再导入 `PromptBuilder`，改用 `PromptManager`
+- 新增 `CodeEmbeddingManager`, `SkillManager`, `SolutionEvolution` 初始化
+- `initialize_agents()` 签名变更: `prompt_builder` → `prompt_manager`
+- `initialize_evolution_components()` 移除 `interpreter` 参数，新增 `skill_manager`
+- Phase 4 主循环重构: Orchestrator._run_single_epoch() + SolutionEvolution.run_epoch()
+- Orchestrator 构造参数新增 `task_dispatcher`, `experience_pool`, `gene_registry`
+
+### 5. Backend 抽象层扩展 (core/backend/__init__.py, 137→168)
+- 新增 `query_with_config()` 辅助函数 (commit: b1a56ab)
 
 ## Codemap 文档修正
 
 | 文件 | 修正内容 |
 |------|---------|
-| architecture.md | interpreter 行数 338→463, 测试统计 36→37, 代码总量 10100→10545 |
-| backend.md | interpreter 行数 338→463, orchestrator 行数 1354→1437, mermaid 图 534→1437 |
-| data.md | main.py 行数 560→562, orchestrator 行数 1354→1437 |
+| architecture.md | 删除 search/ 层引用，删除 PromptBuilder 引用，更新行数，更新架构图 |
+| backend.md | 删除 search/ 模块详情，删除 PromptBuilder 详情，更新 main.py/SolutionEvolution 说明 |
+| data.md | 更新 main.py 数据流，删除 search/ 引用，更新组件初始化流程 |
