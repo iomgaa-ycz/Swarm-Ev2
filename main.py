@@ -14,7 +14,7 @@ from typing import List, Optional, Tuple
 from utils.config import load_config, Config
 from utils.logger_system import init_logger, log_msg, log_exception, log_json
 from utils.workspace_builder import build_workspace, validate_dataset
-from utils.prompt_builder import PromptBuilder
+from utils.prompt_manager import PromptManager
 from agents.coder_agent import CoderAgent
 from agents.base_agent import BaseAgent
 
@@ -28,15 +28,17 @@ from core.evolution import (
     GeneRegistry,
     AgentEvolution,
     SolutionEvolution,
+    CodeEmbeddingManager,
+    SkillManager,
 )
 
 
-def initialize_agents(config: Config, prompt_builder: PromptBuilder) -> List[BaseAgent]:
+def initialize_agents(config: Config, prompt_manager: PromptManager) -> List[BaseAgent]:
     """初始化 Agent 种群。
 
     Args:
         config: 全局配置
-        prompt_builder: Prompt 构建器
+        prompt_manager: PromptManager 实例
 
     Returns:
         Agent 列表
@@ -48,7 +50,7 @@ def initialize_agents(config: Config, prompt_builder: PromptBuilder) -> List[Bas
         agent = CoderAgent(
             name=f"agent_{i}",
             config=config,
-            prompt_builder=prompt_builder,
+            prompt_manager=prompt_manager,
         )
         agents.append(agent)
 
@@ -60,6 +62,7 @@ def initialize_evolution_components(
     agents: List[BaseAgent],
     config: Config,
     workspace: WorkspaceManager,
+    skill_manager: Optional[SkillManager] = None,
 ) -> Tuple[ExperiencePool, TaskDispatcher, GeneRegistry, Optional[AgentEvolution]]:
     """初始化进化算法组件。
 
@@ -67,6 +70,7 @@ def initialize_evolution_components(
         agents: Agent 列表
         config: 全局配置
         workspace: 工作空间管理器
+        skill_manager: SkillManager 实例（可选）
 
     Returns:
         (experience_pool, task_dispatcher, gene_registry, agent_evolution)
@@ -95,9 +99,9 @@ def initialize_evolution_components(
             agents=agents,
             experience_pool=experience_pool,
             config=config,
-            skill_manager=None,  # 简化版本暂不使用 Skill 管理器
+            skill_manager=skill_manager,
         )
-        log_msg("INFO", "Agent 进化器初始化完成")
+        log_msg("INFO", "Agent 进化器初始化完成（Skill 进化已启用）")
     else:
         log_msg("WARNING", f"Agent 配置目录不存在，跳过 Agent 进化: {configs_dir}")
 
@@ -385,12 +389,29 @@ def main() -> None:
         # Interpreter 由 Orchestrator 内部创建和管理
         log_msg("INFO", "工作空间管理器已就绪")
 
-        # 初始化 PromptBuilder
-        prompt_builder = PromptBuilder(obfuscate=False)
-        log_msg("INFO", "Prompt 构建器初始化完成")
+        # 初始化 Skill 进化组件
+        base_dir = Path("benchmark/mle-bench")
+        embedding_manager = CodeEmbeddingManager(
+            model_path=getattr(config.evolution.skill, "embedding_model_path", None),
+        )
+        skill_manager = SkillManager(
+            skills_dir=base_dir / "skills",
+            meta_dir=base_dir / "skills" / "meta",
+            config=config,
+            embedding_manager=embedding_manager,
+        )
+        log_msg("INFO", f"SkillManager 初始化完成（已加载 {len(skill_manager.skill_index)} 个 Skill）")
 
-        # 初始化 Agent 种群（不再需要 interpreter，由 Orchestrator 管理）
-        agents = initialize_agents(config, prompt_builder)
+        # 初始化 PromptManager
+        prompt_manager = PromptManager(
+            template_dir=base_dir / "prompt_templates",
+            skills_dir=base_dir / "skills",
+            agent_configs_dir=base_dir / "agent_configs",
+            skill_manager=skill_manager,
+        )
+
+        # 初始化 Agent 种群
+        agents = initialize_agents(config, prompt_manager)
 
         # 初始化进化组件
         experience_pool, task_dispatcher, gene_registry, agent_evolution = (
@@ -398,6 +419,7 @@ def main() -> None:
                 agents=agents,
                 config=config,
                 workspace=workspace,
+                skill_manager=skill_manager,
             )
         )
 

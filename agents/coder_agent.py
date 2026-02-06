@@ -7,7 +7,7 @@ import time
 from datetime import datetime
 from typing import Optional, Tuple, Dict
 
-from core.backend import query as backend_query
+from core.backend import query_with_config
 from core.state import Node
 from utils.logger_system import log_msg, log_exception
 from utils.response import extract_code, extract_text_up_to_code
@@ -24,25 +24,18 @@ class CoderAgent(BaseAgent):
     Attributes:
         name: Agent 名称
         config: 全局配置
-        prompt_builder: Prompt 构建器
+        prompt_manager: PromptManager 实例
     """
 
-    def __init__(
-        self,
-        name: str,
-        config,
-        prompt_builder,
-        interpreter=None,  # 保留参数以兼容，但不再使用
-    ):
+    def __init__(self, name: str, config, prompt_manager):
         """初始化 CoderAgent。
 
         Args:
             name: Agent 名称
             config: 全局配置对象
-            prompt_builder: Prompt 构建器实例
-            interpreter: 已废弃，保留以兼容旧代码
+            prompt_manager: PromptManager 实例
         """
-        super().__init__(name, config, prompt_builder)
+        super().__init__(name, config, prompt_manager)
         # interpreter 不再在 Agent 内部使用，由 Orchestrator 统一管理
 
     def generate(self, context: AgentContext) -> AgentResult:
@@ -104,16 +97,21 @@ class CoderAgent(BaseAgent):
         time_remaining, steps_remaining = self._calculate_remaining(context)
 
         # Phase 2: 构建 Prompt
-        prompt = self.prompt_builder.build_explore_prompt(
-            task_desc=context.task_desc,
-            parent_node=context.parent_node,
-            memory=memory,
-            data_preview=data_preview,
-            time_remaining=time_remaining,
-            steps_remaining=steps_remaining,
-            device_info=context.device_info,
-            conda_packages=context.conda_packages,
-            conda_env_name=context.conda_env_name,
+        prompt = self.prompt_manager.build_prompt(
+            "explore",
+            self.name,
+            {
+                "task_desc": context.task_desc,
+                "parent_node": context.parent_node,
+                "memory": memory,
+                "data_preview": data_preview,
+                "time_remaining": time_remaining,
+                "steps_remaining": steps_remaining,
+                "device_info": context.device_info,
+                "conda_packages": context.conda_packages,
+                "conda_env_name": context.conda_env_name,
+                "experience_pool": getattr(context, "experience_pool", None),
+            },
         )
 
         # 记录 prompt 数据用于调试
@@ -163,15 +161,10 @@ class CoderAgent(BaseAgent):
                     f"{self.name} 调用 LLM (attempt {attempt + 1}/{max_retries})",
                 )
 
-                response = backend_query(
-                    system_message=None,
+                response = query_with_config(
+                    self.config.llm.code,
                     user_message=prompt,
-                    model=self.config.llm.code.model,
-                    provider=self.config.llm.code.provider,
-                    temperature=self.config.llm.code.temperature,
                     max_tokens=self.config.llm.code.max_tokens,
-                    api_key=self.config.llm.code.api_key,
-                    base_url=getattr(self.config.llm.code, "base_url", None),
                 )
 
                 log_msg("INFO", f"{self.name} LLM 调用成功")
@@ -284,17 +277,21 @@ class CoderAgent(BaseAgent):
         time_remaining, steps_remaining = self._calculate_remaining(context)
 
         # 构建 merge Prompt
-        prompt = self.prompt_builder.build_merge_prompt(
-            task_desc=context.task_desc,
-            parent_a=context.parent_a,
-            parent_b=context.parent_b,
-            gene_plan=context.gene_plan,
-            time_remaining=time_remaining,
-            steps_remaining=steps_remaining,
-            agent_id=self.name,
-            device_info=context.device_info,
-            conda_packages=context.conda_packages,
-            conda_env_name=context.conda_env_name,
+        prompt = self.prompt_manager.build_prompt(
+            "merge",
+            self.name,
+            {
+                "task_desc": context.task_desc,
+                "parent_a": context.parent_a,
+                "parent_b": context.parent_b,
+                "gene_plan": context.gene_plan,
+                "time_remaining": time_remaining,
+                "steps_remaining": steps_remaining,
+                "device_info": context.device_info,
+                "conda_packages": context.conda_packages,
+                "conda_env_name": context.conda_env_name,
+                "experience_pool": getattr(context, "experience_pool", None),
+            },
         )
 
         # 记录 prompt 数据用于调试
@@ -341,16 +338,20 @@ class CoderAgent(BaseAgent):
         time_remaining, steps_remaining = self._calculate_remaining(context)
 
         # 构建 mutate Prompt
-        prompt = self.prompt_builder.build_mutate_prompt(
-            task_desc=context.task_desc,
-            parent_node=context.parent_node,
-            target_gene=context.target_gene,
-            time_remaining=time_remaining,
-            steps_remaining=steps_remaining,
-            agent_id=self.name,
-            device_info=context.device_info,
-            conda_packages=context.conda_packages,
-            conda_env_name=context.conda_env_name,
+        prompt = self.prompt_manager.build_prompt(
+            "mutate",
+            self.name,
+            {
+                "task_desc": context.task_desc,
+                "parent_node": context.parent_node,
+                "target_gene": context.target_gene,
+                "time_remaining": time_remaining,
+                "steps_remaining": steps_remaining,
+                "device_info": context.device_info,
+                "conda_packages": context.conda_packages,
+                "conda_env_name": context.conda_env_name,
+                "experience_pool": getattr(context, "experience_pool", None),
+            },
         )
 
         # 记录 prompt 数据用于调试

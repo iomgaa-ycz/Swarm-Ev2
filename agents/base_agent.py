@@ -4,8 +4,8 @@
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional, Literal
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any, Optional, Literal
 
 from dataclasses_json import DataClassJsonMixin
 
@@ -13,7 +13,7 @@ from core.state import Node, Journal
 from utils.config import Config
 
 if TYPE_CHECKING:
-    from utils.prompt_builder import PromptBuilder
+    from utils.prompt_manager import PromptManager
 
 
 @dataclass
@@ -55,6 +55,10 @@ class AgentContext(DataClassJsonMixin):
     gene_plan: Optional[dict] = None
     # mutate 任务专用字段
     target_gene: Optional[str] = None
+    # 经验池（用于动态 Skill 注入）
+    experience_pool: Optional[Any] = field(
+        default=None, metadata={"dataclasses_json": {"exclude": lambda _: True}}
+    )
 
 
 @dataclass
@@ -82,20 +86,20 @@ class BaseAgent(ABC):
     Attributes:
         name: Agent 名称
         config: 全局配置
-        prompt_builder: Prompt 构建器
+        prompt_manager: Prompt 管理器
     """
 
-    def __init__(self, name: str, config: Config, prompt_builder: "PromptBuilder"):
+    def __init__(self, name: str, config: Config, prompt_manager: "PromptManager"):
         """初始化 BaseAgent。
 
         Args:
             name: Agent 名称
             config: 全局配置
-            prompt_builder: Prompt 构建器实例
+            prompt_manager: PromptManager 实例
         """
         self.name = name
         self.config = config
-        self.prompt_builder = prompt_builder
+        self.prompt_manager = prompt_manager
 
     @abstractmethod
     def generate(self, context: AgentContext) -> AgentResult:

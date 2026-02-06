@@ -400,3 +400,67 @@ class TestSkillManager:
         # 验证内容
         assert sample_skill["id"] in loaded_index
         assert loaded_index[sample_skill["id"]]["composite_score"] == 0.84
+
+    def test_merge_similar_skills(
+        self,
+        tmp_skills_dir,
+        tmp_meta_dir,
+        mock_config,
+        mock_embedding_manager,
+    ):
+        """测试合并相似 Skill（保留高分者）。"""
+        manager = SkillManager(
+            tmp_skills_dir, tmp_meta_dir, mock_config, mock_embedding_manager
+        )
+
+        # 添加两个同 task_type 的 Skill
+        skill_high = {
+            "id": "skill_explore_high_001",
+            "task_type": "explore",
+            "content": "高分策略内容",
+            "coverage": 10,
+            "avg_accuracy": 0.9,
+            "avg_generation_rate": 0.9,
+            "composite_score": 0.9,
+            "status": "candidate",
+        }
+        skill_low = {
+            "id": "skill_explore_low_002",
+            "task_type": "explore",
+            "content": "低分但相似的内容",
+            "coverage": 5,
+            "avg_accuracy": 0.6,
+            "avg_generation_rate": 0.5,
+            "composite_score": 0.56,
+            "status": "candidate",
+        }
+
+        with patch.object(manager, "_is_duplicate", return_value=False):
+            manager.add_skill(skill_high)
+            manager.add_skill(skill_low)
+
+        # Mock embedding：两个向量高度相似（余弦相似度 > 0.85）
+        same_vec = np.array([0.1, 0.2, 0.3], dtype=np.float32)
+        same_vec = same_vec / np.linalg.norm(same_vec)
+        mock_embedding_manager.embed_texts.return_value = np.array([same_vec, same_vec])
+
+        # 执行合并
+        manager._merge_similar_skills(threshold=0.85)
+
+        # 验证：高分者保留，低分者被 deprecated
+        assert manager.skill_index["skill_explore_high_001"]["status"] == "active"
+        assert manager.skill_index["skill_explore_low_002"]["status"] == "deprecated"
+
+    def test_merge_similar_skills_no_embedding_manager(
+        self,
+        tmp_skills_dir,
+        tmp_meta_dir,
+        mock_config,
+    ):
+        """测试无 embedding_manager 时跳过合并。"""
+        manager = SkillManager(
+            tmp_skills_dir, tmp_meta_dir, mock_config, embedding_manager=None
+        )
+
+        # 不应报错
+        manager._merge_similar_skills()

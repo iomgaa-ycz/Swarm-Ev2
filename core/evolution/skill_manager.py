@@ -271,7 +271,10 @@ class SkillManager:
         return False
 
     def _merge_similar_skills(self, threshold: float = None) -> None:
-        """合并相似 Skill。
+        """合并相似 Skill（保留高分者，淘汰低分者）。
+
+        同 task_type 内两两比较 embedding 相似度，
+        对超过阈值的 pair 保留 composite_score 更高者，淘汰另一个。
 
         Args:
             threshold: 相似度阈值（None 时使用配置值）
@@ -279,12 +282,67 @@ class SkillManager:
         if threshold is None:
             threshold = self.duplicate_threshold
 
+        if not self.embedding_manager:
+            log_msg("WARNING", "未配置 embedding_manager，跳过 Skill 合并")
+            return
+
         log_msg("INFO", "开始合并相似 Skill...")
 
-        # 简化实现：仅检测并标记，不执行实际合并
-        # TODO: 实现 LLM 驱动的 Skill 合并逻辑
+        # [1] 按 task_type 分组 active skill
+        groups: Dict[str, List[str]] = {}
+        for skill_id, meta in self.skill_index.items():
+            if meta.get("status") == "deprecated":
+                continue
+            task_type = meta["task_type"]
+            groups.setdefault(task_type, []).append(skill_id)
 
-        log_msg("INFO", "相似 Skill 合并完成")
+        merged_count = 0
+        deprecated_ids: set = set()
+
+        # [2] 同组内两两比较
+        for task_type, skill_ids in groups.items():
+            if len(skill_ids) < 2:
+                continue
+
+            # 批量获取 embeddings
+            contents = []
+            valid_ids = []
+            for sid in skill_ids:
+                content = self._load_skill_content(sid)
+                if content:
+                    contents.append(content)
+                    valid_ids.append(sid)
+
+            if len(valid_ids) < 2:
+                continue
+
+            embeddings = self.embedding_manager.embed_texts(contents)
+
+            # 两两比较（O(n²)，skill 数量小可接受）
+            for i in range(len(valid_ids)):
+                if valid_ids[i] in deprecated_ids:
+                    continue
+                for j in range(i + 1, len(valid_ids)):
+                    if valid_ids[j] in deprecated_ids:
+                        continue
+
+                    similarity = float(np.dot(embeddings[i], embeddings[j]))
+                    if similarity > threshold:
+                        # 保留高分者，淘汰低分者
+                        score_i = self.skill_index[valid_ids[i]]["composite_score"]
+                        score_j = self.skill_index[valid_ids[j]]["composite_score"]
+                        loser = valid_ids[j] if score_i >= score_j else valid_ids[i]
+
+                        self._move_to_deprecated(loser)
+                        deprecated_ids.add(loser)
+                        merged_count += 1
+
+                        log_msg(
+                            "INFO",
+                            f"合并 Skill: 保留高分者，淘汰 {loser}（相似度: {similarity:.3f}）",
+                        )
+
+        log_msg("INFO", f"相似 Skill 合并完成（淘汰 {merged_count} 个）")
 
     def _deprecate_low_quality_skills(self) -> None:
         """淘汰低质量 Skill。"""

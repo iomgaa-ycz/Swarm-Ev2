@@ -5,7 +5,7 @@
 """
 
 import os
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -27,43 +27,46 @@ class CodeEmbeddingManager:
     _model_name = "BAAI/bge-m3"
     _model: SentenceTransformer = None
 
-    def __init__(self) -> None:
+    def __init__(self, model_path: Optional[str] = None) -> None:
         """初始化嵌入管理器。
+
+        Args:
+            model_path: 模型路径（优先级：model_path > 环境变量 > HuggingFace 下载）
 
         注意：模型是懒加载的，首次调用 embed_texts 时才加载。
         """
-        # 实例级缓存（text -> embedding）
         self._cache: Dict[str, np.ndarray] = {}
+        self._model_path = model_path
 
-    @classmethod
-    def _ensure_model(cls) -> None:
+    def _ensure_model(self) -> None:
         """确保模型已加载（懒加载）。
 
-        优先从环境变量 LOCAL_MODEL_PATH 读取本地路径，
-        如果不存在则从 HuggingFace 下载。
+        加载优先级：构造参数 model_path > 环境变量 LOCAL_MODEL_PATH > HuggingFace 下载。
 
         Raises:
             RuntimeError: 模型加载失败
         """
-        if cls._model is not None:
+        if CodeEmbeddingManager._model is not None:
             return
 
-        # 尝试从环境变量读取本地路径
-        local_model_path = os.environ.get(
-            "LOCAL_MODEL_PATH", "./embedding-models/bge-m3"
+        # 优先级：构造参数 > 环境变量 > 默认路径
+        model_path = (
+            self._model_path
+            or os.environ.get("LOCAL_MODEL_PATH")
+            or "./embedding-models/bge-m3"
         )
 
-        if os.path.exists(local_model_path):
-            log_msg("INFO", f"从本地路径加载 bge-m3 模型: {local_model_path}")
-            cls._model = SentenceTransformer(local_model_path)
+        if os.path.exists(model_path):
+            log_msg("INFO", f"从本地路径加载 bge-m3 模型: {model_path}")
+            CodeEmbeddingManager._model = SentenceTransformer(model_path)
         else:
             log_msg(
                 "INFO",
-                f"本地模型不存在（{local_model_path}），从 HuggingFace 下载 {cls._model_name}...",
+                f"本地模型不存在（{model_path}），从 HuggingFace 下载 {self._model_name}...",
             )
-            cls._model = SentenceTransformer(cls._model_name)
+            CodeEmbeddingManager._model = SentenceTransformer(self._model_name)
 
-        cls._model.eval()
+        CodeEmbeddingManager._model.eval()
         log_msg("INFO", "bge-m3 模型加载完成")
 
     def embed_texts(self, texts: List[str]) -> np.ndarray:

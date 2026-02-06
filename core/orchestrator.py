@@ -316,7 +316,7 @@ class Orchestrator:
                 current_step = len(self.journal.nodes)
 
             context = AgentContext(
-                task_type="explore",  # 统一使用 explore，PromptBuilder 根据 parent_node 自动适配
+                task_type="explore",  # 统一使用 explore，PromptManager 根据 parent_node 自动适配
                 parent_node=parent_node,
                 journal=self.journal,
                 config=self.config,
@@ -326,6 +326,7 @@ class Orchestrator:
                 device_info=self.device_info,
                 conda_packages=self.conda_packages,
                 conda_env_name=self.conda_env_name,
+                experience_pool=self.experience_pool,
             )
 
             result = agent.generate(context)
@@ -630,10 +631,14 @@ class Orchestrator:
 
         # Phase 9: 计算节点信息素并更新基因注册表
         if self.gene_registry and not node.is_buggy and node.metric_value is not None:
-            from core.evolution.pheromone import compute_node_pheromone, ensure_node_stats
+            from core.evolution.pheromone import (
+                compute_node_pheromone,
+                ensure_node_stats,
+            )
 
             scores = [
-                n.metric_value for n in self.journal.nodes
+                n.metric_value
+                for n in self.journal.nodes
                 if not n.is_buggy and n.metric_value is not None
             ]
             if scores:
@@ -787,7 +792,7 @@ class Orchestrator:
 {node.term_out}
 ```
 
-**Status**: Time={node.exec_time:.0f}s, Exception={node.exc_type or "None"}
+**Status**: Time={node.exec_time:.2f}s, Exception={node.exc_type or "None"}
 
 ---
 
@@ -964,7 +969,7 @@ Respond with JSON:
 {node.term_out}
 ```
 
-**Status**: Time={node.exec_time:.0f}s, Exception={node.exc_type or "None"}
+**Status**: Time={node.exec_time:.2f}s, Exception={node.exc_type or "None"}
 
 ---
 
@@ -1279,6 +1284,7 @@ Call `submit_review` with your analysis.
                 parent_a=parent_a,
                 parent_b=parent_b,
                 gene_plan=gene_plan,
+                experience_pool=self.experience_pool,
             )
 
             # 生成代码
@@ -1362,6 +1368,7 @@ Call `submit_review` with your analysis.
                 conda_packages=self.conda_packages,
                 conda_env_name=self.conda_env_name,
                 target_gene=target_gene,
+                experience_pool=self.experience_pool,
             )
 
             # 生成代码
