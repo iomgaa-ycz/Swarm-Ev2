@@ -186,7 +186,7 @@ class TestInjectTopKSkills:
         pool.query.assert_called_once_with(
             task_type="explore",
             k=5,
-            filters={"output_quality": (">", 0.5)},
+            output_quality=(">", 0.5),
         )
 
         # 验证输出

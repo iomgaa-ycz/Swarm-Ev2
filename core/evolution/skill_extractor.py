@@ -11,7 +11,7 @@ import hdbscan
 
 from core.evolution.experience_pool import ExperiencePool, TaskRecord
 from core.evolution.code_embedding_manager import CodeEmbeddingManager
-from core.backend import query
+from core.backend import query_with_config
 from utils.config import Config
 from utils.logger_system import log_msg, log_json
 
@@ -239,9 +239,9 @@ class SkillExtractor:
 
         # 调用 LLM
         try:
-            response = query(
-                model=self.config.llm.code.model,
-                messages=[{"role": "user", "content": prompt}],
+            response = query_with_config(
+                self.config.llm.code,
+                user_message=prompt,
                 temperature=0.5,
             )
 

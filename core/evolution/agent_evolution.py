@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional
 
 from agents.base_agent import BaseAgent
-from core.backend import query
+from core.backend import query_with_config
 from core.evolution.experience_pool import ExperiencePool
 from utils.config import Config
 from utils.logger_system import log_msg, log_json, log_exception
@@ -212,8 +212,7 @@ class AgentEvolution:
         )
 
         # [4] LLM 生成新 Role
-        messages = [{"role": "user", "content": mutation_prompt}]
-        response = query(messages=messages, config=self.config.llm.code)
+        response = query_with_config(self.config.llm.code, user_message=mutation_prompt)
         new_role = response.strip()
 
         # [5] 写入文件
@@ -248,8 +247,7 @@ class AgentEvolution:
         )
 
         # [4] LLM 生成新 Strategy
-        messages = [{"role": "user", "content": mutation_prompt}]
-        response = query(messages=messages, config=self.config.llm.code)
+        response = query_with_config(self.config.llm.code, user_message=mutation_prompt)
         new_strategy = response.strip()
 
         # [5] 写入文件

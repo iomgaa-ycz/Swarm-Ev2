@@ -147,7 +147,7 @@ class PromptManager:
         records = experience_pool.query(
             task_type=task_type,
             k=k,
-            filters={"output_quality": (">", 0.5)},
+            output_quality=(">", 0.5),
         )
 
         if not records:

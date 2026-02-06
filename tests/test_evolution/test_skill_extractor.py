@@ -99,7 +99,7 @@ class TestSkillExtractor:
 
         assert skills == []
 
-    @patch("core.evolution.skill_extractor.query")
+    @patch("core.evolution.skill_extractor.query_with_config")
     def test_extract_skills_success(
         self, mock_query, mock_config, mock_experience_pool, sample_records
     ):
@@ -189,7 +189,7 @@ class TestSkillExtractor:
         assert clusters[1] == [3, 4]
         assert clusters[2] == [5, 6, 7]
 
-    @patch("core.evolution.skill_extractor.query")
+    @patch("core.evolution.skill_extractor.query_with_config")
     def test_summarize_cluster(self, mock_query, mock_config, mock_experience_pool):
         """测试 LLM 总结策略簇。"""
         extractor = SkillExtractor(mock_experience_pool, mock_config)
@@ -206,7 +206,7 @@ class TestSkillExtractor:
         assert "Skill" in content
         mock_query.assert_called_once()
 
-    @patch("core.evolution.skill_extractor.query")
+    @patch("core.evolution.skill_extractor.query_with_config")
     def test_summarize_cluster_llm_failure(
         self, mock_query, mock_config, mock_experience_pool
     ):

@@ -212,7 +212,7 @@ class TestAgentEvolution:
         assert "top_successes" in summary
         assert "top_failures" in summary
 
-    @patch("core.evolution.agent_evolution.query")
+    @patch("core.evolution.agent_evolution.query_with_config")
     def test_mutate_role(
         self, mock_query, mock_agents, experience_pool_with_data, mock_config, tmp_path
     ):
@@ -241,7 +241,7 @@ class TestAgentEvolution:
         new_role = (agent_2_dir / "role.md").read_text()
         assert "改进后的 Role" in new_role
 
-    @patch("core.evolution.agent_evolution.query")
+    @patch("core.evolution.agent_evolution.query_with_config")
     def test_mutate_strategy(
         self, mock_query, mock_agents, experience_pool_with_data, mock_config, tmp_path
     ):
@@ -298,7 +298,7 @@ class TestAgentEvolution:
         assert "Success 1" in prompt
         assert "Failure 1" in prompt
 
-    @patch("core.evolution.agent_evolution.query")
+    @patch("core.evolution.agent_evolution.query_with_config")
     def test_full_evolve_workflow(
         self, mock_query, mock_agents, experience_pool_with_data, mock_config, tmp_path
     ):
