@@ -122,8 +122,8 @@ def preview_csv(p: Path, file_name: str, simple: bool = True) -> str:
           - 字符串列：唯一值数量 + 前 4 个常见值
     """
     try:
-        # 先获取总行数（快速方法）
-        total_rows = get_file_len_size(p)[0]
+        # 先获取总行数（快速方法，减去 CSV 表头行）
+        total_rows = get_file_len_size(p)[0] - 1
 
         # 只读取前 1000 行用于预览（避免大文件超时）
         df = pd.read_csv(p, nrows=1000)

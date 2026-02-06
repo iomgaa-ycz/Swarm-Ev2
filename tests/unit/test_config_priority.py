@@ -3,9 +3,10 @@
 测试配置优先级: CLI 参数 > 环境变量 > YAML 配置
 """
 
-import pytest
 from pathlib import Path
 import os
+
+import pytest
 
 from utils.config import load_config
 
@@ -13,8 +14,12 @@ from utils.config import load_config
 class TestConfigPriority:
     """配置优先级测试类。"""
 
-    def test_load_config_with_env_file(self, tmp_path: Path) -> None:
+    def test_load_config_with_env_file(self, tmp_path: Path, monkeypatch: "pytest.MonkeyPatch") -> None:
         """测试从 .env 文件加载环境变量。"""
+        # 清除可能被其他测试/真实 .env 污染的环境变量，确保测试隔离
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
         # 创建测试数据目录
         test_data_dir = tmp_path / "test_data"
         test_data_dir.mkdir()
@@ -31,8 +36,8 @@ ANTHROPIC_API_KEY=sk-ant-env-key-456
 project:
   name: "Swarm-Ev2"
   version: "0.1.0"
-  workspace_dir: "{tmp_path / 'workspace'}"
-  log_dir: "{tmp_path / 'logs'}"
+  workspace_dir: "{tmp_path / "workspace"}"
+  log_dir: "{tmp_path / "logs"}"
   exp_name: null
 
 data:
@@ -114,8 +119,8 @@ logging:
 project:
   name: "Swarm-Ev2"
   version: "0.1.0"
-  workspace_dir: "{tmp_path / 'workspace'}"
-  log_dir: "{tmp_path / 'logs'}"
+  workspace_dir: "{tmp_path / "workspace"}"
+  log_dir: "{tmp_path / "logs"}"
   exp_name: null
 
 data:
@@ -191,8 +196,8 @@ logging:
 project:
   name: "Swarm-Ev2"
   version: "0.1.0"
-  workspace_dir: "{tmp_path / 'workspace'}"
-  log_dir: "{tmp_path / 'logs'}"
+  workspace_dir: "{tmp_path / "workspace"}"
+  log_dir: "{tmp_path / "logs"}"
   exp_name: null
 
 data:
@@ -269,8 +274,8 @@ logging:
 project:
   name: "yaml-name"
   version: "0.1.0"
-  workspace_dir: "{tmp_path / 'workspace'}"
-  log_dir: "{tmp_path / 'logs'}"
+  workspace_dir: "{tmp_path / "workspace"}"
+  log_dir: "{tmp_path / "logs"}"
   exp_name: null
 
 data:
