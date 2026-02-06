@@ -79,25 +79,28 @@ def _setup_input_data(data_dir: Path, input_dir: Path, copy_data: bool) -> None:
         input_dir: 输入目标目录
         copy_data: 是否复制数据（False 时使用软链接）
     """
-    data_files = [
-        f for f in data_dir.iterdir() if f.name != "description.md" and f.is_file()
-    ]
+    data_items = [f for f in data_dir.iterdir() if f.name != "description.md"]
 
-    for data_file in data_files:
-        target_path = input_dir / data_file.name
+    for item in data_items:
+        target_path = input_dir / item.name
 
         # 如果已存在，先删除
         if target_path.exists() or target_path.is_symlink():
-            target_path.unlink()
+            if target_path.is_dir() and not target_path.is_symlink():
+                shutil.rmtree(target_path)
+            else:
+                target_path.unlink()
 
         if copy_data:
-            # 复制数据
-            shutil.copy2(data_file, target_path)
-            log_msg("INFO", f"  [COPY] {data_file.name}")
+            if item.is_dir():
+                shutil.copytree(item, target_path)
+            else:
+                shutil.copy2(item, target_path)
+            log_msg("INFO", f"  [COPY] {item.name}")
         else:
-            # 创建软链接
-            target_path.symlink_to(data_file.resolve())
-            log_msg("INFO", f"  [LINK] {data_file.name}")
+            # 创建软链接（文件和目录均可）
+            target_path.symlink_to(item.resolve())
+            log_msg("INFO", f"  [LINK] {item.name}")
 
 
 def validate_dataset(data_dir: Path) -> Tuple[bool, str]:
@@ -119,9 +122,13 @@ def validate_dataset(data_dir: Path) -> Tuple[bool, str]:
         if not (data_dir / filename).exists():
             return False, f"缺少必需文件: {filename}"
 
-    # Phase 3: 检查数据文件（至少有一个 .csv 文件）
-    csv_files = list(data_dir.glob("*.csv"))
-    if not csv_files:
-        return False, "未找到任何 CSV 数据文件"
+    # Phase 3: 检查数据文件（至少有一个数据文件或子目录）
+    data_items = [
+        f
+        for f in data_dir.iterdir()
+        if f.name != "description.md" and not f.name.startswith(".")
+    ]
+    if not data_items:
+        return False, "未找到任何数据文件或子目录"
 
     return True, ""

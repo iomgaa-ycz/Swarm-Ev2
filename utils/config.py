@@ -306,17 +306,21 @@ def validate_config(cfg: DictConfig) -> Config:
         log_msg("ERROR", error_msg)
         raise ValueError(error_msg)
 
-    # 自动设置 desc_file（如果未提供且存在 description.md）
+    # 自动设置 desc_file（如果未提供，按优先级搜索多个候选路径）
     if cfg.data.desc_file is None:
-        auto_desc_file = cfg.data.data_dir / "description.md"
-        if auto_desc_file.exists():
-            cfg.data.desc_file = auto_desc_file
-            log_msg("INFO", f"自动设置 desc_file: {auto_desc_file}")
+        desc_candidates = [
+            cfg.data.data_dir / "description.md",
+            Path("/home/description.md"),  # MLE-Bench 容器路径
+            Path("/home/data/description.md"),
+        ]
+        for candidate in desc_candidates:
+            if candidate.exists():
+                cfg.data.desc_file = candidate
+                log_msg("INFO", f"自动设置 desc_file: {candidate}")
+                break
 
     if cfg.data.desc_file is None and cfg.data.goal is None:
-        error_msg = "必须提供 `data.desc_file` 或 `data.goal` 之一"
-        log_msg("ERROR", error_msg)
-        raise ValueError(error_msg)
+        log_msg("WARNING", "未找到 desc_file 或 goal，适配器将尝试单独处理描述文件")
 
     # ---- 路径解析和创建 ----
     # 解析其他路径

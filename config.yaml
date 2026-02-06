@@ -1,0 +1,27 @@
+vars:
+  time_limit: &time_limit 43200
+  step_limit: &step_limit 100
+
+defaults: &defaults
+  start: swarm-evo/start.sh
+  dockerfile: swarm-evo/Dockerfile
+  env_vars: &env_vars
+    TIME_LIMIT_SECS: *time_limit
+    STEP_LIMIT: *step_limit
+
+swarm-evo:
+  <<: *defaults
+  env_vars:
+    <<: *env_vars
+    API_KEY: ${{ secrets.API_KEY }}
+    API_BASE: ${{ secrets.API_BASE }}
+    MODEL_NAME: ${{ secrets.MODEL_NAME }}
+
+swarm-evo/dev:
+  <<: *defaults
+  env_vars:
+    <<: *env_vars
+    API_KEY: ${{ secrets.API_KEY }}
+    API_BASE: ${{ secrets.API_BASE }}
+    MODEL_NAME: ${{ secrets.MODEL_NAME }}
+    STEP_LIMIT: 10

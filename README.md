@@ -280,6 +280,119 @@ open htmlcov/index.html  # 查看覆盖率报告
 
 ---
 
+## MLE-Bench 评测
+
+MLE-Bench 是由 OpenAI 构建的机器学习工程能力评估基准，涵盖 75 个真实 Kaggle 竞赛，要求 Agent 在标准化 Docker 容器环境中完成从数据理解、特征工程到模型训练与提交的全流程。Swarm-Ev2 通过 `run_mle_adapter.py` 适配器桥接 MLE-Bench 容器环境与双层进化主循环。
+
+### 前置条件
+
+- Docker Desktop（已启用）
+- Kaggle 账号及 API 凭证
+- 足够的磁盘空间（Lite 版数据集约 158GB）
+
+### 配置步骤
+
+1. **克隆 MLE-Bench 仓库**
+
+```bash
+cd ..
+git clone https://github.com/openai/mle-bench.git
+cd mle-bench
+```
+
+2. **修改容器配置**
+
+编辑 `environment/config/container_configs/default.json`，替换为：
+
+```json
+{
+    "gpus": 1,
+    "mem_limit": null,
+    "shm_size": "4G",
+    "nano_cpus": 4e9,
+    "runtime": "runc"
+}
+```
+
+3. **构建 MLE-Bench 基础镜像**（仅需一次）
+
+```bash
+docker build --platform=linux/amd64 -t mlebench-env -f environment/Dockerfile .
+```
+
+4. **配置 Kaggle 凭证**
+
+从 https://www.kaggle.com/account 下载 `kaggle.json`：
+
+```bash
+mkdir -p ~/.kaggle
+cp /path/to/kaggle.json ~/.kaggle/
+chmod 600 ~/.kaggle/kaggle.json
+```
+
+5. **下载 MLE-Bench 数据集**
+
+```bash
+conda create -n mlebench python=3.11 -y
+conda activate mlebench
+pip install -e .
+mlebench prepare --lite
+```
+
+6. **构建 Swarm-Ev2 Agent 镜像**（每次更新代码后需重新构建）
+
+```bash
+# 将 Swarm-Ev2 代码同步到 mle-bench 的 agents 目录
+rsync -av --progress \
+  --exclude='workspace' --exclude='.git' --exclude='Reference' \
+  ../Swarm-Ev2/ ./agents/swarm-evo/
+
+# 构建 Agent 镜像
+docker build --no-cache -t swarm-evo ./agents/swarm-evo
+```
+
+7. **运行评测**
+
+```bash
+API_KEY="your-api-key" \
+API_BASE="https://api.openai.com/v1" \
+MODEL_NAME="gpt-4-turbo" \
+python run_agent.py \
+  --agent-id swarm-evo \
+  --competition-set experiments/splits/low.txt \
+  --n-workers 4
+```
+
+### 关键文件说明
+
+| 文件 | 说明 |
+|------|------|
+| `Dockerfile` | Agent 容器构建文件，基于 `mlebench-env` 基础镜像 |
+| `start.sh` | 容器内入口脚本，激活 conda 环境并启动适配器 |
+| `run_mle_adapter.py` | MLE-Bench 适配器，桥接环境变量、构建工作空间、运行进化主循环 |
+| `config.yaml` | MLE-Bench Agent 注册配置（时间限制、环境变量等） |
+| `config/mle_bench.yaml` | 容器内专用运行配置（路径、LLM、进化参数） |
+| `requirements_agent.txt` | 容器内额外 Python 依赖 |
+| `scripts/download_model.py` | 构建阶段预下载 BGE-M3 Embedding 模型 |
+
+### 环境变量映射
+
+适配器会自动将 MLE-Bench 环境变量映射为 Swarm-Ev2 格式：
+
+| MLE-Bench 变量 | Swarm-Ev2 变量 | 说明 |
+|----------------|---------------|------|
+| `API_KEY` | `OPENAI_API_KEY` | LLM API 密钥 |
+| `API_BASE` | `OPENAI_BASE_URL` | LLM API 地址 |
+| `MODEL_NAME` | `LLM_MODEL` | 模型名称 |
+
+### 注意事项
+
+- 基础镜像 `mlebench-env` 仅需构建一次，Agent 镜像在代码更新后需重新构建
+- 如果使用智谱 GLM 等兼容 OpenAI 格式的模型，修改 `API_BASE` 和 `MODEL_NAME` 即可
+- `config/mle_bench.yaml` 中的路径已适配容器环境（`/home/` 前缀），无需修改
+
+---
+
 ## 贡献指南
 
 ### 开发工作流

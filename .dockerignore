@@ -1,0 +1,15 @@
+.git
+workspace
+logs
+tests
+docs
+Reference
+embedding-models
+datasets
+__pycache__
+*.pyc
+.DS_Store
+.vscode
+.env
+draft.md
+implementation_plan.md

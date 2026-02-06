@@ -1,0 +1,92 @@
+# Swarm-Ev2 MLE-Bench 容器专用配置
+# 基于 default.yaml，覆盖容器路径和 MLE-Bench 环境变量
+
+project:
+  name: "Swarm-Ev2"
+  version: "0.1.0"
+  workspace_dir: "/home/workspace"
+  log_dir: "/home/logs"
+  exp_name: null
+
+data:
+  data_dir: "/home/data"
+  desc_file: null
+  goal: null
+  eval: null
+  preprocess_data: true
+  copy_data: false
+
+llm:
+  code:
+    provider: ${env:LLM_PROVIDER, "openai"}
+    model: ${env:LLM_MODEL, "gpt-4-turbo"}
+    temperature: 0.5
+    api_key: ${env:OPENAI_API_KEY}
+    base_url: ${env:OPENAI_BASE_URL, "https://api.openai.com/v1"}
+    max_tokens: ${env:MAX_TOKENS, null}
+  feedback:
+    provider: ${env:LLM_PROVIDER, "openai"}
+    model: ${env:LLM_MODEL, "gpt-4-turbo"}
+    temperature: 0.5
+    api_key: ${env:OPENAI_API_KEY}
+    base_url: ${env:OPENAI_BASE_URL, "https://api.openai.com/v1"}
+    max_tokens: ${env:MAX_TOKENS, null}
+
+execution:
+  timeout: 3600
+  agent_file_name: "runfile.py"
+  format_tb_ipython: false
+
+agent:
+  max_steps: ${env:STEP_LIMIT, 100}
+  time_limit: ${env:TIME_LIMIT_SECS, 43200}
+  k_fold_validation: 5
+  expose_prediction: false
+  data_preview: true
+  convert_system_to_user: false
+
+search:
+  strategy: "mcts"
+  max_debug_depth: 3
+  debug_prob: 0.5
+  num_drafts: 5
+  parallel_num: 2
+
+environment:
+  conda_env_name: "agent"
+
+logging:
+  level: "INFO"
+  console_output: true
+  file_output: true
+
+evolution:
+  experience_pool:
+    max_records: 10000
+    top_k: 5
+    save_path: "/home/workspace/evolution/experience_pool.json"
+
+  solution:
+    population_size: 12
+    elite_size: 3
+    crossover_rate: 0.8
+    mutation_rate: 0.2
+    tournament_k: 3
+    steps_per_epoch: 10
+    crossover_strategy: "random"
+
+  agent:
+    num_agents: 4
+    evolution_interval: 3
+    epsilon: 0.3
+    learning_rate: 0.3
+    configs_dir: "/home/agent/benchmark/mle-bench/agent_configs"
+    min_records_for_evolution: 20
+
+  skill:
+    min_cluster_size: 5
+    duplicate_threshold: 0.85
+    min_composite_score: 0.5
+    deprecate_threshold: 0.4
+    unused_epochs: 5
+    embedding_model_path: "/home/agent/embedding-models/bge-m3"
