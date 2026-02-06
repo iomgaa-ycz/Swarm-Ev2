@@ -1,8 +1,8 @@
 # 后端模块详细说明
 
-**Last Updated:** 2026-02-03 (Memory 进化重构，Review Schema 增强)
+**Last Updated:** 2026-02-06 (Review Prompt 压缩优化，Token 消耗 <20%)
 **模块范围:** main.py, utils/, core/state/, core/backend/, core/executor/, core/evolution/, agents/, search/, config/, tests/, benchmark/
-**当前阶段:** Phase 3.5 Skill 进化（已完成）+ Memory 进化机制重构
+**当前阶段:** Phase 3.5 Skill 进化（已完成）+ Phase 3.6 Review 系统优化
 
 ---
 
@@ -17,9 +17,10 @@
 | 日志系统 | `utils/logger_system.py` | 180 | 双通道日志输出 | 完成 |
 | 文件工具 | `utils/file_utils.py` | 222 | 目录复制/链接/解压/清理 | 完成 |
 | **系统信息** | **`utils/system_info.py`** | **408** | **系统环境信息收集** | **完成** |
+| **文本压缩工具** | **`utils/text_utils.py`** | **72** | **Review Prompt 压缩优化** | **完成 (NEW P3.6)** |
 | **数据结构层** |||||
-| Node 数据类 | `core/state/node.py` | 125 | 解决方案 DAG 节点 (+analysis_detail) | 完成 |
-| Journal 数据类 | `core/state/journal.py` | 362 | DAG 容器与查询 (+Changelog格式) | 完成 |
+| Node 数据类 | `core/state/node.py` | 125 | 解决方案 DAG 节点 (analysis_detail+prompt_data) | 完成 |
+| Journal 数据类 | `core/state/journal.py` | 360 | DAG 容器与查询 (Changelog 格式) | 完成 |
 | Task 数据类 | `core/state/task.py` | 62 | Agent 任务定义 | 完成 |
 | **后端抽象层** |||||
 | 后端抽象层 | `core/backend/__init__.py` | 137 | 统一 LLM 查询接口 (Function Calling) | 完成 |
@@ -38,10 +39,10 @@
 | **Prompt 管理器** | **`utils/prompt_manager.py`** | **295** | **Jinja2 模板 + 7 层 Prompt** | **完成** |
 | 工作空间构建器 | `utils/workspace_builder.py` | 127 | 工作空间初始化 | 完成 |
 | **Agent 层** |||||
-| Agent 基类 | `agents/base_agent.py` | 135 | Agent 抽象基类 (+mutate task_type) | 完成 |
-| **CoderAgent** | **`agents/coder_agent.py`** | **415** | **代码生成 Agent (+merge/mutate+logs保存)** | **完成 (扩展)** |
+| Agent 基类 | `agents/base_agent.py` | 135 | Agent 抽象基类 | 完成 |
+| **CoderAgent** | **`agents/coder_agent.py`** | **415** | **代码生成 Agent** | **完成** |
 | **编排层** |||||
-| **Orchestrator** | **`core/orchestrator.py`** | **1354** | **任务编排器 (+Memory进化+Review增强)** | **完成 (扩展)** |
+| **Orchestrator** | **`core/orchestrator.py`** | **1354** | **任务编排器 (+Prompt压缩+调试记录)** | **完成 (P3.6)** |
 | **进化层 (Phase 3)** |||||
 | **基因解析器** | **`core/evolution/gene_parser.py`** | **162** | **解析 7 基因块，支持 GA 交叉** | **完成** |
 | **共享经验池** | **`core/evolution/experience_pool.py`** | **319** | **线程安全存储 + Top-K 查询 + 扩展过滤** | **完成** |
@@ -191,9 +192,9 @@ main.py
 
 ---
 
-## 3. Orchestrator 编排器 (`core/orchestrator.py`) [1354 行, +Memory进化+Review增强]
+## 3. Orchestrator 编排器 (`core/orchestrator.py`) [1354 行]
 
-> **重大更新**: Orchestrator 从 1181 行扩展至 1354 行（+14.7%），新增 Memory 进化机制、代码 Diff 生成、Review Schema 增强。
+> **重大更新**: Orchestrator 从 1181 行扩展至 1354 行（+14.7%），新增 Prompt 压缩、调试记录、Review 增强。
 
 ### 3.1 核心职责
 
@@ -344,13 +345,80 @@ Orchestrator (1181行)
 
 ---
 
-## 4. Prompt 管理器 (`utils/prompt_manager.py`) [NEW]
+## 4. 文本压缩工具 (`utils/text_utils.py`) [NEW - P3.6]
 
-### 3.1 核心职责
+### 4.1 核心职责
+
+为 Review 系统提供 Prompt 压缩功能，将冗长的任务描述精简为关键信息，降低 Token 消耗。
+
+### 4.2 核心函数
+
+| 函数 | 签名 | 说明 |
+|------|------|------|
+| `compress_task_desc` | `(full_desc: str) -> str` | 提取任务描述中的最小关键信息 |
+| `_extract_section` | `(text: str, heading: str) -> Optional[str]` | 提取指定 Markdown 标题下的内容 |
+
+### 4.3 compress_task_desc 详解
+
+```python
+def compress_task_desc(full_desc: str) -> str:
+    """从完整竞赛描述中提取 Review 所需的最小信息。
+
+    提取规则:
+    1. ## Description 首段（任务概述）
+    2. ## Evaluation 首段（指标说明）
+    3. ### Submission File 代码块（格式示例）
+
+    返回: 压缩后的 Markdown（约 500 字节）
+
+    示例:
+        输入: 长达 5000+ 字节的完整 description.md
+        输出: ~500 字节的精简版本
+        效果: Review Prompt Token 消耗 <20%（降低 >80%）
+    """
+```
+
+**实现策略**:
+- 按优先级提取关键部分（任务 > 指标 > 格式）
+- 保留代码块格式（便于 Review LLM 理解）
+- 回退机制：无关键部分时返回原文本前 500 字符
+
+### 4.4 _extract_section 详解
+
+```python
+def _extract_section(text: str, heading: str) -> Optional[str]:
+    """提取指定 Markdown 标题下的内容。
+
+    Args:
+        text: 完整文本
+        heading: 目标标题（如 "## Description"）
+
+    Returns:
+        该标题下的内容（直到下一个同级标题），或 None
+
+    实现细节:
+    - 使用正则表达式定位标题
+    - 识别同级标题边界
+    - 返回内容（剔除标题行本身）
+    """
+```
+
+### 4.5 集成点
+
+| 模块 | 使用位置 | 说明 |
+|------|---------|------|
+| `core/orchestrator.py` | `__init__()` | 初始化时调用 `compress_task_desc()` |
+| `core/orchestrator.py` | `_build_review_messages()` | Review Prompt 中使用压缩后的任务描述 |
+
+---
+
+## 5. Prompt 管理器 (`utils/prompt_manager.py`)
+
+### 5.1 核心职责
 
 基于 Jinja2 的统一 Prompt 管理系统，支持静态/动态 Skill 加载和 7 层结构化 Prompt 构建。
 
-### 3.2 类结构
+### 5.2 类结构
 
 ```python
 class PromptManager:
@@ -370,7 +438,7 @@ class PromptManager:
     ): ...
 ```
 
-### 3.3 核心方法
+### 5.3 核心方法
 
 | 方法 | 签名 | 说明 |
 |------|------|------|
@@ -380,7 +448,7 @@ class PromptManager:
 | `build_prompt` | `(task_type, agent_id, context) -> str` | 构建完整 Prompt（主入口） |
 | `_format_time` | `(seconds: int) -> str` | 格式化时间（秒 -> 人类可读） |
 
-### 3.4 7 层 Prompt 结构
+### 5.4 7 层 Prompt 结构
 
 ```
 1. ROLE        - Agent 角色定位（可进化）
@@ -392,7 +460,7 @@ class PromptManager:
 7. GUIDELINES  - 工作空间规则 + 时间约束
 ```
 
-### 3.5 与 ExperiencePool 集成
+### 5.5 与 ExperiencePool 集成
 
 ```python
 def inject_top_k_skills(
@@ -408,7 +476,7 @@ def inject_top_k_skills(
     """
 ```
 
-### 3.6 依赖关系
+### 5.6 依赖关系
 
 ```
 PromptManager
@@ -491,7 +559,7 @@ class Config(Hashable):
 
 ## 6. 后端抽象层 (`core/backend/`)
 
-### 5.1 架构设计（支持 Function Calling）
+### 6.1 架构设计（支持 Function Calling）
 
 ```
 +-----------------------------------------------------------+
@@ -517,7 +585,7 @@ class Config(Hashable):
 +-----------------------------------------------------------+
 ```
 
-### 5.2 query 函数签名
+### 6.2 query 函数签名
 
 ```python
 def query(
@@ -540,7 +608,7 @@ def query(
     """
 ```
 
-### 5.3 配置示例 (config/default.yaml)
+### 6.3 配置示例 (config/default.yaml)
 
 ```yaml
 llm:

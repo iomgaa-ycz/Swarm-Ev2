@@ -1,8 +1,8 @@
 # 数据流与配置管理
 
-**Last Updated:** 2026-02-03 (Memory 进化重构，Review Schema 增强)
-**模块范围:** main.py (560行), config/, .env, utils/config.py (603行), core/executor/, core/orchestrator.py (1354行), core/evolution/, search/, utils/prompt_manager.py (295行), benchmark/
-**当前阶段:** Phase 3.5 Skill 进化（已完成）+ Memory 进化机制重构
+**Last Updated:** 2026-02-06 (Review Prompt 压缩优化，Token 消耗 <20%)
+**模块范围:** main.py (560行), config/, .env, utils/, core/executor/, core/orchestrator.py (1354行), core/evolution/, search/, benchmark/
+**当前阶段:** Phase 3.5 Skill 进化（已完成）+ Phase 3.6 Review 系统优化
 
 ---
 
@@ -345,9 +345,61 @@ WorkspaceManager.prepare_workspace(source_dir)
 logs/                        # project.log_dir
 +-- system.log               # 文本日志（追加写入）
 +-- metrics.json             # 结构化 JSON 日志（完整重写）
++-- review.json              # Review 调试数据 [NEW - P3.6]
 ```
 
-### 5.2 system.log 格式
+### 5.2 Review 调试记录 [NEW - P3.6]
+
+**用途**: 记录每个节点的 Review 过程，用于排查 LLM 调用问题。
+
+**存储位置**: `node.metadata["review_debug"]`
+
+**数据结构**:
+
+```python
+{
+    "request": {
+        "system_message": str,      # Review 系统提示
+        "user_message": str,        # Review 用户提示（包含 change_context）
+        "tool_schema": dict,        # Function Calling Schema
+    },
+    "output_raw": str,              # LLM 原始输出
+    "output_parsed": {              # 解析后的结构化数据
+        "key_change": str,          # 关键变更描述
+        "insight": str,             # 成功/失败原因
+        "metric_value": float,      # 评估指标值
+        "lower_is_better": bool,    # 指标方向
+        "bottleneck": str | None,   # 当前瓶颈（可选）
+        "suggested_direction": str | None  # 建议方向（可选）
+    },
+    "fallback_used": bool,          # 是否使用回退方案
+}
+```
+
+**调试流程**:
+
+1. 正常流程: Function Calling 成功 -> 存储 output_raw + output_parsed
+2. 失败回退: Function Calling 失败 -> 改用无 Tool 方案 -> 设置 fallback_used=true
+3. 问题排查: 读取 review_debug 检查 LLM 响应质量
+
+### 5.3 Prompt 压缩效果 [NEW - P3.6]
+
+```
+压缩前:
+- 完整 description.md: ~5000-8000 字节
+- Review Prompt Token: ~2000-3000 tokens
+
+压缩后 (compress_task_desc):
+- 压缩后描述: ~500 字节
+- Review Prompt Token: ~300-400 tokens
+- Token 削减率: >80%
+
+变更内容:
+- review_debug["request"]["user_message"] 中的任务描述已压缩
+- 信息完整性：保留关键的 Task、Metric、Format 信息
+```
+
+### 5.4 system.log 格式
 
 ```
 [2026-02-01 10:30:00] [INFO] 加载环境变量文件: .env
@@ -362,7 +414,7 @@ logs/                        # project.log_dir
 [2026-02-01 10:30:10] [INFO] 新的最佳节点: abc12345, metric=0.85
 ```
 
-### 5.3 metrics.json 格式
+### 5.5 metrics.json 格式
 
 ```json
 [

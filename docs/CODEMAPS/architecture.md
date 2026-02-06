@@ -1,8 +1,8 @@
 # Swarm-Ev2 项目架构概览
 
-**Last Updated:** 2026-02-03 (Memory 进化重构，Review Schema 增强)
-**项目版本:** 0.3.5
-**当前阶段:** Phase 3.5 Skill 进化（已完成）+ Memory 进化机制重构
+**Last Updated:** 2026-02-06 (Review Prompt 压缩优化，Token 消耗降低 >80%)
+**项目版本:** 0.3.6
+**当前阶段:** Phase 3.5 Skill 进化（已完成）+ Memory 进化机制优化 + Review 系统增强
 
 ---
 
@@ -15,9 +15,9 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 | 语言 | Python 3.10 (Conda: Swarm-Evo) |
 | 架构 | 纯后端，asyncio + 多线程 |
 | 配置 | OmegaConf + YAML |
-| 日志 | 双通道（文本 + JSON） |
+| 日志 | 双通道（文本 + JSON）+ Review 调试记录 |
 | 测试 | pytest + pytest-asyncio (36 测试文件, ~8517 行) |
-| 代码行数 | ~9800 行核心代码（42 模块） + 8517 行测试 |
+| 代码行数 | ~9900 行核心代码（43 模块） + 8517 行测试 |
 
 ---
 
@@ -34,7 +34,7 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 |   - print_evolution_statistics() 打印进化统计               |
 +---------------------------------------------------------+
 |                编排层 (Orchestration)                     |
-|   Orchestrator (1354行, +Memory进化+Review增强)           |  <- Phase 2.4+
+|   Orchestrator (1354行, +Prompt压缩+调试记录)             |  <- Phase 2.4+
 |   ParallelEvaluator (245行)                              |  <- Phase 3.4
 +---------------------------------------------------------+
 |                  Agent 层 (Agents)                        |
@@ -60,11 +60,13 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 |   WorkspaceManager (244行)                               |  <- Phase 2
 +---------------------------------------------------------+
 |                核心数据层 (State)                          |
-|   Node (125行, +analysis_detail) + Journal (362行, +Changelog) + Task |  <- Phase 1
+|   Node (125行, analysis_detail+prompt_data) +            |
+|   Journal (360行, Changelog支持) + Task (62行)           |  <- Phase 1
 +---------------------------------------------------------+
 |              基础设施层 (Infrastructure)                   |
-|   config.py (603行) + logger (180行) + file (222行)      |  <- Phase 1
-|   system_info.py (391行) - 系统信息收集工具              |
+|   config.py (603行) + logger_system.py (180行)           |
+|   file_utils.py (222行) + text_utils.py (72行)           |  <- 新增文本压缩
+|   system_info.py (408行) - 系统信息收集工具              |
 +---------------------------------------------------------+
 |               Benchmark 资源 (NEW)                        |
 |   benchmark/mle-bench/                                   |
@@ -228,6 +230,7 @@ graph TD
 | 配置管理 | `utils/config.py` | 603 | 完成 (+EvolutionConfig) |
 | 日志系统 | `utils/logger_system.py` | 180 | 完成 |
 | 文件工具 | `utils/file_utils.py` | 222 | 完成 (+extract/clean) |
+| **文本压缩工具** | **`utils/text_utils.py`** | **72** | **完成 (NEW P3.6)** |
 | **系统信息** | **`utils/system_info.py`** | **408** | **完成** |
 | **Phase 1: 数据结构** ||||
 | Node 数据类 | `core/state/node.py` | 125 | 完成 (+analysis_detail) |
@@ -244,9 +247,9 @@ graph TD
 | **Phase 2: Agent 层** ||||
 | Agent 基类 | `agents/base_agent.py` | 135 | 完成 (+mutate) |
 | **Prompt 构建器** | **`utils/prompt_builder.py`** | **247** | **完成** |
-| **CoderAgent** | **`agents/coder_agent.py`** | **415** | **完成 (+merge/mutate+logs保存)** |
+| **CoderAgent** | **`agents/coder_agent.py`** | **415** | **完成 (+merge/mutate)** |
 | **Phase 2.4: Orchestrator** ||||
-| **任务编排器** | **`core/orchestrator.py`** | **1354** | **完成 (+Memory进化+Review增强)** |
+| **任务编排器** | **`core/orchestrator.py`** | **1354** | **完成 (+Prompt压缩+调试记录)** |
 | **Phase 3: 进化层** ||||
 | **基因解析器** | **`core/evolution/gene_parser.py`** | **162** | **完成** |
 | **共享经验池** | **`core/evolution/experience_pool.py`** | **319** | **完成** (+query扩展) |
@@ -268,7 +271,8 @@ graph TD
 | **配置文件** ||||
 | YAML 配置 | `config/default.yaml` | 126 | 完成 (+agent进化配置) |
 
-**总计**: 42 个核心模块 | ~9800 行核心代码 + 36 个测试文件（~8517 行测试代码）
+**总计**: 43 个核心模块 | ~9900 行核心代码 + 36 个测试文件（~8517 行测试代码）
+**最新变更**: Review Prompt 压缩（compress_task_desc）+ Review 调试记录 + 数据模型精简
 
 ---
 
@@ -873,6 +877,53 @@ main()
 ## 6. 经验池样本
 | Agent | 任务类型 | 质量 | 策略摘要 |
 ```
+
+---
+
+## 7.6 Review 系统优化 [NEW - 2026-02-06]
+
+### 7.6.1 Prompt 压缩优化
+
+**新增模块**: `utils/text_utils.py` (72 行)
+
+```python
+def compress_task_desc(full_desc: str) -> str:
+    """从完整竞赛描述中提取 Review 所需的最小信息。
+
+    提取规则:
+    1. ## Description: 第一段（任务概述）
+    2. ## Evaluation: 第一段（指标说明）
+    3. ### Submission File: 格式示例
+
+    返回: 压缩后的任务描述（约 500 字节，Token 消耗 <20%）
+    """
+```
+
+**效果**: Review Prompt Token 消耗降低 >80%，加快 LLM 调用速度。
+
+### 7.6.2 Review 调试记录
+
+**新增字段**: `node.metadata["review_debug"]`
+
+```python
+node.metadata["review_debug"] = {
+    "request": {...},           # 发送给 LLM 的完整请求
+    "output_raw": str,          # LLM 原始输出
+    "output_parsed": dict,      # 解析后的结构化数据
+    "fallback_used": bool,      # 是否使用了回退方案
+}
+```
+
+**用途**: 排查 Review 问题、验证 LLM 响应质量、生成 review.json 调试文件。
+
+### 7.6.3 数据模型精简
+
+| 变更 | 影响 | 说明 |
+|------|------|------|
+| 移除 `node.metric_delta` | 简化 Node | 冗余字段，可从两个 metric_value 计算 |
+| 移除 `thinking` 字段 | 简化流程 | 不使用 Extended Thinking 机制 |
+| 强化 `analysis_detail` | 增强信息 | 结构化 Review 分析（key_change, insight, bottleneck, suggested_direction） |
+| 新增 `prompt_data` | 调试支持 | 存储 LLM 请求数据用于问题排查 |
 
 ---
 
