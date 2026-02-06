@@ -135,6 +135,7 @@ def select_gene_plan(
             "source_node_id": item.source_node_id,
             "gene_id": item.gene_id,
             "code": item.raw_content,
+            "source_score": item.source_score,
         }
 
     return gene_plan

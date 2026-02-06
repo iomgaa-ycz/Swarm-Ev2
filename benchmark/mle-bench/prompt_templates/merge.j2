@@ -14,39 +14,22 @@
 {# SECTION: TASK #}
 # Task: Genetic Crossover
 
-You are performing **genetic crossover** to create a child solution by combining gene blocks from two parent solutions.
+You are performing **genetic crossover** to create a child solution
+by combining gene blocks from multiple source solutions.
 
-## Parent A
+{% set scaffold = parent_a if (parent_a.metric_value or 0) >= (parent_b.metric_value or 0) else parent_b %}
+## Reference Solution (fitness={{ scaffold.metric_value if scaffold.metric_value else "N/A" }})
 
-**Fitness**: {{ parent_a.metric_value if parent_a.metric_value else "N/A" }}
+A complete working solution for structural reference (imports, helpers, main logic):
 
-### Code
 ```python
-{{ parent_a.code }}
+{{ scaffold.code }}
 ```
 
-{% if parent_a.term_out %}
-### Execution Result (Parent A)
+{% if scaffold.term_out %}
+### Execution Result
 ```
-{{ parent_a.term_out[:1000] }}{% if parent_a.term_out|length > 1000 %}... (truncated){% endif %}
-```
-{% endif %}
-
----
-
-## Parent B
-
-**Fitness**: {{ parent_b.metric_value if parent_b.metric_value else "N/A" }}
-
-### Code
-```python
-{{ parent_b.code }}
-```
-
-{% if parent_b.term_out %}
-### Execution Result (Parent B)
-```
-{{ parent_b.term_out[:1000] }}{% if parent_b.term_out|length > 1000 %}... (truncated){% endif %}
+{{ scaffold.term_out[:1000] }}{% if scaffold.term_out|length > 1000 %}... (truncated){% endif %}
 ```
 {% endif %}
 
@@ -54,16 +37,15 @@ You are performing **genetic crossover** to create a child solution by combining
 
 ## Gene Plan
 
-The following plan specifies which parent to use for each gene block:
+The following specifies the selected gene block for each section:
 
-```
 {{ gene_plan }}
-```
 
 **Your Task**: Create a child solution that:
-1. Uses the gene block from the specified parent for each section (DATA, MODEL, LOSS, etc.)
-2. Resolves any conflicts between incompatible blocks
-3. Ensures the merged solution is executable and coherent
+1. Uses the gene block code from each section above
+2. Uses the Reference Solution as structural scaffold (imports, helpers, main logic)
+3. Resolves any conflicts between blocks from different sources
+4. Ensures the merged solution is executable and coherent
 {# END SECTION: TASK #}
 
 {# SECTION: STRATEGY [HYBRID] #}

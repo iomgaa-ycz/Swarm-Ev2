@@ -2,7 +2,7 @@
 
 import pytest
 import time
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock
 
 from core.evolution.solution_evolution import SolutionEvolution
 from core.state import Node, Journal
@@ -10,7 +10,7 @@ from core.evolution.gene_registry import GeneRegistry
 from core.evolution.task_dispatcher import TaskDispatcher
 from core.evolution.experience_pool import ExperiencePool
 from search.parallel_evaluator import ParallelEvaluator
-from agents.base_agent import BaseAgent, AgentContext, AgentResult
+from agents.base_agent import BaseAgent, AgentResult
 from utils.config import Config
 
 
@@ -86,16 +86,20 @@ def solution_evolution(
     gene_registry,
     mock_config,
 ):
-    """创建 SolutionEvolution 实例。"""
-    return SolutionEvolution(
-        agents=mock_agents,
-        task_dispatcher=mock_task_dispatcher,
-        evaluator=mock_evaluator,
-        experience_pool=experience_pool,
-        journal=journal,
-        gene_registry=gene_registry,
+    """创建 SolutionEvolution 实例（MVP 签名 + 非 MVP 路径属性）。"""
+    se = SolutionEvolution(
         config=mock_config,
+        journal=journal,
+        orchestrator=None,
+        gene_registry=gene_registry,
     )
+    # 非 MVP 路径所需的属性（用于测试旧路径方法）
+    se.agents = mock_agents
+    se.task_dispatcher = mock_task_dispatcher
+    se.evaluator = mock_evaluator
+    se.experience_pool = experience_pool
+    se.current_step = 0
+    return se
 
 
 class TestSolutionEvolutionInit:
@@ -109,7 +113,6 @@ class TestSolutionEvolutionInit:
         assert solution_evolution.mutation_rate == 0.2
         assert solution_evolution.tournament_k == 3
         assert solution_evolution.crossover_strategy == "random"
-        assert solution_evolution.current_step == 0
         assert len(solution_evolution.population) == 0
 
 
@@ -463,3 +466,103 @@ class TestCrossoverStrategySwitching:
 
         with pytest.raises(ValueError, match="未知的交叉策略"):
             solution_evolution._generate_crossover_plan(parent_a, parent_b)
+
+
+class TestBuildGenePlanMarkdown:
+    """测试统一 Markdown gene_plan 生成。"""
+
+    def test_random_markdown_format(self, solution_evolution):
+        """测试随机策略生成 Markdown 格式。"""
+        parent_a = Node(id="aaaaaaaa", code="code_a", step=0)
+        parent_a.metric_value = 0.85
+        parent_a.genes = {
+            "DATA": "df = pd.read_csv('train.csv')",
+            "MODEL": "model = LGBMClassifier()",
+            "LOSS": "loss = 'binary_crossentropy'",
+            "OPTIMIZER": "opt = Adam(lr=0.001)",
+            "REGULARIZATION": "dropout = 0.5",
+            "INITIALIZATION": "seed = 42",
+            "TRAINING_TRICKS": "early_stopping = True",
+        }
+
+        parent_b = Node(id="bbbbbbbb", code="code_b", step=1)
+        parent_b.metric_value = 0.80
+        parent_b.genes = {
+            "DATA": "df = pd.read_parquet('train.parquet')",
+            "MODEL": "model = XGBClassifier()",
+            "LOSS": "loss = 'hinge'",
+            "OPTIMIZER": "opt = SGD(lr=0.01)",
+            "REGULARIZATION": "l2 = 0.01",
+            "INITIALIZATION": "seed = 0",
+            "TRAINING_TRICKS": "lr_schedule = True",
+        }
+
+        md = solution_evolution._build_gene_plan_markdown_from_random(parent_a, parent_b)
+
+        # 验证格式
+        assert isinstance(md, str)
+        assert "### DATA" in md
+        assert "### MODEL" in md
+        assert "```python" in md
+        assert "fitness=" in md
+
+    def test_pheromone_markdown_format(self, solution_evolution):
+        """测试信息素策略生成 Markdown 格式。"""
+        raw_plan = {
+            "reasoning": "test",
+            "data_source": {
+                "locus": "DATA",
+                "source_node_id": "node_abc123",
+                "gene_id": "g1",
+                "code": "df = pd.read_csv('train.csv')",
+                "source_score": 0.85,
+            },
+            "model_source": {
+                "locus": "MODEL",
+                "source_node_id": "node_xyz789",
+                "gene_id": "g2",
+                "code": "model = LGBMClassifier()",
+                "source_score": 0.83,
+            },
+        }
+
+        md = solution_evolution._build_gene_plan_markdown_from_pheromone(raw_plan)
+
+        # 验证格式
+        assert "### DATA (from node_abc, fitness=0.8500)" in md
+        assert "### MODEL (from node_xyz, fitness=0.8300)" in md
+        assert "```python" in md
+        assert "pd.read_csv" in md
+
+    def test_crossover_mvp_random_calls_orchestrator(self, solution_evolution):
+        """测试 _crossover_mvp 随机策略调用 Orchestrator。"""
+        solution_evolution.crossover_strategy = "random"
+
+        # Mock Orchestrator
+        mock_orch = Mock()
+        child_node = Node(id="child", code="child_code", step=2)
+        mock_orch.execute_merge_task.return_value = child_node
+        solution_evolution.orchestrator = mock_orch
+
+        parent_a = Node(id="aaaaaaaa", code="code_a", step=0)
+        parent_a.metric_value = 0.85
+        parent_a.genes = {g: f"code_{g}" for g in [
+            "DATA", "MODEL", "LOSS", "OPTIMIZER",
+            "REGULARIZATION", "INITIALIZATION", "TRAINING_TRICKS"
+        ]}
+        parent_b = Node(id="bbbbbbbb", code="code_b", step=1)
+        parent_b.metric_value = 0.80
+        parent_b.genes = {g: f"code_{g}_b" for g in [
+            "DATA", "MODEL", "LOSS", "OPTIMIZER",
+            "REGULARIZATION", "INITIALIZATION", "TRAINING_TRICKS"
+        ]}
+
+        child = solution_evolution._crossover_mvp(parent_a, parent_b)
+
+        # 验证：调用 Orchestrator，gene_plan 为 Markdown 字符串
+        assert child is not None
+        mock_orch.execute_merge_task.assert_called_once()
+        call_args = mock_orch.execute_merge_task.call_args
+        gene_plan_arg = call_args[0][2]  # 第三个位置参数
+        assert isinstance(gene_plan_arg, str)
+        assert "### DATA" in gene_plan_arg

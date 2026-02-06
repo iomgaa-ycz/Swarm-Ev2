@@ -15,8 +15,6 @@ import time
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 from typing import Optional, Dict, List, TYPE_CHECKING
 
-from core.evolution.gene_selector import LOCUS_TO_FIELD
-
 from agents.base_agent import BaseAgent, AgentContext
 from core.state import Node, Journal
 from core.executor.interpreter import Interpreter, ExecutionResult
@@ -66,6 +64,7 @@ class Orchestrator:
         agent_evolution: Optional["AgentEvolution"] = None,
         task_dispatcher=None,
         experience_pool=None,
+        gene_registry=None,
     ):
         """初始化 Orchestrator。
 
@@ -77,6 +76,7 @@ class Orchestrator:
             agent_evolution: Agent 层进化器（可选）
             task_dispatcher: 任务分发器（Phase 3）
             experience_pool: 经验池（Phase 3）
+            gene_registry: 基因注册表（信息素驱动交叉时必需）
         """
         from utils.text_utils import compress_task_desc
 
@@ -88,6 +88,7 @@ class Orchestrator:
         self.agent_evolution = agent_evolution
         self.task_dispatcher = task_dispatcher
         self.experience_pool = experience_pool
+        self.gene_registry = gene_registry
 
         self.start_time = time.time()
         self.current_epoch = 0
@@ -492,37 +493,6 @@ class Orchestrator:
 
         return diff_text if diff_text.strip() else "(No changes detected)"
 
-    def _format_gene_selection(self, gene_plan: Dict) -> str:
-        """格式化基因选择方案（用于 merge Review）。
-
-        将 gene_plan 转换为人类可读的格式，展示每个基因位点：
-        - 选自哪个父节点
-        - 具体的代码片段
-
-        Args:
-            gene_plan: 基因选择计划，包含 data_source, model_source 等字段
-
-        Returns:
-            格式化的基因选择说明字符串
-        """
-        lines = ["## Gene Selection\n"]
-
-        for field in LOCUS_TO_FIELD.values():  # data_source, model_source, ...
-            if field not in gene_plan:
-                continue
-
-            item = gene_plan[field]
-            locus = item["locus"]  # "DATA", "MODEL", ...
-            node_id = item["source_node_id"]  # 来源节点 ID
-            code = item["code"]  # 基因片段代码
-
-            lines.append(f"### {locus} (from Node {node_id[:8]})")
-            # 截断过长的代码片段，防止占用过多 token
-            code_preview = code[:500] + "..." if len(code) > 500 else code
-            lines.append(f"```python\n{code_preview}\n```\n")
-
-        return "\n".join(lines)
-
     def _review_node(
         self,
         node: Node,
@@ -548,8 +518,8 @@ class Orchestrator:
         """
         # Phase 0: 生成变更上下文（根据任务类型选择策略）
         if gene_plan:
-            # merge 模式：展示基因选择方案
-            change_context = self._format_gene_selection(gene_plan)
+            # merge 模式：gene_plan 已是 Markdown 字符串，直接用作变更上下文
+            change_context = gene_plan if isinstance(gene_plan, str) else str(gene_plan)
         elif parent_node:
             # explore/mutate 模式：代码 diff
             change_context = self._generate_code_diff(parent_node.code, node.code)
@@ -657,6 +627,25 @@ class Orchestrator:
             f"Review 完成: 节点 {node.id[:8]}, is_buggy={node.is_buggy}, "
             f"metric={node.metric_value}, lower_is_better={node.lower_is_better}",
         )
+
+        # Phase 9: 计算节点信息素并更新基因注册表
+        if self.gene_registry and not node.is_buggy and node.metric_value is not None:
+            from core.evolution.pheromone import compute_node_pheromone, ensure_node_stats
+
+            scores = [
+                n.metric_value for n in self.journal.nodes
+                if not n.is_buggy and n.metric_value is not None
+            ]
+            if scores:
+                ensure_node_stats(node)
+                pheromone = compute_node_pheromone(
+                    node,
+                    current_step=len(self.journal.nodes),
+                    score_min=min(scores),
+                    score_max=max(scores),
+                )
+                node.metadata["pheromone_node"] = pheromone
+                self.gene_registry.update_from_reviewed_node(node)
 
     def _call_review_with_tool(self, node: Node, change_context: str) -> Dict:
         """使用 Function Calling 调用 Review LLM。

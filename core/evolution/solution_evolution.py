@@ -8,15 +8,12 @@ from __future__ import annotations
 import random
 from typing import List, Tuple, Dict, Any, Optional
 
-from agents.base_agent import BaseAgent, AgentContext, AgentResult
+from agents.base_agent import AgentContext
 from core.state import Node, Journal
-from core.evolution.task_dispatcher import TaskDispatcher
-from core.evolution.experience_pool import ExperiencePool, TaskRecord
+from core.evolution.experience_pool import TaskRecord
 from core.evolution.gene_parser import parse_solution_genes, REQUIRED_GENES
 from core.evolution.gene_registry import GeneRegistry
 from core.evolution.gene_selector import select_gene_plan
-from search.parallel_evaluator import ParallelEvaluator
-from search.fitness import normalize_fitness
 from utils.config import Config
 from utils.logger_system import log_msg, log_json
 
@@ -34,6 +31,7 @@ class SolutionEvolution:
         config: Config,
         journal: Journal,
         orchestrator=None,
+        gene_registry: Optional[GeneRegistry] = None,
     ):
         """初始化遗传算法（MVP 简化版）。
 
@@ -41,10 +39,12 @@ class SolutionEvolution:
             config: 全局配置
             journal: 节点历史记录
             orchestrator: Orchestrator 实例（用于执行任务）
+            gene_registry: 基因注册表（信息素驱动交叉时必需）
         """
         self.config = config
         self.journal = journal
         self.orchestrator = orchestrator
+        self.gene_registry = gene_registry
 
         # GA 参数
         self.population_size = config.evolution.solution.population_size
@@ -52,13 +52,15 @@ class SolutionEvolution:
         self.crossover_rate = config.evolution.solution.crossover_rate
         self.mutation_rate = config.evolution.solution.mutation_rate
         self.tournament_k = config.evolution.solution.tournament_k
+        self.crossover_strategy = config.evolution.solution.crossover_strategy
 
         # 当前种群
         self.population: List[Node] = []
 
         log_msg(
             "INFO",
-            f"SolutionEvolution 初始化（MVP）: population_size={self.population_size}",
+            f"SolutionEvolution 初始化（MVP）: population_size={self.population_size}, "
+            f"crossover_strategy={self.crossover_strategy}",
         )
 
     def run_epoch(self, steps_per_epoch: int) -> Optional[Node]:
@@ -77,7 +79,7 @@ class SolutionEvolution:
         Returns:
             本 Epoch 最佳节点
         """
-        log_msg("INFO", f"===== SolutionEvolution: run_epoch 开始 =====")
+        log_msg("INFO", "===== SolutionEvolution: run_epoch 开始 =====")
 
         # [1] 获取当前种群（从 Journal）
         good_nodes = [n for n in self.journal.nodes if not n.is_buggy]
@@ -494,6 +496,9 @@ class SolutionEvolution:
     def _crossover_mvp(self, parent_a: Node, parent_b: Node) -> Optional[Node]:
         """基因交叉（MVP 简化版，调用 Orchestrator）。
 
+        根据 crossover_strategy 选择随机或信息素驱动策略，
+        两种策略均输出统一的 Markdown 格式 gene_plan。
+
         Args:
             parent_a: 父代 A
             parent_b: 父代 B
@@ -505,17 +510,81 @@ class SolutionEvolution:
             log_msg("WARNING", "Orchestrator 未初始化，跳过交叉")
             return None
 
-        # 生成随机交叉计划（MVP: 50% 概率选 A 或 B）
-        gene_plan = {}
-        for gene in REQUIRED_GENES:
-            gene_plan[gene] = random.choice(["A", "B"])
+        if self.crossover_strategy == "pheromone" and self.gene_registry:
+            # 信息素策略：从全局历史中选最优基因
+            current_step = len(self.journal.nodes)
+            raw_plan = select_gene_plan(self.journal, self.gene_registry, current_step)
+            gene_plan_md = self._build_gene_plan_markdown_from_pheromone(raw_plan)
+            log_msg("INFO", f"信息素驱动交叉: {len(REQUIRED_GENES)} 个基因位点")
+        else:
+            # 随机策略：从两个父代中随机选基因
+            gene_plan_md = self._build_gene_plan_markdown_from_random(parent_a, parent_b)
+            log_msg("INFO", f"随机交叉: {len(REQUIRED_GENES)} 个基因位点")
 
-        log_msg("INFO", f"交叉计划: {gene_plan}")
-
-        # 调用 Orchestrator 执行 merge 任务
-        child = self.orchestrator.execute_merge_task(parent_a, parent_b, gene_plan)
+        # 调用 Orchestrator 执行 merge 任务（gene_plan 为 Markdown 字符串）
+        child = self.orchestrator.execute_merge_task(parent_a, parent_b, gene_plan_md)
 
         return child
+
+    def _build_gene_plan_markdown_from_pheromone(
+        self, raw_plan: Dict[str, Any]
+    ) -> str:
+        """将信息素选择结果格式化为统一 Markdown。
+
+        Args:
+            raw_plan: select_gene_plan() 的返回值
+
+        Returns:
+            Markdown 格式的 gene_plan 字符串
+        """
+        from core.evolution.gene_selector import LOCUS_TO_FIELD
+
+        lines: List[str] = []
+        for locus, field_name in LOCUS_TO_FIELD.items():
+            item = raw_plan.get(field_name)
+            if not item:
+                continue
+            node_id = item["source_node_id"][:8]
+            score = item.get("source_score", 0.0)
+            code = item["code"]
+            lines.append(f"### {locus} (from {node_id}, fitness={score:.4f})")
+            lines.append(f"```python\n{code}\n```\n")
+
+        return "\n".join(lines)
+
+    def _build_gene_plan_markdown_from_random(
+        self, parent_a: Node, parent_b: Node
+    ) -> str:
+        """将随机交叉结果格式化为统一 Markdown。
+
+        从两个父代中随机选基因，提取对应代码片段。
+
+        Args:
+            parent_a: 父代 A
+            parent_b: 父代 B
+
+        Returns:
+            Markdown 格式的 gene_plan 字符串
+        """
+        lines: List[str] = []
+        genes_a = parent_a.genes or {}
+        genes_b = parent_b.genes or {}
+
+        for gene in REQUIRED_GENES:
+            chosen = random.choice(["A", "B"])
+            if chosen == "A":
+                source_node = parent_a
+                code = genes_a.get(gene, "# (no code)")
+            else:
+                source_node = parent_b
+                code = genes_b.get(gene, "# (no code)")
+
+            node_id = source_node.id[:8]
+            score = source_node.metric_value or 0.0
+            lines.append(f"### {gene} (from {node_id}, fitness={score:.4f})")
+            lines.append(f"```python\n{code}\n```\n")
+
+        return "\n".join(lines)
 
     def _mutate_mvp(self, node: Node) -> None:
         """基因变异（MVP 简化版，调用 Orchestrator）。

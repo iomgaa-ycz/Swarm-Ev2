@@ -1,8 +1,8 @@
 # Swarm-Ev2 项目架构概览
 
-**Last Updated:** 2026-02-06 (Review Prompt 压缩优化，Token 消耗降低 >80%)
-**项目版本:** 0.3.6
-**当前阶段:** Phase 3.5 Skill 进化（已完成）+ Memory 进化机制优化 + Review 系统增强
+**Last Updated:** 2026-02-06 (信息素驱动交叉集成至 MVP 管线)
+**项目版本:** 0.3.7
+**当前阶段:** Phase 3.5 Skill 进化（已完成）+ 信息素交叉统一 + Review 系统增强
 
 ---
 
@@ -17,7 +17,7 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 | 配置 | OmegaConf + YAML |
 | 日志 | 双通道（文本 + JSON）+ Review 调试记录 |
 | 测试 | pytest + pytest-asyncio (36 测试文件, ~8517 行) |
-| 代码行数 | ~9900 行核心代码（43 模块） + 8517 行测试 |
+| 代码行数 | ~10100 行核心代码（43 模块） + 8517 行测试 |
 
 ---
 
@@ -26,7 +26,7 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 ```
 +---------------------------------------------------------+
 |                   入口层 (Entry)                          |
-|   main.py (双层进化架构, 560行)                            |  <- Phase 3.5+
+|   main.py (双层进化架构, 562行)                            |  <- Phase 3.5+
 |   mle_bench_adapter.py (评测)                             |  <- Phase 5
 |   - initialize_agents() 初始化 Agent 种群                  |
 |   - initialize_evolution_components() 初始化进化组件        |
@@ -34,7 +34,7 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 |   - print_evolution_statistics() 打印进化统计               |
 +---------------------------------------------------------+
 |                编排层 (Orchestration)                     |
-|   Orchestrator (1354行, +Prompt压缩+调试记录)             |  <- Phase 2.4+
+|   Orchestrator (1437行, +信息素计算+Prompt压缩)            |  <- Phase 2.4+
 |   ParallelEvaluator (245行)                              |  <- Phase 3.4
 +---------------------------------------------------------+
 |                  Agent 层 (Agents)                        |
@@ -48,9 +48,9 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 |   TaskDispatcher (157行)                                 |  <- P3.3
 |   AgentEvolution (439行)                                 |  <- P3.3 (+Skill)
 |   GeneRegistry (199行)                                   |  <- P3.4
-|   GeneSelector (314行)                                   |  <- P3.4
+|   GeneSelector (315行, +source_score)                    |  <- P3.4
 |   Pheromone (104行)                                      |  <- P3.4
-|   SolutionEvolution (541行)                              |  <- P3.4
+|   SolutionEvolution (610行, +Markdown gene_plan)         |  <- P3.4
 |   CodeEmbeddingManager (127行)                           |  <- P3.5
 |   SkillExtractor (302行)                                 |  <- P3.5
 |   SkillManager (371行)                                   |  <- P3.5
@@ -217,7 +217,7 @@ graph TD
 | **3.2** | **经验池+适应度** | **完成** | **experience_pool.py (319行), fitness.py (81行)** |
 | **3+** | **PromptManager** | **完成** | **prompt_manager.py (295行) + benchmark/** |
 | **3.3** | **Agent 层群体智能** | **完成** | **task_dispatcher.py (157行) + agent_evolution.py (439行)** |
-| **3.4** | **Solution 层 GA** | **完成** | **solution_evolution.py (541行) + gene_selector.py (314行) + gene_registry.py (199行) + pheromone.py (104行) + parallel_evaluator.py (245行)** |
+| **3.4** | **Solution 层 GA** | **完成** | **solution_evolution.py (610行) + gene_selector.py (315行) + gene_registry.py (199行) + pheromone.py (104行) + parallel_evaluator.py (245行)** |
 | **3.5** | **Skill 进化** | **完成** | **skill_extractor.py (302行) + skill_manager.py (371行) + code_embedding_manager.py (127行)** |
 | 4 | 扩展功能 | 待实现 | Memory, ToolRegistry |
 | 5 | 测试与文档 | 进行中 | 80%+ 覆盖率 |
@@ -249,7 +249,7 @@ graph TD
 | **Prompt 构建器** | **`utils/prompt_builder.py`** | **247** | **完成** |
 | **CoderAgent** | **`agents/coder_agent.py`** | **415** | **完成 (+merge/mutate)** |
 | **Phase 2.4: Orchestrator** ||||
-| **任务编排器** | **`core/orchestrator.py`** | **1354** | **完成 (+Prompt压缩+调试记录)** |
+| **任务编排器** | **`core/orchestrator.py`** | **1437** | **完成 (+信息素计算+Prompt压缩)** |
 | **Phase 3: 进化层** ||||
 | **基因解析器** | **`core/evolution/gene_parser.py`** | **162** | **完成** |
 | **共享经验池** | **`core/evolution/experience_pool.py`** | **319** | **完成** (+query扩展) |
@@ -257,9 +257,9 @@ graph TD
 | **任务分配器** | **`core/evolution/task_dispatcher.py`** | **157** | **完成 (P3.3)** |
 | **Agent 层进化** | **`core/evolution/agent_evolution.py`** | **439** | **完成 (P3.3)** |
 | **基因注册表** | **`core/evolution/gene_registry.py`** | **199** | **完成 (P3.4)** |
-| **基因选择器** | **`core/evolution/gene_selector.py`** | **314** | **完成 (P3.4)** |
+| **基因选择器** | **`core/evolution/gene_selector.py`** | **315** | **完成 (P3.4, +source_score)** |
 | **信息素机制** | **`core/evolution/pheromone.py`** | **104** | **完成 (P3.4)** |
-| **Solution 层 GA** | **`core/evolution/solution_evolution.py`** | **541** | **完成 (P3.4)** |
+| **Solution 层 GA** | **`core/evolution/solution_evolution.py`** | **610** | **完成 (P3.4, +Markdown gene_plan)** |
 | **并行评估器** | **`search/parallel_evaluator.py`** | **245** | **完成 (P3.4)** |
 | **Phase 3.5: Skill 进化** ||||
 | **代码嵌入管理器** | **`core/evolution/code_embedding_manager.py`** | **127** | **完成 (P3.5)** |
@@ -271,8 +271,8 @@ graph TD
 | **配置文件** ||||
 | YAML 配置 | `config/default.yaml` | 126 | 完成 (+agent进化配置) |
 
-**总计**: 43 个核心模块 | ~9900 行核心代码 + 36 个测试文件（~8517 行测试代码）
-**最新变更**: Review Prompt 压缩（compress_task_desc）+ Review 调试记录 + 数据模型精简
+**总计**: 43 个核心模块 | ~10100 行核心代码 + 36 个测试文件（~8517 行测试代码）
+**最新变更**: 信息素驱动交叉集成至 MVP 管线 + 统一 Markdown gene_plan 格式 + Orchestrator 信息素计算
 
 ---
 
@@ -280,7 +280,7 @@ graph TD
 
 ```
 Swarm-Ev2/
-├── main.py                        # 双层进化入口 (560行)        Phase 3.5+
+├── main.py                        # 双层进化入口 (562行)        Phase 3.5+
 │   # 核心函数:
 │   # - initialize_agents() 初始化 Agent 种群
 │   # - initialize_evolution_components() 初始化进化组件
@@ -326,7 +326,7 @@ Swarm-Ev2/
 │   │   ├── __init__.py            # 模块导出
 │   │   ├── interpreter.py         # 执行沙箱 (338行, 精简重构)
 │   │   └── workspace.py           # 工作空间管理 (244行)
-│   ├── orchestrator.py            # 编排器（1181行, +双层进化）
+│   ├── orchestrator.py            # 编排器（1437行, +信息素计算）
 │   └── evolution/                 # 进化机制
 │       ├── __init__.py            # 模块导出
 │       ├── gene_parser.py         # 基因解析器 (162行)

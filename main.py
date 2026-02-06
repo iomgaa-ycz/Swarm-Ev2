@@ -414,6 +414,7 @@ def main() -> None:
             agent_evolution=agent_evolution,
             task_dispatcher=task_dispatcher,  # Phase 3 集成
             experience_pool=experience_pool,  # Phase 3 集成
+            gene_registry=gene_registry,  # 信息素驱动交叉
         )
         log_msg("INFO", "Orchestrator 初始化完成（双层进化模式 + 并行执行）")
 
@@ -422,6 +423,7 @@ def main() -> None:
             config=config,
             journal=journal,
             orchestrator=orchestrator,
+            gene_registry=gene_registry,  # 信息素驱动交叉
         )
         log_msg("INFO", "SolutionEvolution 初始化完成（MVP 简化版）")
 
