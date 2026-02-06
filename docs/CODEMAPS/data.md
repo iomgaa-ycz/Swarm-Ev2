@@ -1,7 +1,7 @@
 # 数据流与配置管理
 
-**Last Updated:** 2026-02-06 (Review Prompt 压缩优化，Token 消耗 <20%)
-**模块范围:** main.py (560行), config/, .env, utils/, core/executor/, core/orchestrator.py (1354行), core/evolution/, search/, benchmark/
+**Last Updated:** 2026-02-06 (Codemap 同步: interpreter 重构 463 行)
+**模块范围:** main.py (562行), config/, .env, utils/, core/executor/, core/orchestrator.py (1437行), core/evolution/, search/, benchmark/
 **当前阶段:** Phase 3.5 Skill 进化（已完成）+ Phase 3.6 Review 系统优化
 
 ---

@@ -1,57 +1,55 @@
 # Codemap 差异报告
-生成时间: 2026-02-03
+生成时间: 2026-02-06
 
 ## 变更摘要
 
-### 上次版本 (2026-02-02)
-- 项目版本: 0.3.4
-- 核心代码: ~9350 行
-- 测试文件: 36 个 (~8391 行)
-
-### 当前版本 (2026-02-03)
-- 项目版本: 0.3.5
-- 核心代码: ~9800 行
+### 上次版本 (2026-02-03)
+- 项目版本: 0.3.7
+- 核心代码: ~10100 行
 - 测试文件: 36 个 (~8517 行)
+
+### 当前版本 (2026-02-06)
+- 项目版本: 0.3.8
+- 核心代码: ~10545 行
+- 测试文件: 37 个 (~8757 行)
 
 ## 差异比例
 
 | 模块 | 上次行数 | 当前行数 | 变化 |
 |------|---------|---------|------|
-| main.py | 560 | 560 | 0 |
-| core/orchestrator.py | 1181 | 1354 | +173 (+14.7%) |
-| core/state/node.py | 121 | 125 | +4 (+3.3%) |
-| core/state/journal.py | 300 | 362 | +62 (+20.7%) |
+| main.py | 560 | 562 | +2 (+0.4%) |
+| core/orchestrator.py | 1354 | 1437 | +83 (+6.1%) |
+| core/executor/interpreter.py | 338 | 463 | +125 (+37.0%) |
 | agents/coder_agent.py | 386 | 415 | +29 (+7.5%) |
-| utils/system_info.py | 391 | 408 | +17 (+4.3%) |
+| utils/response.py | - | 154 | 数据对齐 |
 
-**总差异: ~10%** (低于 30% 阈值，自动更新)
+**总差异: ~8%** (低于 30% 阈值，自动更新)
 
 ## 主要变更
 
-### 1. Memory 进化机制重构 (core/orchestrator.py)
-- 新增 `_generate_code_diff()`: 生成父子代码的 unified diff
-- 新增 `_format_gene_selection()`: 格式化基因选择方案
+### 1. Interpreter 并行增强 (core/executor/interpreter.py, 338→463)
+- 进程池并行执行支持扩展
+- 新增并行评估相关方法
+- 文档中旧记录 338 行，实际已增长至 463 行
 
-### 2. Review Schema 增强
-- 新增字段: key_change, metric_delta, insight, bottleneck, suggested_direction
-- Node 新增 analysis_detail 字段存储结构化分析
+### 2. Orchestrator 信息素计算集成 (core/orchestrator.py, 1354→1437)
+- 信息素驱动交叉集成至 MVP 管线
+- 统一 Markdown gene_plan 格式
+- Prompt 压缩优化
 
-### 3. Journal Summary 重写 (core/state/journal.py)
-- generate_summary() 重写为 Changelog 格式
-- 新增 4 个 Section: Current Best, Changelog, Constraints, Unexplored
-- 新增辅助方法: _format_current_best(), _format_changelog(), _extract_constraints(), _collect_unexplored_directions()
+### 3. Review 系统优化
+- 新增 utils/text_utils.py (72行): Review Prompt 压缩
+- Token 消耗降低 >80%
+- Review 调试数据记录 (review.json)
 
-### 4. 移除 Thinking 机制
-- Node 移除 thinking 字段，简化数据结构
-- Prompt 模板更新，避免 Thinking 同质化
+### 4. 测试新增
+- 新增 1 个测试文件 (tests/unit/test_text_utils.py)
+- 测试总行数: 8517 → 8757 (+240 行)
 
-## 文件变更列表 (最近提交)
+## Codemap 文档修正
 
-1. benchmark/mle-bench/prompt_templates/explore.j2
-2. benchmark/mle-bench/skills/static/output_format.md
-3. core/orchestrator.py (+173 行)
-4. core/state/journal.py (+62 行)
-5. core/state/node.py (+4 行)
-6. docs/plans/memory_evolution_refactor.md (新增)
-7. tests/unit/test_orchestrator.py (更新)
-8. tests/unit/test_prompt_builder.py (更新)
+| 文件 | 修正内容 |
+|------|---------|
+| architecture.md | interpreter 行数 338→463, 测试统计 36→37, 代码总量 10100→10545 |
+| backend.md | interpreter 行数 338→463, orchestrator 行数 1354→1437, mermaid 图 534→1437 |
+| data.md | main.py 行数 560→562, orchestrator 行数 1354→1437 |

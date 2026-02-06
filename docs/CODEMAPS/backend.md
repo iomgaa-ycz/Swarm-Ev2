@@ -1,6 +1,6 @@
 # 后端模块详细说明
 
-**Last Updated:** 2026-02-06 (Review Prompt 压缩优化，Token 消耗 <20%)
+**Last Updated:** 2026-02-06 (Codemap 同步: interpreter 重构 463 行)
 **模块范围:** main.py, utils/, core/state/, core/backend/, core/executor/, core/evolution/, agents/, search/, config/, tests/, benchmark/
 **当前阶段:** Phase 3.5 Skill 进化（已完成）+ Phase 3.6 Review 系统优化
 
@@ -28,7 +28,7 @@
 | Anthropic 后端 | `core/backend/backend_anthropic.py` | 142 | Claude 系列支持 | 完成 |
 | 后端工具 | `core/backend/utils.py` | 80 | 消息格式化 + 重试机制 | 完成 |
 | **执行层** |||||
-| **代码执行器** | **`core/executor/interpreter.py`** | **338** | **沙箱执行（精简重构）** | **完成** |
+| **代码执行器** | **`core/executor/interpreter.py`** | **463** | **沙箱执行（精简重构+并行增强）** | **完成** |
 | 工作空间管理 | `core/executor/workspace.py` | 244 | 目录管理 + 文件归档 + 数据预处理 | 完成 |
 | **工具层** |||||
 | 数据预览 | `utils/data_preview.py` | 276 | EDA 预览生成 (+文件大小+IMPORTANT header) | 完成 |
@@ -42,7 +42,7 @@
 | Agent 基类 | `agents/base_agent.py` | 135 | Agent 抽象基类 | 完成 |
 | **CoderAgent** | **`agents/coder_agent.py`** | **415** | **代码生成 Agent** | **完成** |
 | **编排层** |||||
-| **Orchestrator** | **`core/orchestrator.py`** | **1354** | **任务编排器 (+Prompt压缩+调试记录)** | **完成 (P3.6)** |
+| **Orchestrator** | **`core/orchestrator.py`** | **1437** | **任务编排器 (+Prompt压缩+调试记录+信息素)** | **完成 (P3.6)** |
 | **进化层 (Phase 3)** |||||
 | **基因解析器** | **`core/evolution/gene_parser.py`** | **162** | **解析 7 基因块，支持 GA 交叉** | **完成** |
 | **共享经验池** | **`core/evolution/experience_pool.py`** | **319** | **线程安全存储 + Top-K 查询 + 扩展过滤** | **完成** |
@@ -192,9 +192,9 @@ main.py
 
 ---
 
-## 3. Orchestrator 编排器 (`core/orchestrator.py`) [1354 行]
+## 3. Orchestrator 编排器 (`core/orchestrator.py`) [1437 行]
 
-> **重大更新**: Orchestrator 从 1181 行扩展至 1354 行（+14.7%），新增 Prompt 压缩、调试记录、Review 增强。
+> **重大更新**: Orchestrator 从 1181 行扩展至 1437 行（+21.7%），新增 Prompt 压缩、调试记录、Review 增强、信息素计算。
 
 ### 3.1 核心职责
 
@@ -327,7 +327,7 @@ _select_parent_node()
 ### 3.8 依赖关系
 
 ```
-Orchestrator (1181行)
+Orchestrator (1437行)
 +-- agents.base_agent.BaseAgent, AgentContext
 +-- core.state.Node, Journal
 +-- core.executor.interpreter.Interpreter, ExecutionResult
@@ -707,9 +707,9 @@ class Journal(DataClassJsonMixin):
 
 ## 8. 执行层模块 (`core/executor/`)
 
-### 7.1 Interpreter (`core/executor/interpreter.py`) - 338 行
+### 7.1 Interpreter (`core/executor/interpreter.py`) - 463 行
 
-代码执行沙箱，经过精简重构，移除冗余代码。
+代码执行沙箱，经过精简重构和并行增强。
 
 Python 代码执行沙箱，使用独立的 subprocess/进程池执行代码。
 
@@ -1580,7 +1580,7 @@ graph TD
     end
 
     subgraph "编排层"
-        ORCH[core/orchestrator.py<br/>534行]
+        ORCH[core/orchestrator.py<br/>1437行]
     end
 
     subgraph "进化层"
