@@ -343,7 +343,8 @@ mlebench prepare --lite
 
 ```bash
 cd ../Swarm-Ev2
-HF_ENDPOINT=https://hf-mirror.com conda run -n Swarm-Evo python scripts/download_model.py
+pip install huggingface_hub
+HF_ENDPOINT=https://hf-mirror.com conda run -n mlebench python scripts/download_model.py
 ```
 
 > 模型保存在 `embedding-models/bge-m3/`，构建 Docker 镜像时自动 COPY 进容器，无需每次重新下载。
