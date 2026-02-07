@@ -339,7 +339,16 @@ pip install -e .
 mlebench prepare --lite
 ```
 
-6. **构建 Swarm-Ev2 Agent 镜像**（每次更新代码后需重新构建）
+6. **预下载 Embedding 模型**（仅需一次）
+
+```bash
+cd ../Swarm-Ev2
+HF_ENDPOINT=https://hf-mirror.com conda run -n Swarm-Evo python scripts/download_model.py
+```
+
+> 模型保存在 `embedding-models/bge-m3/`，构建 Docker 镜像时自动 COPY 进容器，无需每次重新下载。
+
+7. **构建 Swarm-Ev2 Agent 镜像**（每次更新代码后需重新构建）
 
 ```bash
 # 将 Swarm-Ev2 代码同步到 mle-bench 的 agents 目录
@@ -351,7 +360,7 @@ rsync -av --progress \
 docker build --no-cache -t swarm-evo ./agents/swarm-evo
 ```
 
-7. **运行评测**
+8. **运行评测**
 
 ```bash
 API_KEY="your-api-key" \
@@ -373,7 +382,7 @@ python run_agent.py \
 | `config.yaml` | MLE-Bench Agent 注册配置（时间限制、环境变量等） |
 | `config/mle_bench.yaml` | 容器内专用运行配置（路径、LLM、进化参数） |
 | `requirements_agent.txt` | 容器内额外 Python 依赖 |
-| `scripts/download_model.py` | 构建阶段预下载 BGE-M3 Embedding 模型 |
+| `scripts/download_model.py` | 本地预下载 BGE-M3 Embedding 模型（仅需执行一次） |
 
 ### 环境变量映射
 
