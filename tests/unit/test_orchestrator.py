@@ -343,3 +343,44 @@ class TestOrchestrator:
         assert "0.50s" in messages
         assert "Code Changes" in messages  # 新增的变更上下文部分
         assert "Initial solution" in messages
+
+
+def test_time_limit_main_loop(mock_config, tmp_path):
+    """测试主循环正确响应时间限制。
+
+    验证点：
+    1. _run_single_epoch() 返回 False 时，主循环应停止
+    2. 只运行到返回 False 的 Epoch
+    """
+    from unittest.mock import MagicMock
+
+    # 准备
+    mock_config.agent.time_limit = 10  # 10 秒限制
+    journal = Journal()
+    mock_agent = MagicMock()
+    mock_agent.name = "test_agent"
+
+    orchestrator = Orchestrator(
+        agents=[mock_agent],
+        config=mock_config,
+        journal=journal,
+        task_desc="test",
+    )
+
+    # 模拟：第 2 个 Epoch 时触发时间限制
+    call_count = [0]
+
+    def mock_run_epoch(steps):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            return True  # 第 1 次正常完成
+        else:
+            return False  # 第 2 次时间限制
+
+    orchestrator._run_single_epoch = mock_run_epoch
+
+    # 执行
+    orchestrator.run(num_epochs=5, steps_per_epoch=10)
+
+    # 验证
+    assert call_count[0] == 2, "应该只运行了 2 个 Epoch"

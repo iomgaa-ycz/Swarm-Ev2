@@ -479,7 +479,10 @@ def main() -> None:
 
             # [1] 运行 Orchestrator（生成初始/改进方案）
             log_msg("INFO", f"运行 Orchestrator: {steps_per_epoch} 个 step")
-            orchestrator._run_single_epoch(steps_per_epoch)
+            epoch_completed = orchestrator._run_single_epoch(steps_per_epoch)
+            if not epoch_completed:
+                log_msg("INFO", "时间限制已达，停止进化主循环")
+                break
 
             # [2] 运行 SolutionEvolution（遗传算法）
             log_msg("INFO", "运行 SolutionEvolution（遗传算法）")

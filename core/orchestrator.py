@@ -186,6 +186,7 @@ class Orchestrator:
             epoch_completed = self._run_single_epoch(steps_per_epoch)
 
             if not epoch_completed:
+                log_msg("INFO", "Epoch 执行过程中检测到时间限制，停止运行")
                 break
 
             # Agent 层进化

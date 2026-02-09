@@ -295,7 +295,11 @@ def run_adapter() -> None:
     for epoch in range(num_epochs):
         log_msg("INFO", f"===== Epoch {epoch + 1}/{num_epochs} =====")
 
-        orchestrator._run_single_epoch(steps_per_epoch)
+        # 运行 Orchestrator（检查返回值）
+        epoch_completed = orchestrator._run_single_epoch(steps_per_epoch)
+        if not epoch_completed:
+            log_msg("INFO", "时间限制已达，停止进化主循环")
+            break
 
         epoch_best = solution_evolution.run_epoch(steps_per_epoch)
         if epoch_best and (
