@@ -146,20 +146,48 @@ class SolutionEvolution:
 
         return best_node
 
+    def _is_lower_better(self) -> bool:
+        """判断当前任务的 metric 方向。
+
+        使用种群中第一个有 metric 的节点的 lower_is_better 属性。
+        同一任务内所有节点方向一致。
+
+        Returns:
+            True 表示越小越好（如 RMSE/logloss），False 表示越大越好（如 AUC）
+        """
+        for node in self.population:
+            if node.metric_value is not None:
+                return node.lower_is_better
+        return False  # 默认 higher_is_better
+
     def _select_elites(self) -> List[Node]:
-        """精英保留（返回 top-K 节点）。
+        """精英保留（返回 top-K 节点，正确处理 metric 方向）。
 
         Returns:
             精英节点列表
         """
-        # 按 metric_value 降序排序
-        sorted_pop = sorted(
-            self.population, key=lambda n: n.metric_value or -1e9, reverse=True
-        )
+        lower = self._is_lower_better()
+        if lower:
+            # lower_is_better: 升序排列，取最小值
+            sorted_pop = sorted(
+                self.population,
+                key=lambda n: (
+                    n.metric_value if n.metric_value is not None else float("inf")
+                ),
+            )
+        else:
+            # higher_is_better: 降序排列，取最大值
+            sorted_pop = sorted(
+                self.population,
+                key=lambda n: (
+                    n.metric_value if n.metric_value is not None else float("-inf")
+                ),
+                reverse=True,
+            )
         return sorted_pop[: self.elite_size]
 
     def _tournament_select(self) -> Node:
-        """锦标赛选择单个父代。
+        """锦标赛选择单个父代（正确处理 metric 方向）。
 
         随机抽取 k 个个体，返回其中最优者。
 
@@ -167,7 +195,21 @@ class SolutionEvolution:
             选中的父代节点
         """
         tournament = random.sample(self.population, k=self.tournament_k)
-        winner = max(tournament, key=lambda n: n.metric_value or -1e9)
+        lower = self._is_lower_better()
+        if lower:
+            winner = min(
+                tournament,
+                key=lambda n: (
+                    n.metric_value if n.metric_value is not None else float("inf")
+                ),
+            )
+        else:
+            winner = max(
+                tournament,
+                key=lambda n: (
+                    n.metric_value if n.metric_value is not None else float("-inf")
+                ),
+            )
         return winner
 
     def _crossover_mvp(self, parent_a: Node, parent_b: Node) -> Optional[Node]:
