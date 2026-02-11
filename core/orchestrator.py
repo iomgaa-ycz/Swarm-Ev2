@@ -21,7 +21,9 @@ from core.executor.interpreter import Interpreter, ExecutionResult
 from core.executor.workspace import WorkspaceManager
 from core.backend import query as backend_query
 from utils.config import Config
-from utils.logger_system import log_msg, log_exception
+import re
+
+from utils.logger_system import log_msg, log_json, log_exception
 from utils.system_info import (
     get_hardware_description,
     get_conda_packages,
@@ -30,6 +32,29 @@ from utils.system_info import (
 
 if TYPE_CHECKING:
     from core.evolution.agent_evolution import AgentEvolution
+
+# Metric 合理性范围（用于防止 LLM Review 幻觉）
+# 格式: { metric_keyword: (min_val, max_val) }
+# min_val/max_val 为 None 表示不限制该方向
+METRIC_BOUNDS = {
+    # Bounded [0, 1]
+    "auc": (0.0, 1.0),
+    "accuracy": (0.0, 1.0),
+    "f1": (0.0, 1.0),
+    "precision": (0.0, 1.0),
+    "recall": (0.0, 1.0),
+    "map": (0.0, 1.0),
+    "qwk": (-1.0, 1.0),
+    "kappa": (-1.0, 1.0),
+    # Unbounded non-negative
+    "rmse": (0.0, None),
+    "rmsle": (0.0, None),
+    "mae": (0.0, None),
+    "mse": (0.0, None),
+    # Log loss: 理论 (0, +inf)，实际合理 (epsilon, 15)
+    "logloss": (1e-7, 15.0),
+    "log_loss": (1e-7, 15.0),
+}
 
 
 class Orchestrator:
@@ -529,8 +554,16 @@ class Orchestrator:
             # 初稿模式
             change_context = "(Initial solution, no diff)"
 
-        # Phase 1: 文件存在检查
+        # Phase 1: 文件存在 + 格式校验
         has_submission = self._check_submission_exists(node.id)
+        if has_submission:
+            submission_check = self._validate_submission_format(node.id)
+            if not submission_check["valid"]:
+                log_msg(
+                    "WARNING",
+                    f"Submission 格式异常: {submission_check['errors']}",
+                )
+                has_submission = False  # 格式无效等同于不存在
 
         # Phase 2: LLM Function Calling（收集调试数据）
         review_data = None
@@ -595,6 +628,30 @@ class Orchestrator:
                     "WARNING",
                     f"节点 {node.id[:8]} 指标值异常 ({metric_value})，标记为 buggy",
                 )
+
+        # Phase 5.5: stdout metric 数据收集（LLM 优先，仅记录差异）
+        stdout_metric = self._parse_metric_from_stdout(node.term_out)
+        if stdout_metric is not None and metric_value is not None:
+            diff = abs(stdout_metric - metric_value)
+            if diff > max(abs(stdout_metric) * 0.01, 1e-6):
+                log_json(
+                    {
+                        "event": "metric_mismatch",
+                        "node_id": node.id,
+                        "llm_metric": metric_value,
+                        "stdout_metric": stdout_metric,
+                        "diff": diff,
+                    }
+                )
+                log_msg(
+                    "WARNING",
+                    f"Metric 不一致: LLM={metric_value}, stdout={stdout_metric}（保留 LLM 值）",
+                )
+        elif stdout_metric is not None and metric_value is None:
+            # LLM 未提取到但 stdout 有值：用 stdout 补位
+            log_msg("INFO", f"LLM 未提取 metric，使用 stdout 值: {stdout_metric}")
+            metric_value = stdout_metric
+            review_data["metric"] = stdout_metric
 
         # Phase 6: 综合判断 is_buggy（5 条件 OR）
         node.is_buggy = (
@@ -871,9 +928,10 @@ Respond with JSON:
     def _check_metric_plausibility(self, metric: float) -> bool:
         """检测指标是否在合理范围内（防止 LLM 幻觉）。
 
-        参考: ML-Master check_metric_valid()
-
-        规则: 如果新指标与 best_node 指标相差超过 upper_bound 倍，视为异常。
+        三层校验:
+        1. 绝对范围检查（基于 METRIC_BOUNDS，匹配 task_desc 中的关键词）
+        2. logloss=0 特殊检查（logloss 值严格大于 0）
+        3. 相对比率检查（与 best_node 比较，阈值默认 50 倍）
 
         Args:
             metric: 待检测的指标值
@@ -881,21 +939,133 @@ Respond with JSON:
         Returns:
             True 如果在合理范围内，False 如果异常
         """
+        # Phase 1: 绝对范围检查
+        task_lower = (self._task_desc_compressed or "").lower()
+        for keyword, (min_val, max_val) in METRIC_BOUNDS.items():
+            if keyword in task_lower:
+                if min_val is not None and metric < min_val:
+                    log_msg(
+                        "WARNING",
+                        f"Metric {metric} 低于 {keyword} 下界 {min_val}",
+                    )
+                    return False
+                if max_val is not None and metric > max_val:
+                    log_msg(
+                        "WARNING",
+                        f"Metric {metric} 超过 {keyword} 上界 {max_val}",
+                    )
+                    return False
+                break  # 只匹配第一个关键词
+
+        # Phase 2: metric=0.0 特殊检查
+        if metric == 0.0 and self.best_node and self.best_node.metric_value:
+            if self.best_node.metric_value > 0.01:
+                log_msg(
+                    "WARNING",
+                    f"Metric=0.0 疑似虚假值（best={self.best_node.metric_value}）",
+                )
+                return False
+
+        # Phase 3: 相对比率检查（原有逻辑）
         if self.best_node is None or self.best_node.metric_value is None:
-            return True  # 无参考值，默认通过
+            return True
 
         best_value = self.best_node.metric_value
-
-        # 获取阈值（默认 50，支持配置覆盖）
         upper_bound = getattr(self.config.search, "invalid_metric_upper_bound", 50)
 
-        # 避免除零
         if best_value == 0 or metric == 0:
             return abs(best_value - metric) <= upper_bound
 
-        # 相对比率检查
         ratio = max(abs(best_value), abs(metric)) / min(abs(best_value), abs(metric))
         return ratio <= upper_bound
+
+    def _validate_submission_format(self, node_id: str) -> Dict:
+        """校验 submission.csv 的基本格式。
+
+        检查项:
+        1. 文件是否可读
+        2. 是否有 NaN 值
+        3. 行数是否与 sample_submission 一致
+
+        Args:
+            node_id: 节点 ID
+
+        Returns:
+            {"valid": bool, "errors": list[str], "row_count": int}
+        """
+        result: Dict = {"valid": True, "errors": [], "row_count": 0}
+
+        submission_path = (
+            self.config.project.workspace_dir
+            / "submission"
+            / f"submission_{node_id}.csv"
+        )
+        if not submission_path.exists():
+            result["valid"] = False
+            result["errors"].append("submission.csv 不存在")
+            return result
+
+        try:
+            import pandas as pd
+
+            sub_df = pd.read_csv(submission_path)
+            result["row_count"] = len(sub_df)
+
+            # 检查 NaN
+            nan_count = int(sub_df.isnull().sum().sum())
+            if nan_count > 0:
+                result["valid"] = False
+                result["errors"].append(f"submission 包含 {nan_count} 个 NaN 值")
+
+            # 检查与 sample_submission 的行数一致性
+            input_dir = self.config.project.workspace_dir / "input"
+            sample_path = input_dir / "sample_submission.csv"
+            if not sample_path.exists():
+                sample_path = input_dir / "sampleSubmission.csv"
+
+            if sample_path.exists():
+                sample_df = pd.read_csv(sample_path)
+                if len(sub_df) != len(sample_df):
+                    result["valid"] = False
+                    result["errors"].append(
+                        f"行数不匹配: submission={len(sub_df)}, sample={len(sample_df)}"
+                    )
+                # 列名检查（仅警告）
+                if set(sub_df.columns) != set(sample_df.columns):
+                    result["errors"].append(
+                        f"列名不匹配: submission={list(sub_df.columns)[:5]}, "
+                        f"sample={list(sample_df.columns)[:5]}"
+                    )
+        except Exception as e:
+            result["valid"] = False
+            result["errors"].append(f"读取 submission 失败: {e}")
+
+        return result
+
+    def _parse_metric_from_stdout(self, term_out: str) -> Optional[float]:
+        """从终端输出中正则提取 Validation metric 值。
+
+        匹配格式: "Validation metric: {number}"
+        如果有多行匹配（如多折输出），取最后一个（通常是平均值）。
+
+        Args:
+            term_out: 终端输出文本
+
+        Returns:
+            提取的 metric 值，未匹配返回 None
+        """
+        if not term_out:
+            return None
+        matches = re.findall(
+            r"Validation metric:\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)",
+            term_out,
+        )
+        if matches:
+            try:
+                return float(matches[-1])
+            except ValueError:
+                return None
+        return None
 
     def _build_review_messages(
         self,
@@ -974,6 +1144,8 @@ Respond with JSON:
 
 ---
 
+**Metric Alignment Check**: Verify that the validation metric printed in output matches the competition's evaluation metric. If the code uses a different loss function for training (e.g., Focal Loss) but reports that loss as the validation metric instead of the actual competition metric (e.g., log_loss), set `is_bug=true` and explain in `key_change`.
+
 Call `submit_review` with your analysis.
 """
         return prompt
@@ -1007,6 +1179,14 @@ Call `submit_review` with your analysis.
                         "type": "boolean",
                         "description": "指标是否越小越好（如 RMSE=true）",
                     },
+                    "metric_name": {
+                        "type": "string",
+                        "description": (
+                            "验证集使用的评估指标名称（如 log_loss, auc, rmse）。"
+                            "必须与竞赛要求一致。如果代码使用了不同的指标"
+                            "（如用 Focal Loss 代替 log_loss），请说明。"
+                        ),
+                    },
                     # ===== 新增字段 =====
                     "key_change": {
                         "type": "string",
@@ -1032,6 +1212,7 @@ Call `submit_review` with your analysis.
                     "has_csv_submission",
                     "metric",
                     "lower_is_better",
+                    "metric_name",
                     "key_change",
                     "insight",
                 ],
