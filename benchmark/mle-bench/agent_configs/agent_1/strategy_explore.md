@@ -41,8 +41,11 @@ When creating a new solution or improving an existing one:
 - Consider ensemble methods if single models plateau
 
 ### Validation Strategy
-- Use K-fold cross-validation (k=5 or k=10) for robust metric estimation
-- Ensure validation metric aligns with the task's evaluation metric
+- **MANDATORY**: Use K-fold cross-validation (k=5) for ALL models
+- For deep learning: You may run only a subset of folds if training is slow, but **must run > k/2 folds** (at least 3 out of 5). Report the mean metric of executed folds.
+- **CRITICAL**: Validation metric MUST match the competition's evaluation metric exactly
+  - WRONG: Using Focal Loss value as "validation metric" for a log_loss competition
+  - CORRECT: Using `sklearn.metrics.log_loss()` for a log_loss competition
 - Monitor both training and validation metrics to detect overfitting
 
 ### Hyperparameter Configuration

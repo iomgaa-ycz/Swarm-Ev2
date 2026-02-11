@@ -27,6 +27,19 @@
 - If a desired package is not listed, use an alternative from the installed packages
 - For deep learning, prefer using GPU when available, and gracefully fall back to CPU if not. (GPU > Multi-core CPU > Single-core CPU)
 
+### Validation Requirements (MANDATORY)
+
+> **CRITICAL**: The validation strategy MUST follow these rules:
+
+1. **For sklearn/tabular models**: Use `StratifiedKFold(n_splits=5)` (classification) or `KFold(n_splits=5)` (regression). Report the **mean** of all folds.
+2. **For deep learning models**: Still use K-Fold (k=5), but you may **only run a subset of folds** if training is slow. The number of folds actually executed **MUST be > k/2** (e.g., at least 3 out of 5). Report the mean of the executed folds.
+3. **MUST use the competition's evaluation metric** for validation (NOT training loss):
+   - If competition uses `log_loss`, validate with `sklearn.metrics.log_loss`
+   - If competition uses `AUC`, validate with `sklearn.metrics.roc_auc_score`
+   - If competition uses `RMSE`, validate with `sqrt(mean_squared_error)`
+   - **NEVER** report training loss (e.g., Focal Loss, BCELoss) as validation metric
+4. Print the validation metric: `print(f"Validation metric: {metric_value:.6f}")`
+
 ### Best Practices
 - Set random seeds for reproducibility
 - Handle edge cases (missing values, data type mismatches)
