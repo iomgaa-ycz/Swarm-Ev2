@@ -192,9 +192,14 @@ class TestOrchestrator:
             with patch.object(
                 orchestrator, "_check_submission_exists", return_value=True
             ):
-                mock_query.return_value = '{"is_bug": false, "metric": 0.90, "key_change": "Added print statement", "insight": "Good result", "lower_is_better": false, "has_csv_submission": true}'
+                with patch.object(
+                    orchestrator,
+                    "_validate_submission_format",
+                    return_value={"valid": True, "errors": [], "row_count": 100},
+                ):
+                    mock_query.return_value = '{"is_bug": false, "metric": 0.90, "key_change": "Added print statement", "insight": "Good result", "lower_is_better": false, "has_csv_submission": true}'
 
-                orchestrator._review_node(node)
+                    orchestrator._review_node(node)
 
         # 验证
         assert node.is_buggy is False
