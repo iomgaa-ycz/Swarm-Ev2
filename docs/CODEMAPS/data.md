@@ -1,9 +1,9 @@
 # 数据流与配置管理
 
-**Last Updated:** 2026-02-06 (Codemap 同步: SkillManager 三组件链集成 + 死代码清理)
-**Version:** 0.4.0
-**模块范围:** main.py (584行), config/, .env, utils/, core/executor/, core/orchestrator.py (1444行), core/evolution/ (solution_evolution.py 287行), benchmark/
-**当前阶段:** Phase 3.5 Skill 进化（已完成）+ Phase 3.6 Review 系统优化
+**Last Updated:** 2026-02-11 (Codemap 同步: P0 修复 + Metric 校验体系增强 + K-Fold 强制验证)
+**Version:** 0.4.1
+**模块范围:** main.py (592行), config/, .env, utils/, core/executor/, core/orchestrator.py (1626行), core/evolution/ (solution_evolution.py 329行), benchmark/
+**当前阶段:** Phase 3.5 Skill 进化（已完成）+ P0 修复（K-Fold 强制 + Metric 对齐检查 + lower_is_better 修复）
 
 ---
 

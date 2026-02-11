@@ -1,9 +1,9 @@
 # 后端模块详细说明
 
-**Last Updated:** 2026-02-06 (Codemap 同步: SkillManager 三组件链集成 + search 模块清理)
+**Last Updated:** 2026-02-11 (Codemap 同步: P0 修复 + Metric 校验体系增强 + K-Fold 强制验证)
 **模块范围:** main.py, utils/, core/state/, core/backend/, core/executor/, core/evolution/, agents/, config/, tests/, benchmark/
-**当前阶段:** Phase 3.5 Skill 进化（已完成）+ SkillManager 三组件链集成
-**版本:** 0.4.0
+**当前阶段:** Phase 3.5 Skill 进化（已完成）+ P0 修复（K-Fold 强制 + Metric 对齐检查 + lower_is_better 修复）
+**版本:** 0.4.1
 
 ---
 
@@ -12,9 +12,9 @@
 | 模块 | 文件 | 行数 | 职责 | 状态 |
 |------|------|------|------|------|
 | **入口层 (Entry)** |||||
-| **main.py** | **`main.py`** | **584** | **双层进化架构入口** | **完成 (重构)** |
+| **main.py** | **`main.py`** | **592** | **双层进化架构入口** | **完成 (重构)** |
 | **基础设施层** |||||
-| 配置系统 | `utils/config.py` | 603 | OmegaConf 配置加载与验证 (+EvolutionConfig) | 完成 |
+| 配置系统 | `utils/config.py` | 607 | OmegaConf 配置加载与验证 (+EvolutionConfig+SkillEvolutionConfig) | 完成 |
 | 日志系统 | `utils/logger_system.py` | 180 | 双通道日志输出 | 完成 |
 | 文件工具 | `utils/file_utils.py` | 222 | 目录复制/链接/解压/清理 | 完成 |
 | **系统信息** | **`utils/system_info.py`** | **408** | **系统环境信息收集** | **完成** |
@@ -25,9 +25,10 @@
 | Task 数据类 | `core/state/task.py` | 62 | Agent 任务定义 | 完成 |
 | **后端抽象层** |||||
 | 后端抽象层 | `core/backend/__init__.py` | 168 | 统一 LLM 查询接口 (Function Calling + query_with_config) | 完成 |
-| OpenAI 后端 | `core/backend/backend_openai.py` | 163 | OpenAI + GLM 支持 | 完成 |
-| Anthropic 后端 | `core/backend/backend_anthropic.py` | 142 | Claude 系列支持 | 完成 |
+| OpenAI 后端 | `core/backend/backend_openai.py` | 165 | OpenAI + GLM 支持 | 完成 |
+| Anthropic 后端 | `core/backend/backend_anthropic.py` | 153 | Claude 系列支持 | 完成 |
 | 后端工具 | `core/backend/utils.py` | 80 | 消息格式化 + 重试机制 | 完成 |
+| **API Key 池** | **`core/backend/key_pool.py`** | **91** | **API Key 循环使用管理** | **完成 (NEW)** |
 | **执行层** |||||
 | **代码执行器** | **`core/executor/interpreter.py`** | **463** | **沙箱执行（精简重构+并行增强）** | **完成** |
 | 工作空间管理 | `core/executor/workspace.py` | 244 | 目录管理 + 文件归档 + 数据预处理 | 完成 |
@@ -42,7 +43,7 @@
 | Agent 基类 | `agents/base_agent.py` | 139 | Agent 抽象基类 | 完成 |
 | **CoderAgent** | **`agents/coder_agent.py`** | **416** | **代码生成 Agent** | **完成** |
 | **编排层** |||||
-| **Orchestrator** | **`core/orchestrator.py`** | **1444** | **任务编排器 (+Prompt压缩+调试记录+信息素)** | **完成 (P3.6)** |
+| **Orchestrator** | **`core/orchestrator.py`** | **1626** | **任务编排器 (+Metric校验体系+K-Fold强制+信息素)** | **完成 (P0修复)** |
 | **进化层 (Phase 3)** |||||
 | **基因解析器** | **`core/evolution/gene_parser.py`** | **162** | **解析 7 基因块，支持 GA 交叉** | **完成** |
 | **共享经验池** | **`core/evolution/experience_pool.py`** | **319** | **线程安全存储 + Top-K 查询 + 扩展过滤** | **完成** |
@@ -51,7 +52,7 @@
 | **基因注册表** | **`core/evolution/gene_registry.py`** | **199** | **基因级信息素管理 + 哈希 + 衰减** | **完成 (P3.4)** |
 | **基因选择器** | **`core/evolution/gene_selector.py`** | **322** | **信息素驱动的确定性基因选择** | **完成 (P3.4)** |
 | **信息素机制** | **`core/evolution/pheromone.py`** | **104** | **节点级信息素计算 + 时间衰减** | **完成 (P3.4)** |
-| **Solution 层 GA** | **`core/evolution/solution_evolution.py`** | **287** | **MVP 简化 GA（使用 Orchestrator 执行）** | **完成 (重构)** |
+| **Solution 层 GA** | **`core/evolution/solution_evolution.py`** | **329** | **MVP 简化 GA（+lower_is_better 修复）** | **完成 (P0修复)** |
 | **Phase 3.5 Skill 进化** |||||
 | **代码嵌入管理器** | **`core/evolution/code_embedding_manager.py`** | **130** | **bge-m3 文本向量化 + 缓存** | **完成 (P3.5)** |
 | **Skill 提取器** | **`core/evolution/skill_extractor.py`** | **302** | **HDBSCAN 聚类 + LLM 总结** | **完成 (P3.5)** |
@@ -194,13 +195,13 @@ main.py
 
 ---
 
-## 3. Orchestrator 编排器 (`core/orchestrator.py`) [1444 行]
+## 3. Orchestrator 编排器 (`core/orchestrator.py`) [1626 行]
 
-> **重大更新**: Orchestrator 从 1181 行扩展至 1444 行（+22.3%），新增 Prompt 压缩、调试记录、Review 增强、信息素计算。
+> **重大更新**: Orchestrator 从 1444 行扩展至 1626 行（+12.6%），新增 Metric 校验体系、K-Fold 强制验证、metric 合理性检查。
 
 ### 3.1 核心职责
 
-Orchestrator 是系统的中枢控制器，协调主循环、父节点选择、Agent 代码生成、代码执行、Review 评估、最佳节点更新。现支持双层进化模式和 GA 操作。
+Orchestrator 是系统的中枢控制器，协调主循环、父节点选择、Agent 代码生成、代码执行、Review 评估、最佳节点更新。现支持双层进化模式、GA 操作、强制 K-Fold 验证和 Metric 合理性校验。
 
 ### 3.2 类结构
 
@@ -236,8 +237,10 @@ class Orchestrator:
 | `_select_parent_node` | `() -> Optional[Node]` | 三阶段父节点选择策略 |
 | `_prepare_step` | `() -> None` | 清理 submission 目录 |
 | `_execute_code` | `(code: str, node_id: str) -> ExecutionResult` | 执行代码（含路径重写） |
-| `_review_node` | `(node: Node) -> None` | Function Calling Review |
+| `_review_node` | `(node: Node) -> None` | Function Calling Review (+Metric 合理性校验) |
 | `_update_best_node` | `(node: Node) -> None` | 更新最佳节点（支持 lower_is_better） |
+| **`_check_metric_plausibility`** | **`(node: Node) -> bool`** | **Metric 异常值检测（绝对范围+相对比率）[P0]** |
+| **`_validate_review_response`** | **`(data: Dict) -> bool`** | **Review 响应类型检查+一致性验证 [P0]** |
 | **`execute_merge_task`** | **`(parent1, parent2) -> Node`** | **执行 merge 任务（GA 交叉）** |
 | **`execute_mutate_task`** | **`(parent) -> Node`** | **执行 mutate 任务（GA 变异）** |
 | **`_generate_code_diff`** | **`(parent_code, current_code) -> str`** | **生成父子代码 unified diff [NEW]** |
@@ -329,7 +332,7 @@ _select_parent_node()
 ### 3.8 依赖关系
 
 ```
-Orchestrator (1444行)
+Orchestrator (1626行)
 +-- agents.base_agent.BaseAgent, AgentContext
 +-- core.state.Node, Journal
 +-- core.executor.interpreter.Interpreter, ExecutionResult
@@ -1266,17 +1269,17 @@ Pheromone
 
 ---
 
-## 15. Solution 层进化器 (`core/evolution/solution_evolution.py`) [287 行, MVP 重构]
+## 15. Solution 层进化器 (`core/evolution/solution_evolution.py`) [329 行, MVP 重构]
 
 ### 14.1 核心职责
 
-MVP 简化版遗传算法，使用 Orchestrator 执行任务（而非直接调用 ParallelEvaluator）。支持精英保留、锦标赛选择、交叉（随机/信息素驱动）和变异。
+MVP 简化版遗传算法，使用 Orchestrator 执行任务（而非直接调用 ParallelEvaluator）。支持精英保留、锦标赛选择、交叉（随机/信息素驱动）和变异。P0 修复后正确处理 lower_is_better metric 方向。
 
 ### 14.2 类结构
 
 ```python
 class SolutionEvolution:
-    """Solution 层遗传算法 (287行, MVP 简化版)。
+    """Solution 层遗传算法 (329行, MVP 简化版)。
 
     Attributes:
         config: Config - 全局配置
@@ -1391,6 +1394,8 @@ tests/
 |   +-- test_text_utils.py            # 文本压缩工具测试 [P3.6]
 |   +-- test_agents.py                 # CoderAgent 测试
 |   +-- test_orchestrator.py           # Orchestrator 测试
+|   +-- test_key_pool.py               # API Key 池测试 [NEW]
+|   +-- test_p0_fixes.py               # P0 修复验证测试 [NEW]
 +-- test_evolution/                    # Phase 3 进化模块测试 (完整覆盖率)
 |   +-- __init__.py
 |   +-- test_gene_parser.py            # 基因解析器测试
@@ -1407,7 +1412,8 @@ tests/
 |   +-- test_skill_manager.py          # Skill 管理器测试 [P3.5]
 +-- integration/                       # 集成测试
     +-- __init__.py
-    +-- test_prompt_system_integration.py # Prompt 系统集成测试 [NEW]
+    +-- test_prompt_system_integration.py # Prompt 系统集成测试
+    +-- test_timeout.py                   # 超时集成测试 [NEW]
 ```
 
 ### 16.2 运行测试
@@ -1472,7 +1478,7 @@ graph TD
     end
 
     subgraph "编排层"
-        ORCH[core/orchestrator.py<br/>1444行]
+        ORCH[core/orchestrator.py<br/>1626行]
     end
 
     subgraph "进化层"
@@ -1480,7 +1486,7 @@ graph TD
         EPOOL[core/evolution/experience_pool.py]
         TDISP[core/evolution/task_dispatcher.py<br/>P3.3]
         AEVO[core/evolution/agent_evolution.py<br/>P3.3]
-        SOLEVO[core/evolution/solution_evolution.py<br/>287行 MVP]
+        SOLEVO[core/evolution/solution_evolution.py<br/>329行 MVP]
     end
 
     subgraph "Benchmark 资源"

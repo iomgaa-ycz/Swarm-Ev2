@@ -1,8 +1,8 @@
 # Swarm-Ev2 项目架构概览
 
-**Last Updated:** 2026-02-06 (Codemap 同步: Phase 3 死代码清理 + SkillManager 三组件链集成)
-**项目版本:** 0.4.0
-**当前阶段:** Phase 3.5 Skill 进化（已完成）+ PromptBuilder 删除 + search/ 模块清理
+**Last Updated:** 2026-02-11 (Codemap 同步: P0 修复 + Metric 校验体系增强 + K-Fold 强制验证)
+**项目版本:** 0.4.1
+**当前阶段:** Phase 3.5 Skill 进化（已完成）+ P0 修复（K-Fold 强制 + Metric 对齐检查 + lower_is_better 修复）
 
 ---
 
@@ -16,8 +16,8 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 | 架构 | 纯后端，asyncio + 多线程 |
 | 配置 | OmegaConf + YAML |
 | 日志 | 双通道（文本 + JSON）+ Review 调试记录 |
-| 测试 | pytest + pytest-asyncio (34 测试文件, ~7742 行) |
-| 代码行数 | ~8889 行核心代码（40 模块） + 7742 行测试 |
+| 测试 | pytest + pytest-asyncio (37 测试文件, ~8709 行) |
+| 代码行数 | ~10817 行核心代码（41 模块） + 8709 行测试 |
 
 ---
 
@@ -26,7 +26,7 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 ```
 +---------------------------------------------------------+
 |                   入口层 (Entry)                          |
-|   main.py (双层进化架构, 584行)                            |  <- Phase 3.5+
+|   main.py (双层进化架构, 592行)                            |  <- Phase 3.5+
 |   mle_bench_adapter.py (评测)                             |  <- Phase 5
 |   - initialize_agents(config, prompt_manager)             |
 |   - initialize_evolution_components(+skill_manager)       |
@@ -35,7 +35,7 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 |   - print_evolution_statistics() 打印进化统计               |
 +---------------------------------------------------------+
 |                编排层 (Orchestration)                     |
-|   Orchestrator (1444行, +信息素计算+Prompt压缩)            |  <- Phase 2.4+
+|   Orchestrator (1626行, +Metric校验+K-Fold强制)            |  <- Phase 2.4+
 +---------------------------------------------------------+
 |                  Agent 层 (Agents)                        |
 |   BaseAgent (139行) + CoderAgent (416行, +prompt_manager)|  <- Phase 2+
@@ -49,7 +49,7 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 |   GeneRegistry (199行)                                   |  <- P3.4
 |   GeneSelector (322行, +source_score)                    |  <- P3.4
 |   Pheromone (104行)                                      |  <- P3.4
-|   SolutionEvolution (287行, MVP简化+run_epoch)           |  <- P3.4
+|   SolutionEvolution (329行, MVP简化+lower_is_better修复) |  <- P3.4
 |   CodeEmbeddingManager (130行)                           |  <- P3.5
 |   SkillExtractor (302行)                                 |  <- P3.5
 |   SkillManager (429行)                                   |  <- P3.5
@@ -82,7 +82,7 @@ Swarm-Ev2 是一个基于**双层群体智能**与**进化算法**的多 Agent �
 ```mermaid
 graph TD
     subgraph "Phase 1 - 基础设施"
-        CFG[utils/config.py<br/>配置管理 603行<br/>+EvolutionConfig]
+        CFG[utils/config.py<br/>配置管理 607行<br/>+EvolutionConfig]
         LOG[utils/logger_system.py<br/>日志系统 180行]
         FU[utils/file_utils.py<br/>文件工具 222行<br/>+extract/clean]
         SYSINFO[utils/system_info.py<br/>系统信息 391行]
@@ -98,8 +98,9 @@ graph TD
 
     subgraph "Phase 1 - 后端抽象"
         BACKEND[core/backend/__init__.py<br/>统一查询接口 168行<br/>Function Calling + query_with_config]
-        OPENAI[core/backend/backend_openai.py<br/>OpenAI + GLM 163行]
-        ANTHRO[core/backend/backend_anthropic.py<br/>Claude 142行]
+        OPENAI[core/backend/backend_openai.py<br/>OpenAI + GLM 165行]
+        ANTHRO[core/backend/backend_anthropic.py<br/>Claude 153行]
+        KEYPOOL[core/backend/key_pool.py<br/>API Key 池 91行]
         BUTILS[core/backend/utils.py<br/>消息格式 + 重试 80行]
     end
 
@@ -115,7 +116,7 @@ graph TD
     end
 
     subgraph "Phase 2.4 - 编排层"
-        ORCH[core/orchestrator.py<br/>任务编排器 1444行<br/>+Memory进化+Review增强]
+        ORCH[core/orchestrator.py<br/>任务编排器 1626行<br/>+Metric校验+K-Fold强制]
     end
 
     subgraph "Phase 3 - 进化层"
@@ -123,7 +124,7 @@ graph TD
         EPOOL[core/evolution/experience_pool.py<br/>共享经验池 319行]
         TDISP[core/evolution/task_dispatcher.py<br/>任务分配器 157行]
         AEVO[core/evolution/agent_evolution.py<br/>Agent 层进化 439行]
-        SEVO[core/evolution/solution_evolution.py<br/>Solution 层 MVP 287行]
+        SEVO[core/evolution/solution_evolution.py<br/>Solution 层 MVP 329行]
     end
 
     subgraph "Benchmark 资源 NEW"
@@ -166,7 +167,9 @@ graph TD
     BACKEND --> OPENAI
     BACKEND --> ANTHRO
     OPENAI --> BUTILS
+    OPENAI --> KEYPOOL
     ANTHRO --> BUTILS
+    ANTHRO --> KEYPOOL
     BUTILS --> LOG
 
     %% Phase 3 依赖
@@ -204,12 +207,12 @@ graph TD
 | **2** | 执行层 | **完成** | Interpreter (463行), WorkspaceManager (244行) |
 | **2** | Agent 抽象 | **完成** | BaseAgent (139行) |
 | **2** | CoderAgent | **完成** | CoderAgent (416行, +merge/mutate +prompt_manager) |
-| **2.4** | Orchestrator | **完成** | Orchestrator (1181行, +双层进化) |
+| **2.4** | Orchestrator | **完成** | Orchestrator (1626行, +Metric校验+K-Fold强制) |
 | **3.1** | **基因解析器** | **完成** | **gene_parser.py (162行)** |
 | **3.2** | **经验池** | **完成** | **experience_pool.py (319行)** |
 | **3+** | **PromptManager** | **完成** | **prompt_manager.py (295行) + benchmark/** |
 | **3.3** | **Agent 层群体智能** | **完成** | **task_dispatcher.py (157行) + agent_evolution.py (439行)** |
-| **3.4** | **Solution 层 GA** | **完成** | **solution_evolution.py (287行, MVP简化) + gene_selector.py (322行) + gene_registry.py (199行) + pheromone.py (104行)** |
+| **3.4** | **Solution 层 GA** | **完成** | **solution_evolution.py (329行, +lower_is_better修复) + gene_selector.py (322行) + gene_registry.py (199行) + pheromone.py (104行)** |
 | **3.5** | **Skill 进化** | **完成** | **skill_extractor.py (302行) + skill_manager.py (429行) + code_embedding_manager.py (130行)** |
 | 4 | 扩展功能 | 待实现 | Memory, ToolRegistry |
 | 5 | 测试与文档 | 进行中 | 80%+ 覆盖率 |
@@ -219,7 +222,7 @@ graph TD
 | 模块 | 文件 | 行数 | 状态 |
 |------|------|------|------|
 | **Phase 1: 基础设施** ||||
-| 配置管理 | `utils/config.py` | 603 | 完成 (+EvolutionConfig) |
+| 配置管理 | `utils/config.py` | 607 | 完成 (+EvolutionConfig+SkillEvolutionConfig) |
 | 日志系统 | `utils/logger_system.py` | 180 | 完成 |
 | 文件工具 | `utils/file_utils.py` | 222 | 完成 (+extract/clean) |
 | **文本压缩工具** | **`utils/text_utils.py`** | **72** | **完成 (NEW P3.6)** |
@@ -230,9 +233,10 @@ graph TD
 | Task 数据类 | `core/state/task.py` | 62 | 完成 |
 | **Phase 1: 后端抽象** ||||
 | 后端抽象层 | `core/backend/__init__.py` | 168 | 完成 (+query_with_config) |
-| OpenAI 后端 | `core/backend/backend_openai.py` | 163 | 完成 |
-| Anthropic 后端 | `core/backend/backend_anthropic.py` | 142 | 完成 |
+| OpenAI 后端 | `core/backend/backend_openai.py` | 165 | 完成 |
+| Anthropic 后端 | `core/backend/backend_anthropic.py` | 153 | 完成 |
 | 后端工具 | `core/backend/utils.py` | 80 | 完成 |
+| **API Key 池** | **`core/backend/key_pool.py`** | **91** | **完成 (NEW)** |
 | **Phase 2: 执行层** ||||
 | **代码执行器** | **`core/executor/interpreter.py`** | **463** | **完成 (精简重构+并行增强)** |
 | 工作空间管理 | `core/executor/workspace.py` | 244 | 完成 (+preprocess) |
@@ -240,7 +244,7 @@ graph TD
 | Agent 基类 | `agents/base_agent.py` | 139 | 完成 (+mutate) |
 | **CoderAgent** | **`agents/coder_agent.py`** | **416** | **完成 (+merge/mutate +prompt_manager)** |
 | **Phase 2.4: Orchestrator** ||||
-| **任务编排器** | **`core/orchestrator.py`** | **1444** | **完成 (+信息素计算+Prompt压缩)** |
+| **任务编排器** | **`core/orchestrator.py`** | **1626** | **完成 (+Metric校验体系+K-Fold强制+信息素计算)** |
 | **Phase 3: 进化层** ||||
 | **基因解析器** | **`core/evolution/gene_parser.py`** | **162** | **完成** |
 | **共享经验池** | **`core/evolution/experience_pool.py`** | **319** | **完成** (+query扩展) |
@@ -249,7 +253,7 @@ graph TD
 | **基因注册表** | **`core/evolution/gene_registry.py`** | **199** | **完成 (P3.4)** |
 | **基因选择器** | **`core/evolution/gene_selector.py`** | **322** | **完成 (P3.4, +source_score)** |
 | **信息素机制** | **`core/evolution/pheromone.py`** | **104** | **完成 (P3.4)** |
-| **Solution 层 GA** | **`core/evolution/solution_evolution.py`** | **287** | **完成 (P3.4, MVP简化+run_epoch)** |
+| **Solution 层 GA** | **`core/evolution/solution_evolution.py`** | **329** | **完成 (P3.4, +lower_is_better修复)** |
 | **Phase 3.5: Skill 进化** ||||
 | **代码嵌入管理器** | **`core/evolution/code_embedding_manager.py`** | **130** | **完成 (P3.5)** |
 | **Skill 提取器** | **`core/evolution/skill_extractor.py`** | **302** | **完成 (P3.5)** |
@@ -258,10 +262,10 @@ graph TD
 | **Prompt 管理器** | **`utils/prompt_manager.py`** | **295** | **完成** |
 | **Benchmark 资源** | **`benchmark/mle-bench/`** | **-** | **完成** |
 | **配置文件** ||||
-| YAML 配置 | `config/default.yaml` | 126 | 完成 (+agent进化配置) |
+| YAML 配置 | `config/default.yaml` | 126 | 完成 (+agent+skill进化配置) |
 
-**总计**: 40 个核心模块 | ~8889 行核心代码 + 34 个测试文件（~7742 行测试代码）
-**最新变更**: Phase 3 死代码清理（search/ 模块删除 + PromptBuilder 删除）+ SkillManager 三组件链集成
+**总计**: 41 个核心模块 | ~10817 行核心代码 + 37 个测试文件（~8709 行测试代码）
+**最新变更**: P0 修复（强制 K-Fold + Metric 对齐检查 + lower_is_better 修复）+ API Key 池管理
 
 ---
 
@@ -269,7 +273,7 @@ graph TD
 
 ```
 Swarm-Ev2/
-├── main.py                        # 双层进化入口 (584行)        Phase 3.5+
+├── main.py                        # 双层进化入口 (592行)        Phase 3.5+
 │   # 核心函数:
 │   # - initialize_agents(config, prompt_manager) 初始化 Agent 种群
 │   # - initialize_evolution_components(+skill_manager) 初始化进化组件
@@ -309,14 +313,15 @@ Swarm-Ev2/
 │   │   └── task.py                # 任务定义
 │   ├── backend/                   # LLM 后端抽象
 │   │   ├── __init__.py            # 统一查询接口
-│   │   ├── backend_openai.py      # OpenAI + GLM
+│   │   │   ├── backend_openai.py      # OpenAI + GLM
 │   │   ├── backend_anthropic.py   # Anthropic
+│   │   ├── key_pool.py            # API Key 池管理 (91行) NEW
 │   │   └── utils.py               # 消息格式 + 重试
 │   ├── executor/                  # 代码执行
 │   │   ├── __init__.py            # 模块导出
 │   │   ├── interpreter.py         # 执行沙箱 (463行, 精简重构+并行增强)
 │   │   └── workspace.py           # 工作空间管理 (244行)
-│   ├── orchestrator.py            # 编排器 (1444行, +信息素计算+Prompt压缩)
+│   ├── orchestrator.py            # 编排器 (1626行, +Metric校验+K-Fold强制)
 │   └── evolution/                 # 进化机制
 │       ├── __init__.py            # 模块导出
 │       ├── gene_parser.py         # 基因解析器 (162行)
@@ -326,12 +331,12 @@ Swarm-Ev2/
 │       ├── gene_registry.py       # 基因注册表 (199行)         Phase 3.4
 │       ├── gene_selector.py       # 基因选择器 (322行)         Phase 3.4
 │       ├── pheromone.py           # 信息素机制 (104行)         Phase 3.4
-│       ├── solution_evolution.py  # Solution 层 MVP (287行)    Phase 3.4
+│       ├── solution_evolution.py  # Solution 层 MVP (329行)    Phase 3.4
 │       ├── code_embedding_manager.py # 文本嵌入 (130行)        Phase 3.5
 │       ├── skill_extractor.py     # Skill 提取器 (302行)       Phase 3.5
 │       └── skill_manager.py       # Skill 管理器 (429行)       Phase 3.5
 ├── utils/                         # 工具模块
-│   ├── config.py                  # 配置管理 (+EvolutionConfig)
+│   ├── config.py                  # 配置管理 (+EvolutionConfig+SkillEvolutionConfig)
 │   ├── logger_system.py           # 日志系统
 │   ├── file_utils.py              # 文件工具 (+extract_archives/clean_up_dataset)
 │   ├── data_preview.py            # 数据预览生成 (276行, +文件大小+IMPORTANT header)
@@ -342,14 +347,17 @@ Swarm-Ev2/
 │   └── workspace_builder.py       # 工作空间构建器 (127行)
 ├── tests/                         # 测试
 │   ├── unit/                      # 单元测试 (19 个测试文件)
-│   ├── test_evolution/            # 进化模块测试 (13 个测试文件)
+│   │   ├── test_key_pool.py       # API Key 池测试 (NEW)
+│   │   └── test_p0_fixes.py       # P0 修复验证测试 (NEW)
+│   ├── test_evolution/            # 进化模块测试 (12 个测试文件)
 │   │   ├── test_gene_parser.py
 │   │   ├── test_experience_pool.py
 │   │   ├── test_prompt_manager.py
-│   │   ├── test_task_dispatcher.py  # NEW (P3.3)
-│   │   └── test_agent_evolution.py  # NEW (P3.3)
+│   │   ├── test_task_dispatcher.py  # (P3.3)
+│   │   └── test_agent_evolution.py  # (P3.3)
 │   └── integration/               # 集成测试
-│       └── test_prompt_system_integration.py # NEW
+│       ├── test_prompt_system_integration.py
+│       └── test_timeout.py         # 超时集成测试 (NEW)
 └── docs/                          # 文档
     ├── CODEMAPS/                   # 架构图
     └── plans/                     # Phase 详细计划
@@ -545,7 +553,7 @@ def compute_node_pheromone(
 
 ### 6.9 Solution 层进化器 (`core/evolution/solution_evolution.py`) [P3.4, MVP 简化]
 
-**职责**: MVP 简化版 Solution 层进化器，委托 Orchestrator 执行任务。从 610 行精简至 287 行。
+**职责**: MVP 简化版 Solution 层进化器，委托 Orchestrator 执行任务。从 610 行精简至 329 行（含 lower_is_better 修复）。
 
 ```python
 class SolutionEvolution:
@@ -566,7 +574,8 @@ class SolutionEvolution:
 **核心变更**:
 - 入口方法从 `evolve_epoch()` 变为 `run_epoch()`
 - 移除独立的并行评估逻辑，委托 `Orchestrator` 执行
-- 大幅精简，从 610 行缩减至 287 行
+- 大幅精简，从 610 行缩减至 329 行
+- **P0 修复**: 正确处理 `lower_is_better` metric 方向
 
 ---
 
@@ -976,7 +985,7 @@ AgentResult (输出)
 ```
 +----------------------------------------------+
 |              入口层 (Entry)                   |
-|  main.py (584行) - 双层进化入口               |
+|  main.py (592行) - 双层进化入口               |
 |    SkillManager 三组件链: Embed→Skill→Prompt |
 |    initialize_agents(config, prompt_manager) |
 |    initialize_evolution_components(+skill_mgr)|
@@ -998,7 +1007,7 @@ AgentResult (输出)
 |        TRAINING_TRICKS                       |
 |  操作: 精英保留(top-3) + 锦标赛(k=3) +       |
 |        交叉(随机/信息素) + 变异(20%)          |
-|  引擎: SolutionEvolution (287行, MVP简化)     |
+|  引擎: SolutionEvolution (329行, MVP简化)     |
 |        委托 Orchestrator 执行任务             |
 +----------------------------------------------+
 |      信息素系统 (Pheromone System)            |
