@@ -217,6 +217,7 @@ class SolutionEvolution:
 
         根据 crossover_strategy 选择随机或信息素驱动策略，
         两种策略均输出统一的 Markdown 格式 gene_plan。
+        增加兼容性预检：检测框架冲突并注入警告。
 
         Args:
             parent_a: 父代 A
@@ -242,10 +243,79 @@ class SolutionEvolution:
             )
             log_msg("INFO", f"随机交叉: {len(REQUIRED_GENES)} 个基因位点")
 
+            # 兼容性预检（仅随机策略，信息素策略已从全局优选）
+            gene_plan_md = self._inject_compatibility_warnings(
+                parent_a, parent_b, gene_plan_md
+            )
+
         # 调用 Orchestrator 执行 merge 任务（gene_plan 为 Markdown 字符串）
         child = self.orchestrator.execute_merge_task(parent_a, parent_b, gene_plan_md)
 
         return child
+
+    def _inject_compatibility_warnings(
+        self, parent_a: Node, parent_b: Node, gene_plan_md: str
+    ) -> str:
+        """检测基因兼容性并注入警告到 gene_plan。
+
+        当两个父代使用不同框架（如 torch vs sklearn）时，
+        在 gene_plan 前注入详细警告，让 LLM 自行选择与修改。
+
+        Args:
+            parent_a: 父代 A
+            parent_b: 父代 B
+            gene_plan_md: 原始 gene_plan Markdown
+
+        Returns:
+            可能增加了警告前缀的 gene_plan Markdown
+        """
+        from core.evolution.gene_compatibility import check_gene_compatibility
+
+        genes_a = parent_a.genes or {}
+        genes_b = parent_b.genes or {}
+
+        # 构建基因选择方案（从 gene_plan_md 中解析）
+        gene_plan_choices: Dict[str, str] = {}
+        for gene in REQUIRED_GENES:
+            # 从 Markdown 中匹配 "### GENE (from node_id, ...)"
+            if f"### {gene}" in gene_plan_md:
+                # 简单判断来自哪个父代
+                idx = gene_plan_md.index(f"### {gene}")
+                section = gene_plan_md[idx : idx + 200]
+                if parent_a.id[:8] in section:
+                    gene_plan_choices[gene] = "A"
+                elif parent_b.id[:8] in section:
+                    gene_plan_choices[gene] = "B"
+                else:
+                    gene_plan_choices[gene] = random.choice(["A", "B"])
+
+        if not gene_plan_choices:
+            return gene_plan_md
+
+        compat = check_gene_compatibility(
+            parent_a_code=parent_a.code or "",
+            parent_b_code=parent_b.code or "",
+            genes_a=genes_a,
+            genes_b=genes_b,
+            gene_plan_choices=gene_plan_choices,
+        )
+
+        if compat.conflicts:
+            warning_text = "\n".join(f"⚠️ {c}" for c in compat.conflicts)
+            gene_plan_md = (
+                f"# ⚠️ Compatibility Warnings\n"
+                f"The following conflicts were detected. You MUST resolve them:\n"
+                f"{warning_text}\n\n"
+                f"Suggestion: Choose components from ONE framework consistently, "
+                f"or adapt the conflicting blocks to be compatible.\n\n"
+                f"{gene_plan_md}"
+            )
+            log_msg(
+                "WARNING",
+                f"Merge 兼容性警告: {len(compat.conflicts)} 个冲突已注入 prompt",
+            )
+
+        return gene_plan_md
 
     def _build_gene_plan_markdown_from_pheromone(self, raw_plan: Dict[str, Any]) -> str:
         """将信息素选择结果格式化为统一 Markdown。

@@ -370,6 +370,9 @@ class Orchestrator:
             node.exc_type = exec_result.exc_type
             node.exc_info = str(exec_result.exc_info) if exec_result.exc_info else None
 
+            # Phase 4.5: 即时 Debug（非超时/OOM 错误才重试）
+            node = self._try_immediate_debug(node, agent, context)
+
             # Phase 5: Review 评估
             self._review_node(node, parent_node=parent_node)
 
@@ -1384,6 +1387,71 @@ Call `submit_review` with your analysis.
         else:
             return node.metric_value > best_node.metric_value
 
+    def _try_immediate_debug(
+        self, node: Node, agent: BaseAgent, context: AgentContext
+    ) -> Node:
+        """即时 Debug 循环：执行失败后立即尝试修复 1 次。
+
+        参考 AIDE search_policy() + _debug() 和 ML-Master _step_search() debug 分支。
+        非超时/OOM 错误才触发，避免对不可恢复的错误浪费 LLM 调用。
+
+        Args:
+            node: 执行后的节点
+            agent: 执行该节点的 Agent
+            context: Agent 执行上下文
+
+        Returns:
+            修复后的节点（修复失败则返回原节点）
+        """
+        # 判断是否需要 Debug
+        skip_exc_types = {None, "TimeoutExpired", "MemoryError"}
+        if node.exc_type in skip_exc_types:
+            return node
+
+        log_msg(
+            "INFO",
+            f"执行失败({node.exc_type})，启动即时 Debug",
+        )
+
+        debug_context = {
+            "buggy_code": node.code,
+            "exc_type": node.exc_type or "",
+            "term_out": node.term_out if isinstance(node.term_out, str) else "",
+            "task_desc": context.task_desc,
+            "data_preview": "",
+            "device_info": context.device_info,
+            "conda_packages": context.conda_packages,
+            "conda_env_name": context.conda_env_name,
+        }
+
+        fixed_node = agent._debug(debug_context)
+
+        if fixed_node and fixed_node.code and fixed_node.code != node.code:
+            # 执行修复后的代码
+            fix_exec_result = self._execute_code(fixed_node.code, fixed_node.id)
+            fixed_node.term_out = "\n".join(fix_exec_result.term_out)
+            fixed_node.exec_time = fix_exec_result.exec_time
+            fixed_node.exc_type = fix_exec_result.exc_type
+            fixed_node.exc_info = (
+                str(fix_exec_result.exc_info) if fix_exec_result.exc_info else None
+            )
+
+            if fixed_node.exc_type is None:
+                log_msg(
+                    "INFO",
+                    f"即时 Debug 成功: {node.exc_type} → 修复",
+                )
+                fixed_node.parent_id = node.parent_id
+                fixed_node.task_type = node.task_type
+                return fixed_node
+            else:
+                log_msg(
+                    "INFO",
+                    f"即时 Debug 失败（仍有错误: {fixed_node.exc_type}），保留原 buggy 节点",
+                )
+
+        return node
+
     def _write_experience_pool(self, agent_id: str, task_type: str, node: Node) -> None:
         """写入经验池（Phase 3）。
 
@@ -1485,6 +1553,9 @@ Call `submit_review` with your analysis.
             node.exc_type = exec_result.exc_type
             node.exc_info = str(exec_result.exc_info) if exec_result.exc_info else None
 
+            # 即时 Debug（非超时/OOM 错误才重试）
+            node = self._try_immediate_debug(node, agent, context)
+
             # Review 评估（merge 使用基因选择方案而非代码 diff）
             self._review_node(node, gene_plan=gene_plan)
 
@@ -1568,6 +1639,9 @@ Call `submit_review` with your analysis.
             node.exec_time = exec_result.exec_time
             node.exc_type = exec_result.exc_type
             node.exc_info = str(exec_result.exc_info) if exec_result.exc_info else None
+
+            # 即时 Debug（非超时/OOM 错误才重试）
+            node = self._try_immediate_debug(node, agent, context)
 
             # Review 评估（mutate 使用代码 diff）
             self._review_node(node, parent_node=parent)

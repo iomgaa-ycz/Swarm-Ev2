@@ -1,16 +1,18 @@
 """CoderAgent 具体实现模块。
 
 提供基于 LLM 的代码生成、执行、评估功能。
+支持即时 Debug 循环和静态预验证 + LLM 自动修复。
 """
 
 import time
 from datetime import datetime
-from typing import Optional, Tuple, Dict
+from typing import Optional, Tuple, Dict, Any
 
 from core.backend import query_with_config
 from core.state import Node
 from utils.logger_system import log_msg, log_exception
 from utils.response import extract_code, extract_text_up_to_code
+from utils.code_validator import validate_code
 
 from .base_agent import BaseAgent, AgentContext, AgentResult
 
@@ -50,12 +52,16 @@ class CoderAgent(BaseAgent):
         try:
             if context.task_type == "explore":
                 node = self._explore(context)
+                # 静态预验证 + LLM 自修复
+                node = self._validate_and_fix(node, context)
                 return AgentResult(node=node, success=True)
             elif context.task_type == "merge":
                 node = self._merge(context)
+                node = self._validate_and_fix(node, context)
                 return AgentResult(node=node, success=True)
             elif context.task_type == "mutate":
                 node = self._mutate(context)
+                node = self._validate_and_fix(node, context)
                 return AgentResult(node=node, success=True)
             else:
                 raise ValueError(f"未知的 task_type: {context.task_type}")
@@ -373,6 +379,122 @@ class CoderAgent(BaseAgent):
         )
 
         log_msg("INFO", f"{self.name} mutate 完成")
+        return node
+
+    def _debug(self, context: Dict[str, Any]) -> Optional[Node]:
+        """修复 buggy 代码（即时 Debug 循环）。
+
+        基于 AIDE 的 debug 机制设计。将完整的错误信息反馈给 LLM 请求修复。
+
+        Args:
+            context: 包含以下字段
+                - buggy_code: str, 原始代码
+                - exc_type: str, 异常类型（可选）
+                - term_out: str, 完整执行输出（含 traceback）
+                - task_desc: str, 任务描述
+                - data_preview: str, 数据预览（可选）
+                - validation_errors: str, 预验证错误（可选）
+                - device_info: str, 设备信息（可选）
+                - conda_packages: str, conda 包信息（可选）
+                - conda_env_name: str, conda 环境名（可选）
+
+        Returns:
+            修复后的 Node（修复失败返回 None）
+        """
+        log_msg("INFO", f"{self.name} 开始 Debug")
+
+        try:
+            prompt = self.prompt_manager.build_prompt(
+                "debug",
+                self.name,
+                context,
+            )
+
+            prompt_data = self._build_prompt_data(prompt, "debug")
+
+            response = self._call_llm_with_retry(prompt, max_retries=3)
+            code = extract_code(response)
+
+            if not code:
+                log_msg("WARNING", f"{self.name} Debug 未提取到代码")
+                return None
+
+            if code == context.get("buggy_code", ""):
+                log_msg("WARNING", f"{self.name} Debug 代码未变化")
+                return None
+
+            plan = extract_text_up_to_code(response)
+            node = Node(
+                code=code,
+                plan=plan,
+                parent_id=None,
+                task_type="debug",
+                prompt_data=prompt_data,
+            )
+
+            log_msg("INFO", f"{self.name} Debug 代码生成完成: {len(code)} chars")
+            return node
+
+        except Exception as e:
+            log_msg("WARNING", f"{self.name} Debug 失败: {e}")
+            return None
+
+    def _validate_and_fix(self, node: Node, context: AgentContext) -> Node:
+        """静态预验证 + LLM 自动修复（最多 1 次）。
+
+        在 subprocess 执行前拦截语法错误和明显缺陷。
+        验证失败时，将错误信息注入 Prompt 让 LLM 修复 1 次。
+
+        Args:
+            node: 原始生成的 Node
+            context: Agent 执行上下文
+
+        Returns:
+            验证通过或修复后的 Node
+        """
+        if not node or not node.code:
+            return node
+
+        validation = validate_code(node.code)
+
+        if validation.valid:
+            # 将 warnings 附加到 plan 中（供后续参考）
+            if validation.warnings:
+                node.plan += f"\n[Warnings: {'; '.join(validation.warnings)}]"
+            return node
+
+        # 预验证失败 → 让 LLM 修复 1 次
+        log_msg(
+            "INFO",
+            f"{self.name} 预验证失败: {validation.errors}，尝试自动修复",
+        )
+
+        debug_context = {
+            "buggy_code": node.code,
+            "term_out": "",
+            "validation_errors": "\n".join(validation.errors + validation.warnings),
+            "task_desc": context.task_desc,
+            "data_preview": "",
+            "device_info": context.device_info,
+            "conda_packages": context.conda_packages,
+            "conda_env_name": context.conda_env_name,
+        }
+
+        fixed_node = self._debug(debug_context)
+        if fixed_node and fixed_node.code:
+            revalidation = validate_code(fixed_node.code)
+            if revalidation.valid:
+                log_msg("INFO", f"{self.name} 预验证修复成功")
+                # 保留原始 parent_id 和 task_type
+                fixed_node.parent_id = node.parent_id
+                fixed_node.task_type = node.task_type
+                return fixed_node
+
+        # 修复失败，返回原节点（标记 warning）
+        log_msg(
+            "WARNING",
+            f"{self.name} 预验证失败且修复未成功: {validation.errors}",
+        )
         return node
 
     def _build_prompt_data(self, prompt: str, task_type: str) -> Dict:

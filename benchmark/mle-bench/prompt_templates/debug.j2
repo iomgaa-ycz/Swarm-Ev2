@@ -1,0 +1,81 @@
+{# ===================================================================== #}
+{# DEBUG TASK PROMPT TEMPLATE                                           #}
+{# 用于修复执行失败的代码（即时 Debug 循环）                                 #}
+{# 参考: AIDE agent.py _debug() + ML-Master _debug()                    #}
+{# ===================================================================== #}
+
+{# SECTION: ROLE [EVOLVABLE] #}
+{{ load_agent_config(agent_id, "role") }}
+{# END SECTION: ROLE #}
+
+{# SECTION: FORMAT [STATIC_SKILL] #}
+{{ load_skill("static/output_format") }}
+{# END SECTION: FORMAT #}
+
+{# SECTION: TASK #}
+# Task Description
+
+{{ task_desc }}
+{# END SECTION: TASK #}
+
+{# SECTION: BUGGY CODE #}
+# Previous (Buggy) Implementation
+
+Your previous solution encountered an error during execution. You must fix it.
+
+```python
+{{ buggy_code }}
+```
+
+# Execution Output
+
+```
+{{ term_out }}
+```
+
+{% if validation_errors %}
+# Pre-validation Errors
+
+The following issues were detected before execution:
+
+```
+{{ validation_errors }}
+```
+{% endif %}
+{# END SECTION: BUGGY CODE #}
+
+{# SECTION: INSTRUCTIONS #}
+## Debug Instructions
+
+1. **Analyze the error carefully** and identify the root cause.
+2. **Fix the bug with minimal changes** — do NOT refactor or add new features.
+3. Ensure the fixed code:
+   - Prints the validation metric: `print(f"Validation metric: {value}")`
+   - Saves predictions to `./submission/submission.csv`
+   - Uses only available packages
+4. Your response: a brief description of the fix (2-3 sentences), followed by a **single complete code block**.
+
+> **IMPORTANT**: Output the COMPLETE fixed code, not just the changed parts.
+{# END SECTION: INSTRUCTIONS #}
+
+{# SECTION: CONTEXT #}
+{% if data_preview %}
+# Data Overview
+
+{{ data_preview }}
+{% endif %}
+{# END SECTION: CONTEXT #}
+
+{# SECTION: GUIDELINES #}
+{{ load_skill("static/workspace_rules") }}
+
+{{ load_skill("static/code_style") }}
+
+## System Environment
+
+- **Device**: {{ device_info | default("CPU only") }}
+- **Conda Environment**: `{{ conda_env_name | default("python") }}`
+{% if conda_packages %}
+- **Installed Packages**: {{ conda_packages }}
+{% endif %}
+{# END SECTION: GUIDELINES #}

@@ -3,6 +3,7 @@
 
 基于 aideml/ML-Master 实现，提供详细的 EDA 预览功能。
 生成数据集的文本预览，用于插入 LLM Prompt。
+支持 CSV、JSON、图像目录、特殊文本文件的预览。
 """
 
 import json
@@ -19,6 +20,10 @@ from utils.logger_system import log_msg
 code_files = {".py", ".sh", ".yaml", ".yml", ".md", ".html", ".xml", ".log", ".rst"}
 # 文本文件类型
 plaintext_files = {".txt", ".csv", ".json", ".tsv"} | code_files
+# 图像文件扩展名
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp"}
+# 长度阈值（从 6000 提升到 8000，给图像/特殊文件预览留空间）
+MAX_PREVIEW_LENGTH = 8000
 
 
 def get_file_len_size(f: Path) -> tuple[int, str]:
@@ -218,6 +223,97 @@ def preview_json(p: Path, file_name: str) -> str:
         return f"-> {file_name} (无法读取: {e})"
 
 
+def preview_image_dir(dir_path: Path, max_sample: int = 3) -> str:
+    """采样图像目录，返回关键统计信息。
+
+    信息包括：图像数量、尺寸、通道数、值范围、格式。
+    同时注入 PyTorch ToTensor 归一化警告。
+
+    Args:
+        dir_path: 图像目录路径
+        max_sample: 最大采样图像数
+
+    Returns:
+        图像目录预览文本
+    """
+    images = [f for f in dir_path.iterdir() if f.suffix.lower() in IMAGE_EXTS]
+
+    if not images:
+        return ""
+
+    try:
+        from PIL import Image
+        import numpy as np
+
+        samples = images[:max_sample]
+        sizes = []
+        modes = []
+        for img_path in samples:
+            with Image.open(img_path) as img:
+                sizes.append(img.size)
+                modes.append(img.mode)
+
+        # 检查值范围（只对第一张采样）
+        with Image.open(samples[0]) as img:
+            arr = np.array(img)
+            val_min, val_max = int(arr.min()), int(arr.max())
+
+        return (
+            f"-> Image directory: {len(images)} images, format: {samples[0].suffix}\n"
+            f"   Sample sizes: {sizes}, mode: {set(modes)}\n"
+            f"   Pixel value range: [{val_min}, {val_max}]\n"
+            f"   NOTE: torchvision.transforms.ToTensor() converts [0,255] → [0.0,1.0]. "
+            f"Do NOT divide by 255 again after ToTensor()."
+        )
+    except ImportError:
+        return (
+            f"-> Image directory: {len(images)} images (PIL not available for preview)"
+        )
+    except Exception as e:
+        log_msg("WARNING", f"图像预览失败: {e}")
+        return f"-> Image directory: {len(images)} images (preview failed: {e})"
+
+
+def preview_special_file(file_path: Path, max_lines: int = 5) -> str:
+    """预览非标准文本文件（.txt, .tsv 等）。
+
+    读取前 N 行，推断分隔符和列数。
+
+    Args:
+        file_path: 文件路径
+        max_lines: 最大读取行数
+
+    Returns:
+        文件预览文本
+    """
+    try:
+        with open(file_path, encoding="utf-8", errors="ignore") as f:
+            lines = [f.readline() for _ in range(max_lines)]
+
+        # 过滤空行
+        lines = [line for line in lines if line.strip()]
+        if not lines:
+            return f"-> {file_path.name}: empty file"
+
+        # 推断分隔符
+        first_line = lines[0].strip()
+        for sep, name in [("\t", "tab"), (",", "comma"), (" ", "space")]:
+            if sep in first_line:
+                num_cols = len(first_line.split(sep))
+                preview = "\n".join(line.rstrip() for line in lines)
+                return (
+                    f"-> {file_path.name}: {name}-separated, ~{num_cols} columns\n"
+                    f"   First {len(lines)} lines:\n```\n{preview}\n```"
+                )
+
+        preview = "".join(lines)
+        return (
+            f"-> {file_path.name}: unstructured text, first lines:\n```\n{preview}\n```"
+        )
+    except Exception as e:
+        return f"-> {file_path.name}: (cannot read: {e})"
+
+
 def generate(
     base_path: Path, include_file_details: bool = True, simple: bool = False
 ) -> str:
@@ -240,6 +336,9 @@ def generate(
     tree = f"{header}```\n{file_tree(base_path)}\n```"
     out = [tree]
 
+    # 已预览的图像目录（避免重复）
+    previewed_image_dirs = set()
+
     if include_file_details:
         for fn in _walk(base_path):
             file_name = str(fn.relative_to(base_path))
@@ -248,6 +347,18 @@ def generate(
                 out.append(preview_csv(fn, file_name, simple=simple))
             elif fn.suffix == ".json":
                 out.append(preview_json(fn, file_name))
+            elif fn.suffix.lower() in IMAGE_EXTS:
+                # 图像文件：对其所在目录做一次采样预览
+                img_dir = fn.parent
+                if img_dir not in previewed_image_dirs:
+                    previewed_image_dirs.add(img_dir)
+                    img_preview = preview_image_dir(img_dir)
+                    if img_preview:
+                        rel_dir = str(img_dir.relative_to(base_path))
+                        out.append(f"[{rel_dir}/]\n{img_preview}")
+            elif fn.suffix in {".txt", ".tsv"} and get_file_len_size(fn)[0] >= 30:
+                # 较大的特殊文本文件：推断格式
+                out.append(preview_special_file(fn))
             elif fn.suffix in plaintext_files:
                 # 小文件直接显示内容
                 if get_file_len_size(fn)[0] < 30:
@@ -262,15 +373,15 @@ def generate(
 
     result = "\n\n".join(out)
 
-    # 自动长度控制
-    if len(result) > 6_000 and not simple:
+    # 自动长度控制（使用 MAX_PREVIEW_LENGTH 阈值）
+    if len(result) > MAX_PREVIEW_LENGTH and not simple:
         log_msg("INFO", "预览过长，自动降级到简化模式")
         return generate(
             base_path, include_file_details=include_file_details, simple=True
         )
 
-    if len(result) > 6_000 and simple:
+    if len(result) > MAX_PREVIEW_LENGTH and simple:
         log_msg("WARNING", "预览仍过长，截断输出")
-        return result[:6_000] + "\n... (truncated)"
+        return result[:MAX_PREVIEW_LENGTH] + "\n... (truncated)"
 
     return result
