@@ -21,4 +21,8 @@ ENV HF_ENDPOINT=https://hf-mirror.com
 ENV MODEL_SAVE_PATH=${AGENT_DIR}/embedding-models/bge-m3
 
 COPY . ${AGENT_DIR}
-RUN chmod -R 555 ${MODEL_SAVE_PATH}
+
+# 将大体积模型文件移到 /home 之外，避免 entrypoint.sh 的 find+chmod 触发 overlay2 copy-on-write
+RUN mv ${AGENT_DIR}/embedding-models /opt/embedding-models && \
+    ln -s /opt/embedding-models ${AGENT_DIR}/embedding-models && \
+    chmod -R 555 /opt/embedding-models
