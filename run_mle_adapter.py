@@ -127,7 +127,7 @@ def setup_workspace(config: Config, description: str) -> None:
             target.symlink_to(item.resolve())
 
 
-def copy_results(journal: Journal, config: Config) -> None:
+def copy_results(journal: Journal, config: Config, orchestrator: Orchestrator) -> None:
     """复制结果到 MLE-Bench 标准目录并保存 Journal。
 
     策略：
@@ -138,6 +138,7 @@ def copy_results(journal: Journal, config: Config) -> None:
     Args:
         journal: Journal 实例
         config: 配置对象
+        orchestrator: Orchestrator 实例（P0-1 修复：获取全局方向）
     """
     submission_dir = Path("/home/submission")
     code_dir = Path("/home/code")
@@ -155,7 +156,10 @@ def copy_results(journal: Journal, config: Config) -> None:
         log_msg("WARNING", f"Journal 保存失败: {e}")
 
     # [2] 精确复制 submission.csv（基于 best_node.id）
-    best_node = journal.get_best_node(only_good=True)
+    # P0-1 修复：传入全局方向参数
+    best_node = journal.get_best_node(
+        only_good=True, lower_is_better=orchestrator._global_lower_is_better
+    )
     sub_file = submission_dir / "submission.csv"
 
     if best_node:
@@ -217,6 +221,13 @@ def run_adapter() -> None:
             workspace.preprocess_input()
         except Exception as e:
             log_msg("WARNING", f"数据预处理跳过: {e}")
+
+    # P0-3 修复：保护输入文件
+    try:
+        workspace.protect_input_files()
+        log_msg("INFO", "输入文件已保护 (chmod 444)")
+    except Exception as e:
+        log_msg("WARNING", f"输入文件保护失败: {e}")
 
     # Phase 6: 组件初始化
     base_dir = Path(__file__).parent / "benchmark" / "mle-bench"
@@ -302,24 +313,40 @@ def run_adapter() -> None:
             break
 
         epoch_best = solution_evolution.run_epoch(steps_per_epoch)
-        if epoch_best and (
-            not best_node or epoch_best.metric_value > (best_node.metric_value or 0)
-        ):
-            best_node = epoch_best
+
+        # P0-1 修复：方向感知的 best_node 比较
+        if epoch_best and epoch_best.metric_value is not None:
+            if best_node is None or best_node.metric_value is None:
+                best_node = epoch_best
+            else:
+                lower = orchestrator._global_lower_is_better or False
+                is_better = (
+                    epoch_best.metric_value < best_node.metric_value
+                    if lower
+                    else epoch_best.metric_value > best_node.metric_value
+                )
+                if is_better:
+                    best_node = epoch_best
 
         if agent_evolution and (epoch + 1) % 3 == 0:
             agent_evolution.evolve(epoch)
 
-        current_best = journal.get_best_node()
+        # P0-1 修复：传入全局方向参数
+        current_best = journal.get_best_node(
+            lower_is_better=orchestrator._global_lower_is_better
+        )
         log_msg(
             "INFO",
             f"Epoch {epoch + 1} 完成 | best={current_best.metric_value if current_best else 'N/A'}",
         )
 
-    best_node = journal.get_best_node(only_good=True)
+    # P0-1 修复：传入全局方向参数
+    best_node = journal.get_best_node(
+        only_good=True, lower_is_better=orchestrator._global_lower_is_better
+    )
 
     # Phase 8: 结果输出
-    copy_results(journal, config)
+    copy_results(journal, config, orchestrator)
 
     if best_node:
         log_msg(

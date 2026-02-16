@@ -130,8 +130,16 @@ class SolutionEvolution:
 
         log_msg("INFO", f"变异完成: {mutation_count} 个节点")
 
-        # [5] 返回最佳节点
-        best_node = self.journal.get_best_node(only_good=True)
+        # [5] 返回最佳节点（P0-1 修复：传入全局方向）
+        global_direction = (
+            self.orchestrator._global_lower_is_better
+            if self.orchestrator
+            and hasattr(self.orchestrator, "_global_lower_is_better")
+            else None
+        )
+        best_node = self.journal.get_best_node(
+            only_good=True, lower_is_better=global_direction
+        )
 
         if best_node:
             log_msg(
@@ -147,17 +155,25 @@ class SolutionEvolution:
         return best_node
 
     def _is_lower_better(self) -> bool:
-        """判断当前任务的 metric 方向。
+        """判断当前任务的 metric 方向（P0-1 修复：优先使用全局方向）。
 
-        使用种群中第一个有 metric 的节点的 lower_is_better 属性。
-        同一任务内所有节点方向一致。
+        优先级：
+        1. Orchestrator 的全局方向（确定性来源）
+        2. 种群中第一个有效节点的方向（fallback）
 
         Returns:
             True 表示越小越好（如 RMSE/logloss），False 表示越大越好（如 AUC）
         """
+        # 优先使用 Orchestrator 的全局方向（确定性来源）
+        if self.orchestrator and hasattr(self.orchestrator, "_global_lower_is_better"):
+            if self.orchestrator._global_lower_is_better is not None:
+                return self.orchestrator._global_lower_is_better
+
+        # Fallback: 种群中第一个有效节点
         for node in self.population:
             if node.metric_value is not None:
                 return node.lower_is_better
+
         return False  # 默认 higher_is_better
 
     def _select_elites(self) -> List[Node]:

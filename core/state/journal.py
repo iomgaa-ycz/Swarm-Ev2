@@ -141,8 +141,10 @@ class Journal(DataClassJsonMixin):
         """
         return [n for n in self.nodes if not n.is_buggy]
 
-    def get_best_node(self, only_good: bool = True) -> Optional[Node]:
-        """返回评估指标最优的节点。
+    def get_best_node(
+        self, only_good: bool = True, lower_is_better: Optional[bool] = None
+    ) -> Optional[Node]:
+        """返回评估指标最优的节点（P0-1 修复：支持全局方向参数）。
 
         正确处理 lower_is_better：
         - lower_is_better=True: 返回 metric_value 最小的节点（如 RMSE）
@@ -150,6 +152,7 @@ class Journal(DataClassJsonMixin):
 
         Args:
             only_good: 是否只考虑无 bug 的节点
+            lower_is_better: 显式指定方向（None 时使用第一个节点的方向）
 
         Returns:
             最佳节点，未找到则返回 None
@@ -162,17 +165,22 @@ class Journal(DataClassJsonMixin):
         if not valid_nodes:
             return None
 
-        # 使用第一个节点的 lower_is_better 作为参考
-        # 假设同一任务中所有节点的 lower_is_better 一致
-        reference = valid_nodes[0]
+        # 使用传入的方向参数，否则 fallback 到第一个节点的方向
+        lib = (
+            lower_is_better
+            if lower_is_better is not None
+            else valid_nodes[0].lower_is_better
+        )
 
-        if reference.lower_is_better:
+        if lib:
             return min(valid_nodes, key=lambda n: n.metric_value)  # type: ignore
         else:
             return max(valid_nodes, key=lambda n: n.metric_value)  # type: ignore
 
-    def get_best_k(self, k: int, only_good: bool = True) -> list[Node]:
-        """返回评估指标 Top-K 的节点。
+    def get_best_k(
+        self, k: int, only_good: bool = True, lower_is_better: Optional[bool] = None
+    ) -> list[Node]:
+        """返回评估指标 Top-K 的节点（P0-1 修复：支持全局方向参数）。
 
         正确处理 lower_is_better：
         - lower_is_better=True: 按 metric_value 升序排列（最小的在前）
@@ -181,6 +189,7 @@ class Journal(DataClassJsonMixin):
         Args:
             k: 返回前 k 个节点
             only_good: 是否只考虑无 bug 的节点
+            lower_is_better: 显式指定方向（None 时使用第一个节点的方向）
 
         Returns:
             Top-K 节点列表，按最优到次优排列
@@ -202,9 +211,12 @@ class Journal(DataClassJsonMixin):
         if not valid_nodes:
             return []
 
-        # 使用第一个节点的 lower_is_better 作为参考
-        # 假设同一任务中所有节点的 lower_is_better 一致
-        reference = valid_nodes[0]
+        # 使用传入的方向参数，否则 fallback 到第一个节点的方向
+        lib = (
+            lower_is_better
+            if lower_is_better is not None
+            else valid_nodes[0].lower_is_better
+        )
 
         # 根据 lower_is_better 决定排序方向
         # lower_is_better=True: 升序（小值在前）
@@ -212,7 +224,7 @@ class Journal(DataClassJsonMixin):
         sorted_nodes = sorted(
             valid_nodes,
             key=lambda n: n.metric_value,  # type: ignore
-            reverse=not reference.lower_is_better,
+            reverse=not lib,
         )
 
         return sorted_nodes[:k]

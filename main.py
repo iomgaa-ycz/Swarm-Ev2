@@ -374,6 +374,10 @@ def main() -> None:
             workspace.preprocess_input()
             print("✅ 数据预处理完成")
 
+        # P0-3 修复：保护输入文件
+        workspace.protect_input_files()
+        print("✅ 输入文件已保护 (chmod 444)")
+
         # ============================================================
         # Phase 3: 组件初始化
         # ============================================================
@@ -400,7 +404,10 @@ def main() -> None:
             config=config,
             embedding_manager=embedding_manager,
         )
-        log_msg("INFO", f"SkillManager 初始化完成（已加载 {len(skill_manager.skill_index)} 个 Skill）")
+        log_msg(
+            "INFO",
+            f"SkillManager 初始化完成（已加载 {len(skill_manager.skill_index)} 个 Skill）",
+        )
 
         # 初始化 PromptManager
         prompt_manager = PromptManager(
@@ -488,10 +495,19 @@ def main() -> None:
             log_msg("INFO", "运行 SolutionEvolution（遗传算法）")
             epoch_best = solution_evolution.run_epoch(steps_per_epoch)
 
-            if epoch_best and (
-                not best_node or epoch_best.metric_value > (best_node.metric_value or 0)
-            ):
-                best_node = epoch_best
+            # P0-1 修复：方向感知的 best_node 比较
+            if epoch_best and epoch_best.metric_value is not None:
+                if best_node is None or best_node.metric_value is None:
+                    best_node = epoch_best
+                else:
+                    lower = orchestrator._global_lower_is_better or False
+                    is_better = (
+                        epoch_best.metric_value < best_node.metric_value
+                        if lower
+                        else epoch_best.metric_value > best_node.metric_value
+                    )
+                    if is_better:
+                        best_node = epoch_best
 
             # [3] Agent 层进化（每 3 Epoch）
             if agent_evolution and (epoch + 1) % 3 == 0:
@@ -499,7 +515,9 @@ def main() -> None:
                 agent_evolution.evolve(epoch)
 
             # Epoch 结束日志
-            current_best = journal.get_best_node()
+            current_best = journal.get_best_node(
+                lower_is_better=orchestrator._global_lower_is_better
+            )
             log_msg(
                 "INFO",
                 f"===== Epoch {epoch + 1}/{num_epochs} 完成 | "
@@ -507,7 +525,9 @@ def main() -> None:
             )
 
         # 最终使用 Journal 中的最佳节点
-        best_node = journal.get_best_node(only_good=True)
+        best_node = journal.get_best_node(
+            only_good=True, lower_is_better=orchestrator._global_lower_is_better
+        )
         log_msg(
             "INFO",
             f"双层进化完成: best_node={'存在' if best_node else '不存在'}",

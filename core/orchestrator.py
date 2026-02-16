@@ -56,6 +56,65 @@ METRIC_BOUNDS = {
     "log_loss": (1e-7, 15.0),
 }
 
+# Metric 方向映射表（确定性来源，修复 P0-1 Bug）
+# True = lower_is_better（越小越好: loss/error 类）
+# False = higher_is_better（越大越好: score/accuracy 类）
+METRIC_DIRECTION: Dict[str, bool] = {
+    # === Lower is better ===
+    "rmse": True,
+    "root mean squared error": True,
+    "rmsle": True,
+    "mae": True,
+    "mean absolute error": True,
+    "mse": True,
+    "mean squared error": True,
+    "logloss": True,
+    "log_loss": True,
+    "log loss": True,
+    "logarithmic loss": True,
+    "cross-entropy": True,
+    "cross entropy": True,
+    "mcrmse": True,
+    "medae": True,
+    "mape": True,
+    "smape": True,
+    "pinball loss": True,
+    "hinge loss": True,
+    # === Higher is better ===
+    "auc": False,
+    "area under the roc curve": False,
+    "area under the receiver operating characteristic": False,
+    "accuracy": False,
+    "categorization accuracy": False,
+    "f1": False,
+    "f1-score": False,
+    "f1 score": False,
+    "precision": False,
+    "recall": False,
+    "sensitivity": False,
+    "specificity": False,
+    "map": False,
+    "mean average precision": False,
+    "mean column-wise auc": False,
+    "qwk": False,
+    "quadratic weighted kappa": False,
+    "kappa": False,
+    "cohen's kappa": False,
+    "ndcg": False,
+    "r2": False,
+    "r-squared": False,
+    "r²": False,
+    "spearman": False,
+    "pearson": False,
+    "correlation": False,
+    "iou": False,
+    "dice": False,
+    "bleu": False,
+    "rouge": False,
+    "mean column-wise log loss": True,
+    "multiclass loss": True,
+}
+
 
 class Orchestrator:
     """任务编排器（并行执行模式）。
@@ -118,6 +177,10 @@ class Orchestrator:
         self.start_time = time.time()
         self.current_epoch = 0
         self.best_node: Optional[Node] = None
+
+        # P0-1 修复：全局 metric 方向（启动时从 task_desc 检测，首次 review 时锁定）
+        self._global_lower_is_better: Optional[bool] = None
+        self._detect_metric_direction()
 
         # 并行配置
         self.max_workers = config.search.parallel_num
@@ -219,7 +282,9 @@ class Orchestrator:
                 self.agent_evolution.evolve(epoch)
 
             # Epoch 结束日志
-            best = self.journal.get_best_node()
+            best = self.journal.get_best_node(
+                lower_is_better=self._global_lower_is_better
+            )
             log_msg(
                 "INFO",
                 f"===== Epoch {epoch + 1}/{num_epochs} 完成 | "
@@ -447,7 +512,9 @@ class Orchestrator:
                     return node
 
             # Phase 3: 改进模式
-            best = self.journal.get_best_node(only_good=True)
+            best = self.journal.get_best_node(
+                only_good=True, lower_is_better=self._global_lower_is_better
+            )
             if best:
                 log_msg("INFO", f"[search_policy] 改进模式: 节点 {best.id[:8]}")
                 return best
@@ -672,7 +739,17 @@ class Orchestrator:
         else:
             node.metric_value = metric_value
 
-        node.lower_is_better = review_data.get("lower_is_better", False)
+        # P0-1 修复：尝试从本次 review 锁定全局方向（仅首次生效，幂等操作）
+        if not node.is_buggy:
+            self._lock_metric_direction(review_data)
+
+        # 节点级 lower_is_better 始终使用全局值（保持序列化兼容性）
+        node.lower_is_better = (
+            self._global_lower_is_better
+            if self._global_lower_is_better is not None
+            else review_data.get("lower_is_better", False)
+        )
+
         node.analysis = review_data.get("key_change", "")  # 兼容旧字段
         node.analysis_detail = {
             "key_change": review_data.get("key_change", ""),
@@ -982,6 +1059,66 @@ Respond with JSON:
         ratio = max(abs(best_value), abs(metric)) / min(abs(best_value), abs(metric))
         return ratio <= upper_bound
 
+    def _detect_metric_direction(self) -> Optional[bool]:
+        """从 task_desc 中检测 metric 方向（启动时调用一次）。
+
+        策略: 在 task_desc 中搜索 METRIC_DIRECTION 所有 key，
+        按 key 长度降序匹配（优先匹配更具体的名称如 "log loss" 而非 "loss"）。
+
+        Returns:
+            检测到的方向（True=lower_is_better, False=higher_is_better），未检测到返回 None
+        """
+        text = (self.task_desc or "").lower()
+        sorted_keys = sorted(METRIC_DIRECTION.keys(), key=len, reverse=True)
+
+        for key in sorted_keys:
+            if key in text:
+                direction = METRIC_DIRECTION[key]
+                self._global_lower_is_better = direction
+                log_msg(
+                    "INFO",
+                    f"[metric_direction] 从 task_desc 检测到: '{key}' → lower_is_better={direction}",
+                )
+                return direction
+
+        log_msg("WARNING", "[metric_direction] task_desc 中未匹配到已知 metric")
+        return None
+
+    def _lock_metric_direction(self, review_data: Dict) -> None:
+        """从 review 结果中尝试锁定 metric 方向（仅在未锁定时生效）。
+
+        借鉴 ML-Master 的一致性保证：方向一旦锁定，终生不可变（幂等操作）。
+
+        Args:
+            review_data: LLM Review 返回的数据 dict
+        """
+        if self._global_lower_is_better is not None:
+            return  # 已锁定，幂等返回
+
+        # 策略 1: metric_name → 查表（确定性来源）
+        metric_name = (review_data.get("metric_name") or "").lower().strip()
+        if metric_name:
+            sorted_keys = sorted(METRIC_DIRECTION.keys(), key=len, reverse=True)
+            for key in sorted_keys:
+                if key in metric_name or metric_name in key:
+                    self._global_lower_is_better = METRIC_DIRECTION[key]
+                    log_msg(
+                        "INFO",
+                        f"[metric_direction] 从 review metric_name 锁定: "
+                        f"'{metric_name}' → lower_is_better={self._global_lower_is_better}",
+                    )
+                    return
+
+        # 策略 2: 直接使用 review 的 lower_is_better（fallback，与 ML-Master 同级）
+        lib = review_data.get("lower_is_better")
+        if isinstance(lib, bool):
+            self._global_lower_is_better = lib
+            log_msg(
+                "WARNING",
+                f"[metric_direction] 使用 LLM 首次 review 的 lower_is_better={lib} "
+                f"（未能从 metric_name 查表确认，fallback 到 LLM 判断）",
+            )
+
     def _validate_submission_format(self, node_id: str) -> Dict:
         """校验 submission.csv 的基本格式。
 
@@ -1020,21 +1157,26 @@ Respond with JSON:
                 result["valid"] = False
                 result["errors"].append(f"submission 包含 {nan_count} 个 NaN 值")
 
-            # 检查与 sample_submission 的行数一致性
+            # P0-2 修复：使用 glob 模式匹配 sample_submission 文件
             input_dir = self.config.project.workspace_dir / "input"
-            sample_path = input_dir / "sample_submission.csv"
-            if not sample_path.exists():
-                sample_path = input_dir / "sampleSubmission.csv"
+            candidates = (
+                list(input_dir.glob("sample_submission*.csv"))
+                + list(input_dir.glob("sampleSubmission*.csv"))
+                + list(input_dir.glob("sample_Submission*.csv"))
+            )
+            sample_path = candidates[0] if candidates else None
 
-            if sample_path.exists():
+            if sample_path is not None and sample_path.exists():
                 sample_df = pd.read_csv(sample_path)
+                # 行数检查
                 if len(sub_df) != len(sample_df):
                     result["valid"] = False
                     result["errors"].append(
                         f"行数不匹配: submission={len(sub_df)}, sample={len(sample_df)}"
                     )
-                # 列名检查（仅警告）
-                if set(sub_df.columns) != set(sample_df.columns):
+                # 列名检查（升级: 原来仅 warning，现在标记 invalid）
+                if list(sub_df.columns) != list(sample_df.columns):
+                    result["valid"] = False  # P0-2 修复：升级为 invalid
                     result["errors"].append(
                         f"列名不匹配: submission={list(sub_df.columns)[:5]}, "
                         f"sample={list(sample_df.columns)[:5]}"
@@ -1259,7 +1401,13 @@ Call `submit_review` with your analysis.
 
         # 正常比较
         if self._is_better(node, self.best_node):
-            direction = "↓" if node.lower_is_better else "↑"
+            # P0-1 修复：使用全局方向
+            lower = (
+                self._global_lower_is_better
+                if self._global_lower_is_better is not None
+                else node.lower_is_better
+            )
+            direction = "↓" if lower else "↑"
             log_msg(
                 "INFO",
                 f"新的最佳节点: {node.id[:8]}, metric={node.metric_value} {direction}",
@@ -1370,7 +1518,7 @@ Call `submit_review` with your analysis.
         log_msg("INFO", f"[评估] {summary}")
 
     def _is_better(self, node: Node, best_node: Node) -> bool:
-        """判断节点是否优于最佳节点。
+        """判断节点是否优于最佳节点（P0-1 修复：使用全局方向）。
 
         Args:
             node: 候选节点
@@ -1382,7 +1530,14 @@ Call `submit_review` with your analysis.
         if node.metric_value is None or best_node.metric_value is None:
             return False
 
-        if node.lower_is_better:
+        # 优先使用全局方向，fallback 到节点级方向
+        lower = (
+            self._global_lower_is_better
+            if self._global_lower_is_better is not None
+            else node.lower_is_better
+        )
+
+        if lower:
             return node.metric_value < best_node.metric_value
         else:
             return node.metric_value > best_node.metric_value
