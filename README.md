@@ -158,6 +158,26 @@ python main.py \
   --agent.max_steps=30
 ```
 
+### 网络代理配置
+
+支持通过环境变量配置 HTTP 代理（用于加速 PyTorch Hub、pip、HuggingFace 下载）：
+
+```bash
+# 方式 1: .env 文件（推荐）
+HTTP_PROXY=http://192.168.31.250:7892
+HTTPS_PROXY=http://192.168.31.250:7892
+NO_PROXY=localhost,127.0.0.1
+
+# 方式 2: 系统环境变量
+export HTTP_PROXY=http://192.168.31.250:7892
+export HTTPS_PROXY=http://192.168.31.250:7892
+
+# 如需认证（格式：http://用户名:密码@IP:端口）
+HTTP_PROXY=http://Clash:YOUR_SECRET@192.168.31.250:7893
+```
+
+**注**：如果网关已配置透明代理（如 OpenWrt Clash），无需配置 `HTTP_PROXY`，系统会自动检测并使用直连。
+
 详细配置说明参见 [docs/CODEMAPS/data.md](docs/CODEMAPS/data.md)。
 
 ---
@@ -364,6 +384,7 @@ docker build --no-cache -t swarm-evo ./agents/swarm-evo
 8. **运行评测**
 
 ```bash
+# 基础运行（如网关已配置透明代理，无需额外配置）
 API_KEY="your-api-key" \
 API_BASE="https://api.openai.com/v1" \
 MODEL_NAME="gpt-4-turbo" \
@@ -371,7 +392,20 @@ python run_agent.py \
   --agent-id swarm-evo \
   --competition-set experiments/splits/low.txt \
   --n-workers 4
+
+# 如需显式配置代理（可选）
+export HTTP_PROXY=http://192.168.31.250:7892
+export HTTPS_PROXY=http://192.168.31.250:7892
+# 然后运行上述命令，代理环境变量会自动传递到容器
 ```
+
+**验证代理生效**：容器启动后检查 `/home/logs/proxy.log`
+```bash
+docker exec -it <container-id> cat /home/logs/proxy.log
+# 预期输出: [INFO] 代理可用 或 [INFO] 网络连通性检测: 直连可用
+```
+
+**PyTorch 预训练权重**：首次下载后缓存在 `~/.cache/torch/hub/`，同一竞赛的后续 solution.py 直接读缓存，无需重复下载。
 
 ### 关键文件说明
 
@@ -387,13 +421,16 @@ python run_agent.py \
 
 ### 环境变量映射
 
-适配器会自动将 MLE-Bench 环境变量映射为 Swarm-Ev2 格式：
+适配器自动将环境变量映射为 Swarm-Ev2 格式：
 
-| MLE-Bench 变量 | Swarm-Ev2 变量 | 说明 |
-|----------------|---------------|------|
+| 环境变量 | Swarm-Ev2 变量 | 说明 |
+|---------|---------------|------|
 | `API_KEY` | `OPENAI_API_KEY` | LLM API 密钥 |
 | `API_BASE` | `OPENAI_BASE_URL` | LLM API 地址 |
 | `MODEL_NAME` | `LLM_MODEL` | 模型名称 |
+| `HTTP_PROXY` | `HTTP_PROXY` | HTTP 代理（可选，用于加速下载）|
+| `HTTPS_PROXY` | `HTTPS_PROXY` | HTTPS 代理（可选）|
+| `NO_PROXY` | `NO_PROXY` | 跳过代理的地址（默认 localhost,127.0.0.1）|
 
 ### 注意事项
 
