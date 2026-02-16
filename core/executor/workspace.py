@@ -216,6 +216,38 @@ class WorkspaceManager:
         if cleaned > 0:
             log_msg("INFO", f"预处理完成: 清理 {cleaned} 个垃圾文件")
 
+    def protect_input_files(self) -> None:
+        """将 input/ 下所有文件设为只读（0o444）。
+
+        P0-3 修复：防止 Agent 代码意外修改/删除输入文件。
+
+        策略:
+            - 跳过符号链接（symlink 指向外部文件，修改权限可能影响源文件）
+            - 跳过目录（目录权限需要 execute bit 才能进入）
+            - 在 preprocess_input() 之后调用，确保解压后的文件也被保护
+
+        注意:
+            - 调查确认：零合法写入场景，100% 安全
+        """
+        import os
+        import stat
+
+        input_dir = self.workspace_dir / "input"
+        if not input_dir.exists():
+            return
+
+        count = 0
+        for path in input_dir.rglob("*"):
+            if path.is_file() and not path.is_symlink():
+                current_mode = path.stat().st_mode
+                readonly = stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH  # 0o444
+                if current_mode & 0o777 != readonly:
+                    os.chmod(path, readonly)
+                    count += 1
+
+        if count > 0:
+            log_msg("INFO", f"已保护 {count} 个输入文件（chmod 444）")
+
     def prepare_workspace(self, source_dir: Optional[Path] = None) -> None:
         """一站式准备工作空间。
 
@@ -223,6 +255,7 @@ class WorkspaceManager:
             1. setup() - 创建目录结构
             2. link_input_data() - 复制/链接输入数据
             3. preprocess_input() - 预处理（如果配置启用）
+            4. protect_input_files() - 保护输入文件（P0-3 修复）
 
         Args:
             source_dir: 数据源目录（默认使用 config.data.data_dir）
@@ -242,3 +275,6 @@ class WorkspaceManager:
             self.preprocess_input()
         else:
             log_msg("INFO", "数据预处理已禁用（config.data.preprocess_data=false）")
+
+        # Phase 4: 保护输入文件（P0-3 修复，防止 Agent 代码修改/删除）
+        self.protect_input_files()
