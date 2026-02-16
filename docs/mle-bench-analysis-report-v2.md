@@ -276,7 +276,7 @@ Docker 容器禁止网络访问（PyTorch Hub、torchvision 等均不可达）�
 4. **单通道处理**: 将 3 通道灰度医学图像错误处理
 5. **缺少数据增强**: 无旋转、翻转、裁剪等增强
 
-**预计修复效果**: 预训练 ResNet50 + 512x512 + 10+ epochs → AUC 0.95~0.97
+**注**: 容器网络限制导致无法下载预训练权重，此问题暂无可行解决方案
 
 ---
 
@@ -445,7 +445,6 @@ Docker 容器禁止网络访问（PyTorch Hub、torchvision 等均不可达）�
 
 | 改进项 | 上轮优先级 | 当前状态 | 本轮影响 |
 |--------|----------|---------|---------|
-| **引入 K-Fold CV** | P0 | **未实施** | 内部-测试 Gap 仍然是系统性问题 |
 | **loss/metric 对齐检查** | P0 | **未实施** | dog-breed 的 Focal Loss 问题虽已修复但系统级未防范 |
 | **图像分类默认 TTA** | P1 | **未实施** | aerial-cactus 靠方案质量获金牌，但其他图像竞赛未受益 |
 | **进化停滞检测 + restart** | P2 | **未实施** | 多个竞赛后期仍在浪费时间 |
@@ -455,7 +454,6 @@ Docker 容器禁止网络访问（PyTorch Hub、torchvision 等均不可达）�
 ### 效果评估总结
 
 - **已实施 P1 "降低 Buggy 率"** 是本轮最大改善来源，直接贡献了 +5 枚奖牌（主要通过提高代码执行成功率）
-- **P0 "K-Fold CV" 未实施** 导致内部-测试 Gap 仍然严重
 - **新发现的 `lower_is_better` bug** 是上轮未识别的系统性问题，其影响超过所有上轮 P0 改进项
 
 ---
@@ -526,9 +524,7 @@ Docker 容器禁止网络访问（PyTorch Hub、torchvision 等均不可达）�
 | **P0** | **修复 `lower_is_better` bug** | dogs-vs-cats, spooky, dog-breed, leaf, denoising, new-york-taxi | **+2~4** | **极低** — 改为全局固定方向 | **极高** |
 | **P0** | **修复 submission 格式验证** | detecting-insults, text-norm-en | **+1** | 低 — 加列名/列数校验 | 高 |
 | **P0** | **保护输入文件(chmod 444)** | tabular-may-2022 | +0~1 | **极低** — 1行代码 | 高 |
-| **P1** | **Docker 预装预训练权重** | ranzcr-clip, siim-melanoma | **+1~2** | 中 — 修改 Dockerfile | 高 |
 | **P1** | **延长/自适应超时** | siim-melanoma, jigsaw-toxic, ranzcr-clip | **+1** | 低 — 改配置 | 中 |
-| **P1** | **引入 K-Fold CV** | 全局 | **+1~2** | 中 — 修改评估管道 | 中 |
 | **P2** | **API 超时处理 + prompt 截断** | jigsaw-toxic, 全局 | +0~1 | 中 | 中 |
 | **P2** | **进化停滞检测 + restart** | 全局 | +0~1 | 低 | 中 |
 | **P2** | **方案库/经验复用** | detecting-insults 等重复竞赛 | +0~1 | 高 | 低 |
@@ -539,8 +535,8 @@ Docker 容器禁止网络访问（PyTorch Hub、torchvision 等均不可达）�
 | 实施范围 | 累计新增奖牌 | 总奖牌 | 获奖率 |
 |---------|------------|--------|--------|
 | 仅 P0 | +3~5 | 12~14 | 55~64% |
-| P0 + P1 | +5~9 | 14~18 | 64~82% |
-| P0 + P1 + P2 | +6~11 | 15~20 | **68~91%** |
+| P0 + P1 | +4~6 | 13~15 | 59~68% |
+| P0 + P1 + P2 | +5~8 | 14~17 | **64~77%** |
 
 ---
 
@@ -601,15 +597,9 @@ for f in input_files:
     os.chmod(f, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)  # 444
 ```
 
-### 短期改进（P1，预期 +2~4 枚奖牌）
+### 短期改进（P1，预期 +1 枚奖牌）
 
-#### 4. Docker 预装预训练权重
-
-在 Dockerfile 中预下载常用模型权重到 `/root/.cache/torch/hub/`:
-- torchvision: ResNet18/34/50, EfficientNet-B0~B4, MobileNetV2
-- 预计解决 ranzcr-clip 和 siim-melanoma 的核心瓶颈
-
-#### 5. 自适应超时
+#### 4. 自适应超时
 
 ```python
 # 根据数据集大小和模型类型动态调整
@@ -618,16 +608,12 @@ if dataset_size > 100000: timeout *= 2  # 大数据集
 if "deep_learning" in solution_type: timeout *= 1.5  # DL 训练
 ```
 
-#### 6. 引入 K-Fold CV
-
-将 `train_test_split` 替换为 `StratifiedKFold(n_splits=5)`，metric 取 5-fold 平均。减少内部-测试 Gap。
-
 ### 中期优化（P2-P3）
 
-7. **API 超时处理**: 设置 prompt 长度上限，超限自动截断历史上下文
-8. **进化停滞检测**: 连续 20 步无 best 更新时触发 restart
-9. **方案库复用**: 对重复竞赛可加载上轮最佳方案作为初始解
-10. **NLP 任务引入 Transformer**: 添加 distilbert/roberta 预训练模型支持
+6. **API 超时处理**: 设置 prompt 长度上限，超限自动截断历史上下文
+7. **进化停滞检测**: 连续 20 步无 best 更新时触发 restart
+8. **方案库复用**: 对重复竞赛可加载上轮最佳方案作为初始解
+9. **NLP 任务引入 Transformer**: 添加 distilbert/roberta 预训练模型支持
 
 ---
 
@@ -678,11 +664,11 @@ if "deep_learning" in solution_type: timeout *= 1.5  # DL 训练
 ```
                  高影响
                   │
-    P0:lower_is_better ●     P1:预训练权重 ●
+    P0:lower_is_better ●     P1:自适应超时 ●
                   │
-    P0:submission验证 ●      P1:K-Fold CV ●
+    P0:submission验证 ●
                   │
-    P0:输入保护 ●            P1:自适应超时 ●
+    P0:输入保护 ●
                   │
   ──────────────── ┼ ────────────────────
                   │
@@ -696,4 +682,4 @@ if "deep_learning" in solution_type: timeout *= 1.5  # DL 训练
 
 ---
 
-> **总结**: 本轮实验通过代码预验证+Debug循环将成功率从 31.5% 提升到 73.0%，是重大进步。但获奖率仅 40.9%，主要受限于 **`lower_is_better` 系统 bug**（影响 6+ 竞赛，直接丢失 2~4 枚奖牌）、**容器无预训练权重**（影响 2 个医学图像竞赛）和 **submission 格式问题**（2 个无效提交）。修复 P0+P1 改进项后，预计获奖率可达 **64~82%**，接近或达到 80% 目标。
+> **总结**: 本轮实验通过代码预验证+Debug循环将成功率从 31.5% 提升到 73.0%，是重大进步。但获奖率仅 40.9%，主要受限于 **`lower_is_better` 系统 bug**（影响 6+ 竞赛，直接丢失 2~4 枚奖牌）和 **submission 格式问题**（2 个无效提交）。修复 P0+P1 改进项后，预计获奖率可达 **59~68%**。**注**：容器网络限制导致无法下载预训练权重问题（影响 ranzcr-clip、siim-melanoma 两个医学图像竞赛）暂无可行解决方案。
