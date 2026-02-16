@@ -35,6 +35,10 @@ def map_env_vars() -> None:
 
 map_env_vars()
 
+# 初始化代理（必须在 import 项目模块之前，因为可能影响下载行为）
+from utils.proxy import init_proxy  # noqa: E402
+init_proxy()
+
 
 # ============================================================
 # Phase 2: 导入项目模块（环境变量已就绪）
