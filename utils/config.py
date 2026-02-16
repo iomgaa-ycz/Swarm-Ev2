@@ -70,8 +70,10 @@ class ExecutionConfig:
     """执行配置。"""
 
     timeout: int
-    agent_file_name: str
-    format_tb_ipython: bool
+    timeout_max: int = 7200  # 最大超时时间（秒）
+    adaptive_timeout: bool = True  # 是否启用自适应超时
+    agent_file_name: str = "runfile.py"
+    format_tb_ipython: bool = False
 
 
 @dataclass
@@ -396,7 +398,11 @@ def validate_config(cfg: DictConfig) -> Config:
                 ),
             ),
             execution=ExecutionConfig(
-                timeout=0, agent_file_name="", format_tb_ipython=False
+                timeout=0,
+                timeout_max=7200,
+                adaptive_timeout=True,
+                agent_file_name="",
+                format_tb_ipython=False,
             ),
             agent=AgentConfig(
                 max_steps=0,

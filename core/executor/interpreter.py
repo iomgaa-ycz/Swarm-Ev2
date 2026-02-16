@@ -113,6 +113,15 @@ class Interpreter:
         """检查是否有可用的执行槽位。"""
         return self.current_parallel_run < self.max_parallel_run
 
+    def set_timeout(self, timeout: int) -> None:
+        """动态设置超时时间。
+
+        Args:
+            timeout: 新的超时时间（秒）
+        """
+        self.timeout = timeout
+        log_msg("INFO", f"Interpreter 超时已更新: {timeout}s")
+
     def _replace_submission_name(self, code: str, node_id: str) -> str:
         """将 submission.csv 替换为 submission_{node_id}.csv。
 

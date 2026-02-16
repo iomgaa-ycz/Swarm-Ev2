@@ -48,7 +48,9 @@ llm:
 # 执行配置
 # ============================================================
 execution:
-  timeout: 3600  # 单次执行超时时间（秒）
+  timeout: 3600  # 基础超时时间（秒）
+  timeout_max: 7200  # 最大超时时间（秒，自适应模式下的上限）
+  adaptive_timeout: true  # 是否启用自适应超时（根据数据集大小动态调整）
   agent_file_name: "runfile.py"  # Agent 执行文件名
   format_tb_ipython: false  # 是否使用 IPython 格式化 traceback
 

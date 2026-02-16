@@ -208,10 +208,13 @@ class Orchestrator:
                 f"无法获取 conda 环境 '{self.conda_env_name}' 的 Python，使用当前解释器",
             )
 
-        # 初始化代码执行器（使用 conda Python）
+        # 计算自适应超时
+        adaptive_timeout = self._estimate_timeout()
+
+        # 初始化代码执行器（使用 conda Python + 自适应超时）
         self.interpreter = Interpreter(
             working_dir=str(config.project.workspace_dir),
-            timeout=config.execution.timeout,
+            timeout=adaptive_timeout,
             max_parallel_run=self.max_workers,
             python_path=conda_python,
         )
@@ -1516,6 +1519,51 @@ Call `submit_review` with your analysis.
         )
 
         log_msg("INFO", f"[评估] {summary}")
+
+    def _estimate_timeout(self) -> int:
+        """根据数据集大小估算合理超时时间（自适应超时）。
+
+        Returns:
+            超时时间（秒）
+        """
+        if not self.config.execution.adaptive_timeout:
+            log_msg("INFO", f"自适应超时已禁用，使用固定超时: {self.config.execution.timeout}s")
+            return self.config.execution.timeout
+
+        base_timeout = self.config.execution.timeout  # 3600s
+        max_timeout = self.config.execution.timeout_max  # 7200s
+
+        # 计算数据集总大小
+        input_dir = self.config.project.workspace_dir / "input"
+        if not input_dir.exists():
+            log_msg("WARNING", "input 目录不存在，使用基础超时")
+            return base_timeout
+
+        try:
+            total_size_bytes = sum(
+                f.stat().st_size for f in input_dir.rglob("*") if f.is_file()
+            )
+            total_size_mb = total_size_bytes / (1024 * 1024)
+        except Exception as e:
+            log_msg("WARNING", f"计算数据集大小失败: {e}，使用基础超时")
+            return base_timeout
+
+        # 根据数据集大小确定倍数
+        multiplier = 1.0
+        if total_size_mb > 500:  # 大数据集 (>500MB)
+            multiplier = 2.0
+        elif total_size_mb > 100:  # 中等数据集 (>100MB)
+            multiplier = 1.5
+
+        estimated_timeout = int(base_timeout * multiplier)
+        final_timeout = min(estimated_timeout, max_timeout)
+
+        log_msg(
+            "INFO",
+            f"自适应超时: dataset={total_size_mb:.1f}MB, multiplier={multiplier:.1f}x, "
+            f"timeout={final_timeout}s (base={base_timeout}s, max={max_timeout}s)",
+        )
+        return final_timeout
 
     def _is_better(self, node: Node, best_node: Node) -> bool:
         """判断节点是否优于最佳节点（P0-1 修复：使用全局方向）。
