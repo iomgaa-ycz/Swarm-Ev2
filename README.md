@@ -374,7 +374,7 @@ HF_ENDPOINT=https://hf-mirror.com conda run -n mlebench python scripts/download_
 ```bash
 # 将 Swarm-Ev2 代码同步到 mle-bench 的 agents 目录
 rsync -av --progress \
-  --exclude='workspace' --exclude='.git' --exclude='Reference' \
+  --exclude='workspace' --exclude='.git' --exclude='Reference' --exclude='datasets'\
   ../Swarm-Ev2/ ./agents/swarm-evo/
 
 # 构建 Agent 镜像

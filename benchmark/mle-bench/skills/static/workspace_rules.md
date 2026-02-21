@@ -40,6 +40,21 @@
    - **NEVER** report training loss (e.g., Focal Loss, BCELoss) as validation metric
 4. Print the validation metric: `print(f"Validation metric: {metric_value:.6f}")`
 
+### DataLoader Workers (CRITICAL for Image/Audio Tasks)
+- ALWAYS set `num_workers` to use multi-core CPU; `num_workers=0` serializes all I/O and causes GPU starvation
+- CORRECT:
+  ```python
+  import os
+  num_workers = min(4, os.cpu_count() or 1)
+  DataLoader(dataset, batch_size=32, num_workers=num_workers, pin_memory=True)
+  ```
+- `num_workers=0` is ONLY acceptable when dataset size < 1000 samples
+
+### Large Dataset Sampling
+- For datasets > 1M rows, use **random** sampling — NOT sequential truncation
+- WRONG: `pd.read_csv(path, nrows=5_000_000)` — reads only early rows, causes severe distribution bias for time-series data
+- CORRECT: load with chunking or use `skiprows` with a random mask to get a representative sample
+
 ### Best Practices
 - Set random seeds for reproducibility
 - Handle edge cases (missing values, data type mismatches)
