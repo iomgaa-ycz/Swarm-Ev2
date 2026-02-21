@@ -81,9 +81,14 @@ METRIC_DIRECTION: Dict[str, bool] = {
     "pinball loss": True,
     "hinge loss": True,
     # === Higher is better ===
-    "auc": False,
+    "mean column-wise roc auc": False,
+    "column-wise roc auc": False,
     "area under the roc curve": False,
     "area under the receiver operating characteristic": False,
+    "mean auc": False,
+    "roc auc": False,
+    "roc_auc": False,
+    "auc": False,
     "accuracy": False,
     "categorization accuracy": False,
     "f1": False,
@@ -1075,7 +1080,8 @@ Respond with JSON:
         sorted_keys = sorted(METRIC_DIRECTION.keys(), key=len, reverse=True)
 
         for key in sorted_keys:
-            if key in text:
+            # P0-A 修复：使用单词边界匹配，避免 "mse" 匹配 "themselves" 等子串
+            if re.search(r'\b' + re.escape(key) + r'\b', text):
                 direction = METRIC_DIRECTION[key]
                 self._global_lower_is_better = direction
                 log_msg(
@@ -1103,7 +1109,8 @@ Respond with JSON:
         if metric_name:
             sorted_keys = sorted(METRIC_DIRECTION.keys(), key=len, reverse=True)
             for key in sorted_keys:
-                if key in metric_name or metric_name in key:
+                # P0-A 修复：使用单词边界匹配，防止同类子串假匹配
+                if re.search(r'\b' + re.escape(key) + r'\b', metric_name):
                     self._global_lower_is_better = METRIC_DIRECTION[key]
                     log_msg(
                         "INFO",
@@ -1154,12 +1161,6 @@ Respond with JSON:
             sub_df = pd.read_csv(submission_path)
             result["row_count"] = len(sub_df)
 
-            # 检查 NaN
-            nan_count = int(sub_df.isnull().sum().sum())
-            if nan_count > 0:
-                result["valid"] = False
-                result["errors"].append(f"submission 包含 {nan_count} 个 NaN 值")
-
             # P0-2 修复：使用 glob 模式匹配 sample_submission 文件
             input_dir = self.config.project.workspace_dir / "input"
             candidates = (
@@ -1177,13 +1178,41 @@ Respond with JSON:
                     result["errors"].append(
                         f"行数不匹配: submission={len(sub_df)}, sample={len(sample_df)}"
                     )
-                # 列名检查（升级: 原来仅 warning，现在标记 invalid）
-                if list(sub_df.columns) != list(sample_df.columns):
-                    result["valid"] = False  # P0-2 修复：升级为 invalid
+                # P0-B 修复：集合比较（不依赖顺序），列存在但顺序不同时自动重排写回
+                sub_cols = set(sub_df.columns)
+                sample_cols = set(sample_df.columns)
+                if sub_cols != sample_cols:
+                    result["valid"] = False
                     result["errors"].append(
-                        f"列名不匹配: submission={list(sub_df.columns)[:5]}, "
-                        f"sample={list(sample_df.columns)[:5]}"
+                        f"列名不匹配: submission={sorted(sub_cols)}, "
+                        f"sample={sorted(sample_cols)}"
                     )
+                elif list(sub_df.columns) != list(sample_df.columns):
+                    sub_df = sub_df[list(sample_df.columns)]
+                    sub_df.to_csv(submission_path, index=False)
+                    log_msg(
+                        "INFO",
+                        f"[P0-B] 列顺序已自动调整为 sample 顺序并写回: {node_id}",
+                    )
+                # P0-B 修复：NaN 检查仅针对目标列（非 id 列），避免特征列为空误判
+                id_like = {"id", "image_id", "row_id", "uuid", "pid"}
+                target_cols = [
+                    c for c in sample_df.columns if c.lower() not in id_like
+                ]
+                if target_cols:
+                    target_col = target_cols[0]
+                    nan_count = int(sub_df[target_col].isna().sum())
+                    if nan_count > 0:
+                        result["valid"] = False
+                        result["errors"].append(
+                            f"目标列 '{target_col}' 包含 {nan_count} 个 NaN 值"
+                        )
+            else:
+                # 无 sample 文件时，全表 NaN 检查（降级保留原逻辑）
+                nan_count = int(sub_df.isnull().sum().sum())
+                if nan_count > 0:
+                    result["valid"] = False
+                    result["errors"].append(f"submission 包含 {nan_count} 个 NaN 值")
         except Exception as e:
             result["valid"] = False
             result["errors"].append(f"读取 submission 失败: {e}")
