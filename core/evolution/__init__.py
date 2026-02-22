@@ -16,7 +16,10 @@ from .gene_registry import GeneRegistry
 from .gene_selector import select_gene_plan
 from .pheromone import compute_node_pheromone, ensure_node_stats
 from .solution_evolution import SolutionEvolution
-from .code_embedding_manager import CodeEmbeddingManager
+try:
+    from .code_embedding_manager import CodeEmbeddingManager
+except ImportError:
+    CodeEmbeddingManager = None  # type: ignore  # sentence_transformers 未安装时降级
 from .skill_extractor import SkillExtractor
 from .skill_manager import SkillManager
 

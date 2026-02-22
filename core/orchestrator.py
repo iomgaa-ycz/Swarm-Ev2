@@ -23,6 +23,7 @@ from core.backend import query as backend_query
 from utils.config import Config
 import re
 
+from core.evolution.gene_parser import parse_solution_genes
 from utils.logger_system import log_msg, log_json, log_exception
 from utils.system_info import (
     get_hardware_description,
@@ -508,7 +509,6 @@ class Orchestrator:
 
         # Phase 8.5: 解析节点基因（信息素机制的前提）
         if not node.is_buggy and node.code:
-            from core.evolution.gene_parser import parse_solution_genes
             node.genes = parse_solution_genes(node.code)
 
         # Phase 9: 计算节点信息素并更新基因注册表
