@@ -42,6 +42,9 @@ class Node(DataClassJsonMixin):
         total_reward: MCTS 累计奖励
         generation: GA 进化代数
         fitness: GA 适应度值
+        dead: 是否为死节点（1 次主操作 + 2 次 debug_chain 全失败）
+        debug_attempts: 已执行的 debug_chain 次数
+        approach_tag: Review 写入的方法摘要（如 "LightGBM + 5-fold CV"），用于 Phase 1 多样性引导
     """
 
     # ---- 代码 ----
@@ -55,7 +58,7 @@ class Node(DataClassJsonMixin):
     ctime: float = field(default_factory=time.time, kw_only=True)
     parent_id: Optional[str] = field(default=None, kw_only=True)
     children_ids: list[str] = field(default_factory=list, kw_only=True)
-    task_type: str = field(default="explore", kw_only=True)
+    task_type: str = field(default="draft", kw_only=True)
     metadata: Dict = field(default_factory=dict, kw_only=True)
 
     # ---- LLM 调试信息 ----
@@ -85,6 +88,11 @@ class Node(DataClassJsonMixin):
     # ---- GA ----
     generation: Optional[int] = field(default=None, kw_only=True)
     fitness: Optional[float] = field(default=None, kw_only=True)
+
+    # ---- 两阶段进化 ----
+    dead: bool = field(default=False, kw_only=True)            # 1主操作+2次debug全失败
+    debug_attempts: int = field(default=0, kw_only=True)       # 已执行的 debug_chain 次数
+    approach_tag: Optional[str] = field(default=None, kw_only=True)  # Review 写入，用于 Phase 1 多样性引导
 
     def __eq__(self, other) -> bool:
         """基于 ID 比较节点相等性。"""

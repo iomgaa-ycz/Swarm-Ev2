@@ -307,7 +307,7 @@ def get_conda_packages(env_name: Optional[str] = None) -> str:
         channel_counter: Counter[str] = Counter()
         highlighted_packages: list[tuple[str, str]] = []
 
-        # 核心 ML 包列表（按重要性排序：数据处理 → 传统ML → Boosting → 深度学习）
+        # 核心 ML 包列表（按重要性排序：数据处理 → 传统ML → Boosting → PyTorch生态 → HuggingFace → 图像处理 → TF）
         core_packages_priority = [
             "pandas",
             "numpy",
@@ -317,8 +317,14 @@ def get_conda_packages(env_name: Optional[str] = None) -> str:
             "lightgbm",
             "catboost",  # Boosting 三剑客
             "torch",
-            "torchvision",
-            "tensorflow",  # 深度学习
+            "torchvision",  # PyTorch 生态
+            "timm",  # 图像模型（PyTorch）
+            "transformers",
+            "datasets",
+            "accelerate",  # HuggingFace 生态
+            "pillow",
+            "opencv-python",  # 图像处理
+            "tensorflow",  # TF（低优先级，PyTorch 优先）
         ]
         core_packages = set(core_packages_priority)
 
@@ -357,7 +363,7 @@ def get_conda_packages(env_name: Optional[str] = None) -> str:
                 except ValueError:
                     return len(core_packages_priority)
 
-            sorted_packages = sorted(set(highlighted_packages), key=priority_key)[:6]
+            sorted_packages = sorted(set(highlighted_packages), key=priority_key)[:10]
             packages_str = ", ".join([sig for _, sig in sorted_packages])
             remaining = len(highlighted_packages) - len(sorted_packages)
 
@@ -366,31 +372,56 @@ def get_conda_packages(env_name: Optional[str] = None) -> str:
 
             description_parts.append(f"Key ML packages: {packages_str}.")
 
-        # PyTorch 优先提示
-        has_torch = any(name.lower() == "torch" for name, _ in highlighted_packages)
-        has_tf = any(name.lower() == "tensorflow" for name, _ in highlighted_packages)
+        # 提取已安装包名集合（用于后续多处判断）
+        installed_names = {name.lower() for name, _ in highlighted_packages}
+        has_torch = "torch" in installed_names
+        has_tf = "tensorflow" in installed_names
 
+        # PyTorch/TF 可用性提示（PyTorch 优先，TF 降级）
         if has_torch:
             description_parts.append(
-                "PyTorch is available and recommended for neural network tasks."
+                "PyTorch available: prefer pretrained backbones over training from scratch."
             )
         elif has_tf:
             description_parts.append(
-                "TensorFlow is available for neural network tasks."
+                "TensorFlow is available for neural network tasks (no PyTorch detected)."
             )
 
-        # 检测常见但可能未安装的包，生成负面约束
-        installed_names = {name.lower() for name, _ in highlighted_packages}
-        common_ml_packages = {"catboost", "xgboost", "tensorflow", "keras", "fastai"}
-        not_installed = common_ml_packages - installed_names
+        # 任务类型推荐段落（动态，基于实际安装包）
+        task_hints: list[str] = []
+        if "timm" in installed_names:
+            hint = "Image classification → `timm` (e.g., `timm.create_model('efficientnet_b4', pretrained=True, num_classes=N)`)"
+            if "torchvision" in installed_names:
+                hint += "; `torchvision.transforms` for preprocessing"
+            task_hints.append(hint)
+        if "transformers" in installed_names:
+            task_hints.append(
+                "Text/NLP → `transformers` (e.g., `AutoModel.from_pretrained('bert-base-uncased')`)"
+            )
+        tabular_libs = [
+            lib for lib in ["xgboost", "lightgbm", "catboost"] if lib in installed_names
+        ]
+        if tabular_libs:
+            task_hints.append(
+                f"Tabular → {'/'.join(tabular_libs)} for gradient boosting baseline"
+            )
+        if task_hints:
+            description_parts.append(
+                "Recommended by task type: " + "; ".join(task_hints) + "."
+            )
 
+        # 负面约束：常见但未安装的包（扩展覆盖范围）
+        common_ml_packages = {
+            "catboost", "xgboost", "lightgbm", "timm", "transformers", "fastai"
+        }
+        not_installed = common_ml_packages - installed_names
         if not_installed:
             not_installed_str = ", ".join(sorted(not_installed))
             description_parts.append(
                 f"**NOT INSTALLED**: {not_installed_str}. Do NOT use these packages."
             )
 
-        # 添加强制约束提醒
+        # 强制约束提醒
         description_parts.append(
             "**IMPORTANT**: Only use packages explicitly listed above."
         )

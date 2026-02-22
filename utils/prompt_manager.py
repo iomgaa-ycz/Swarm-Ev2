@@ -124,7 +124,7 @@ class PromptManager:
         如果 SkillManager 不可用，则从经验池提取成功案例。
 
         Args:
-            task_type: 任务类型（"explore" / "merge" / "mutate"）
+            task_type: 任务类型（"draft" / "explore" / "merge" / "mutate"）
             k: 提取 Top-K 数量
             experience_pool: 经验池实例（Fallback 使用）
 
@@ -144,8 +144,10 @@ class PromptManager:
             )
             return ""
 
+        # "draft" 与 "explore" 共用经验池
+        query_type = "explore" if task_type == "draft" else task_type
         records = experience_pool.query(
-            task_type=task_type,
+            task_type=query_type,
             k=k,
             output_quality=(">", 0.5),
         )
