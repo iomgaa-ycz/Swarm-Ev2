@@ -12,7 +12,7 @@ import json
 import shutil
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
+from pathlib import Path
 from typing import Optional, Dict, List, TYPE_CHECKING
 
 from agents.base_agent import BaseAgent, AgentContext
@@ -234,248 +234,6 @@ class Orchestrator:
             f"agent_evolution={'启用' if agent_evolution else '禁用'}",
         )
 
-    def run(
-        self,
-        num_epochs: int = 1,
-        steps_per_epoch: Optional[int] = None,
-    ) -> Optional[Node]:
-        """主循环入口（并行执行模式）。
-
-        双层循环结构：
-            - 外层：Epoch 循环，每个 Epoch 结束时触发 Agent 层进化
-            - 内层：Step 循环，并行执行多个任务
-
-        Args:
-            num_epochs: Epoch 数量（默认 1）
-            steps_per_epoch: 每个 Epoch 的步数
-
-        Returns:
-            最佳节点对象（可能为 None）
-        """
-        # 确定每个 Epoch 的步数
-        if steps_per_epoch is None:
-            if hasattr(self.config, "evolution") and hasattr(
-                self.config.evolution, "solution"
-            ):
-                steps_per_epoch = self.config.evolution.solution.steps_per_epoch
-            else:
-                steps_per_epoch = self.config.agent.max_steps
-
-        total_steps = num_epochs * steps_per_epoch
-        log_msg(
-            "INFO",
-            f"Orchestrator 开始运行: num_epochs={num_epochs}, "
-            f"steps_per_epoch={steps_per_epoch}, total_steps={total_steps}",
-        )
-
-        # Epoch 循环
-        for epoch in range(num_epochs):
-            self.current_epoch = epoch
-
-            # 检查时间限制
-            if self._check_time_limit():
-                break
-
-            log_msg("INFO", f"===== Epoch {epoch + 1}/{num_epochs} 开始 =====")
-
-            # Step 循环（并行执行）
-            epoch_completed = self._run_single_epoch(steps_per_epoch)
-
-            if not epoch_completed:
-                log_msg("INFO", "Epoch 执行过程中检测到时间限制，停止运行")
-                break
-
-            # Agent 层进化
-            if self.agent_evolution:
-                self.agent_evolution.evolve(epoch)
-
-            # Epoch 结束日志
-            best = self.journal.get_best_node(
-                lower_is_better=self._global_lower_is_better
-            )
-            log_msg(
-                "INFO",
-                f"===== Epoch {epoch + 1}/{num_epochs} 完成 | "
-                f"最佳 metric: {best.metric_value if best else 'N/A'} =====",
-            )
-
-        log_msg(
-            "INFO",
-            f"Orchestrator 运行完成: best_node={'存在' if self.best_node else '不存在'}",
-        )
-
-        # 清理所有进程
-        self.interpreter.cleanup_session(-1)
-
-        return self.best_node
-
-    def run_legacy(self, max_steps: Optional[int] = None) -> Optional[Node]:
-        """原有主循环入口（兼容旧接口）。
-
-        Args:
-            max_steps: 最大步数
-
-        Returns:
-            最佳节点对象
-        """
-        steps = max_steps or self.config.agent.max_steps
-        return self.run(num_epochs=1, steps_per_epoch=steps)
-
-    def _run_single_epoch(self, steps_per_epoch: int) -> bool:
-        """运行单个 Epoch（并行执行）。
-
-        使用 ThreadPoolExecutor 并行提交任务，完成一个后立即提交新任务。
-
-        Args:
-            steps_per_epoch: 该 Epoch 的步数
-
-        Returns:
-            是否正常完成（False 表示因时间限制提前退出）
-        """
-        # 记录 Epoch 开始时的节点数，用于计算当前 Epoch 完成的任务数
-        with self.journal_lock:
-            epoch_start_count = len(self.journal.nodes)
-
-        completed = 0  # 当前 Epoch 完成的任务数（局部计数）
-
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            # 初始提交任务
-            initial_count = min(self.max_workers, steps_per_epoch)
-            futures = {
-                executor.submit(self._step_task, None) for _ in range(initial_count)
-            }
-
-            log_msg("INFO", f"初始提交 {initial_count} 个并行任务")
-
-            while completed < steps_per_epoch:
-                # 检查时间限制
-                if self._check_time_limit():
-                    for fut in futures:
-                        fut.cancel()
-                    return False
-
-                # 等待任意任务完成
-                done, _ = wait(futures, timeout=5.0, return_when=FIRST_COMPLETED)
-
-                for fut in done:
-                    futures.remove(fut)
-
-                    try:
-                        fut.result()  # 获取结果以触发异常传播
-                    except Exception as e:
-                        log_msg("WARNING", f"任务执行失败: {e}")
-
-                    # 更新完成计数（当前 Epoch 的完成数 = 总节点数 - Epoch 开始时的节点数）
-                    with self.journal_lock:
-                        total_nodes = len(self.journal.nodes)
-                    completed = total_nodes - epoch_start_count
-
-                    log_msg(
-                        "INFO",
-                        f"=== Epoch {self.current_epoch + 1} | "
-                        f"Step {completed}/{steps_per_epoch} 完成 ===",
-                    )
-
-                    # 提交新任务
-                    remaining = steps_per_epoch - completed - len(futures)
-                    if remaining > 0:
-                        parent = self._select_parent_node()
-                        futures.add(executor.submit(self._step_task, parent))
-
-        return True
-
-    def _step_task(self, parent_node: Optional[Node]) -> Optional[Node]:
-        """执行单个搜索任务（线程安全）。
-
-        Args:
-            parent_node: 父节点（None 表示初稿模式）
-
-        Returns:
-            生成的节点
-        """
-        try:
-            # Phase 1: 选择 Agent（优先使用 TaskDispatcher，否则随机选择）
-            task_type = "explore"  # 默认任务类型
-
-            if self.task_dispatcher:
-                agent = self.task_dispatcher.select_agent(task_type)
-            else:
-                agent = random.choice(self.agents)
-
-            log_msg(
-                "INFO",
-                f"{agent.name} 开始 {'explore' if parent_node is None else 'improve'} (parent_id={parent_node.id[:8] if parent_node else None})",
-            )
-
-            # Phase 2: 准备环境
-            self._prepare_step()
-
-            # Phase 3: 生成代码
-            with self.journal_lock:
-                current_step = len(self.journal.nodes)
-
-            context = AgentContext(
-                task_type="explore",  # 统一使用 explore，PromptManager 根据 parent_node 自动适配
-                parent_node=parent_node,
-                journal=self.journal,
-                config=self.config,
-                start_time=self.start_time,
-                current_step=current_step,
-                task_desc=self.task_desc,
-                device_info=self.device_info,
-                conda_packages=self.conda_packages,
-                conda_env_name=self.conda_env_name,
-                experience_pool=self.experience_pool,
-            )
-
-            result = agent.generate(context)
-
-            if not result.success or result.node is None:
-                log_msg("WARNING", f"{agent.name} 生成失败: {result.error}")
-                return None
-
-            node = result.node
-
-            # Phase 4: 执行代码（并行安全）
-            exec_result = self._execute_code(node.code, node.id)
-            node.term_out = "\n".join(exec_result.term_out)
-            node.exec_time = exec_result.exec_time
-            node.exc_type = exec_result.exc_type
-            node.exc_info = str(exec_result.exc_info) if exec_result.exc_info else None
-
-            # Phase 4.5: 即时 Debug（非超时/OOM 错误才重试）
-            node = self._try_immediate_debug(node, agent, context)
-
-            # Phase 5: Review 评估
-            self._review_node(node, parent_node=parent_node)
-
-            # Phase 6: 保存节点
-            with self.save_lock:
-                self._save_node_solution(node)
-
-            # Phase 7: 线程安全追加到 Journal
-            with self.journal_lock:
-                self.journal.append(node)
-                self._update_best_node(node)
-
-            # Phase 8: 写入经验池
-            if self.experience_pool:
-                self._write_experience_pool(agent.name, task_type, node)
-
-            # Phase 9: 打印结果
-            self._print_node_summary(node)
-
-            log_msg(
-                "INFO",
-                f"{agent.name} 完成 {'explore' if parent_node is None else 'improve'}: is_buggy={node.is_buggy}, exec_time={node.exec_time:.2f}s",
-            )
-
-            return node
-
-        except Exception as e:
-            log_exception(e, "Orchestrator _step_task() 执行失败")
-            return None
-
     def _check_time_limit(self) -> bool:
         """检查是否达到时间限制。
 
@@ -487,48 +245,6 @@ class Orchestrator:
             log_msg("INFO", f"已达时间限制 {self.config.agent.time_limit}s，停止运行")
             return True
         return False
-
-    def _select_parent_node(self) -> Optional[Node]:
-        """选择父节点（搜索策略）。
-
-        三阶段策略：
-        1. 初稿模式：draft 数量不足时生成初稿
-        2. 修复模式：概率触发，修复 buggy 叶子节点
-        3. 改进模式：选择 best_node 进行改进
-
-        Returns:
-            - None: 初稿模式
-            - buggy node: 修复模式
-            - best node: 改进模式
-        """
-        with self.journal_lock:
-            # Phase 1: 初稿模式
-            if len(self.journal.draft_nodes) < self.config.search.num_drafts:
-                log_msg("INFO", "[search_policy] 初稿模式")
-                return None
-
-            # Phase 2: 修复模式
-            if random.random() < self.config.search.debug_prob:
-                self.journal.build_dag()
-                buggy_leaves = [
-                    n for n in self.journal.buggy_nodes if not n.children_ids
-                ]
-
-                if buggy_leaves:
-                    node = random.choice(buggy_leaves)
-                    log_msg("INFO", f"[search_policy] 修复模式: 节点 {node.id[:8]}")
-                    return node
-
-            # Phase 3: 改进模式
-            best = self.journal.get_best_node(
-                only_good=True, lower_is_better=self._global_lower_is_better
-            )
-            if best:
-                log_msg("INFO", f"[search_policy] 改进模式: 节点 {best.id[:8]}")
-                return best
-            else:
-                log_msg("INFO", "[search_policy] 初稿模式（无可用节点）")
-                return None
 
     def _prepare_step(self) -> None:
         """准备单步执行环境（线程安全）。
@@ -641,6 +357,14 @@ class Orchestrator:
                     "WARNING",
                     f"Submission 格式异常: {submission_check['errors']}",
                 )
+                # [NaN回传] 仅当代码执行成功时才回传格式错误（执行失败的节点不应收到 NaN 提示）
+                if node.exc_type is None:
+                    error_details = "; ".join(submission_check["errors"])
+                    node.term_out = (node.term_out or "") + (
+                        f"\n\n[SUBMISSION VALIDATION FAILED]: {error_details}\n"
+                        f"Your code ran without errors but produced an invalid submission.\n"
+                        f"Fix the root cause in your code (do NOT use fillna as a patch)."
+                    )
                 has_submission = False  # 格式无效等同于不存在
 
         # Phase 2: LLM Function Calling（收集调试数据）
@@ -766,6 +490,13 @@ class Orchestrator:
             "suggested_direction": review_data.get("suggested_direction"),
         }
 
+        # Phase 7.5: 提取 approach_tag（仅非 buggy 节点）
+        if not node.is_buggy:
+            approach_tag = review_data.get("approach_tag")
+            if approach_tag:
+                node.approach_tag = approach_tag
+                log_msg("DEBUG", f"节点 {node.id[:8]} approach_tag: {approach_tag}")
+
         # Phase 8: 存储 Review 调试数据（用于排查问题）
         node.metadata["review_debug"] = review_debug
 
@@ -774,6 +505,11 @@ class Orchestrator:
             f"Review 完成: 节点 {node.id[:8]}, is_buggy={node.is_buggy}, "
             f"metric={node.metric_value}, lower_is_better={node.lower_is_better}",
         )
+
+        # Phase 8.5: 解析节点基因（信息素机制的前提）
+        if not node.is_buggy and node.code:
+            from core.evolution.gene_parser import parse_solution_genes
+            node.genes = parse_solution_genes(node.code)
 
         # Phase 9: 计算节点信息素并更新基因注册表
         if self.gene_registry and not node.is_buggy and node.metric_value is not None:
@@ -1383,6 +1119,14 @@ Call `submit_review` with your analysis.
                         "description": "建议的下一步优化方向",
                         "nullable": True,
                     },
+                    "approach_tag": {
+                        "type": "string",
+                        "description": (
+                            "本方案的核心方法摘要（1 句话，如 'LightGBM + 5-fold CV + log1p feature'），"
+                            "供后续 Draft 多样性引导使用。非 buggy 节点必填。"
+                        ),
+                        "nullable": True,
+                    },
                 },
                 "required": [
                     "is_bug",
@@ -1467,6 +1211,14 @@ Call `submit_review` with your analysis.
             )
             if submission_src.exists():
                 shutil.copy(submission_src, best_dir / "submission.csv")
+                # [持久化] 同时同步到容器标准提交路径（防止进程被杀导致文件丢失）
+                SUBMISSION_OUTPUT = Path("/home/submission/submission.csv")
+                try:
+                    SUBMISSION_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(submission_src, SUBMISSION_OUTPUT)
+                    log_msg("INFO", f"[持久化] 最佳提交已同步到 {SUBMISSION_OUTPUT}")
+                except Exception as sync_err:
+                    log_msg("WARNING", f"[持久化] 同步到 /home/submission/ 失败: {sync_err}")
 
             log_msg("INFO", f"最佳方案已保存到 {best_dir}")
 
@@ -1619,70 +1371,235 @@ Call `submit_review` with your analysis.
         else:
             return node.metric_value > best_node.metric_value
 
-    def _try_immediate_debug(
-        self, node: Node, agent: BaseAgent, context: AgentContext
+    def _debug_chain(
+        self,
+        node: Node,
+        agent: BaseAgent,
+        context: AgentContext,
+        max_attempts: Optional[int] = None,
     ) -> Node:
-        """即时 Debug 循环：执行失败后立即尝试修复 1 次。
+        """链式 Debug：最多 max_attempts 次迭代修复，耗尽后标记 node.dead=True。
 
-        参考 AIDE search_policy() + _debug() 和 ML-Master _step_search() debug 分支。
-        非超时/OOM 错误才触发，避免对不可恢复的错误浪费 LLM 调用。
+        与废弃的 _try_immediate_debug() 的区别：
+        - 支持多次迭代（每次将上一次输出作为下一次输入）
+        - 全部失败后设置 node.dead = True
+        - debug_attempts 计入 node.debug_attempts
 
         Args:
             node: 执行后的节点
             agent: 执行该节点的 Agent
             context: Agent 执行上下文
+            max_attempts: 最大 debug 次数（默认使用 config.evolution.solution.debug_max_attempts）
 
         Returns:
-            修复后的节点（修复失败则返回原节点）
+            修复成功的节点；或 dead=True 的原节点（所有尝试失败）
         """
-        # 判断是否需要 Debug
-        skip_exc_types = {None, "TimeoutExpired", "MemoryError"}
+        if max_attempts is None:
+            max_attempts = getattr(
+                self.config.evolution.solution, "debug_max_attempts", 2
+            )
+
+        # 不可恢复的错误类型跳过 debug（TimeoutExpired 为旧版兼容别名）
+        skip_exc_types = {None, "TimeoutError", "TimeoutExpired", "MemoryError"}
         if node.exc_type in skip_exc_types:
             return node
 
-        log_msg(
-            "INFO",
-            f"执行失败({node.exc_type})，启动即时 Debug",
-        )
-
-        debug_context = {
-            "buggy_code": node.code,
-            "exc_type": node.exc_type or "",
-            "term_out": node.term_out if isinstance(node.term_out, str) else "",
-            "task_desc": context.task_desc,
-            "data_preview": "",
-            "device_info": context.device_info,
-            "conda_packages": context.conda_packages,
-            "conda_env_name": context.conda_env_name,
-        }
-
-        fixed_node = agent._debug(debug_context)
-
-        if fixed_node and fixed_node.code and fixed_node.code != node.code:
-            # 执行修复后的代码
-            fix_exec_result = self._execute_code(fixed_node.code, fixed_node.id)
-            fixed_node.term_out = "\n".join(fix_exec_result.term_out)
-            fixed_node.exec_time = fix_exec_result.exec_time
-            fixed_node.exc_type = fix_exec_result.exc_type
-            fixed_node.exc_info = (
-                str(fix_exec_result.exc_info) if fix_exec_result.exc_info else None
+        current = node
+        for attempt in range(1, max_attempts + 1):
+            log_msg(
+                "INFO",
+                f"Debug chain attempt {attempt}/{max_attempts}: "
+                f"node={node.id[:8]}, exc_type={current.exc_type}",
             )
 
-            if fixed_node.exc_type is None:
-                log_msg(
-                    "INFO",
-                    f"即时 Debug 成功: {node.exc_type} → 修复",
+            debug_context = {
+                "buggy_code": current.code,
+                "exc_type": current.exc_type or "",
+                "term_out": current.term_out if isinstance(current.term_out, str) else "",
+                "task_desc": context.task_desc,
+                "data_preview": "",
+                "device_info": context.device_info,
+                "conda_packages": context.conda_packages,
+                "conda_env_name": context.conda_env_name,
+            }
+
+            fixed_node = agent._debug(debug_context)
+
+            if fixed_node and fixed_node.code and fixed_node.code != current.code:
+                fix_exec_result = self._execute_code(fixed_node.code, fixed_node.id)
+                fixed_node.term_out = "\n".join(fix_exec_result.term_out)
+                fixed_node.exec_time = fix_exec_result.exec_time
+                fixed_node.exc_type = fix_exec_result.exc_type
+                fixed_node.exc_info = (
+                    str(fix_exec_result.exc_info) if fix_exec_result.exc_info else None
                 )
+                # 保留原始 parent_id 和 task_type
                 fixed_node.parent_id = node.parent_id
                 fixed_node.task_type = node.task_type
-                return fixed_node
-            else:
+                fixed_node.debug_attempts = attempt
+
+                if fixed_node.exc_type is None:
+                    log_msg("INFO", f"Debug chain 成功（第 {attempt} 次）")
+                    return fixed_node
+
+                # 仍有错误，继续下一轮（用新输出作为下一轮输入）
                 log_msg(
                     "INFO",
-                    f"即时 Debug 失败（仍有错误: {fixed_node.exc_type}），保留原 buggy 节点",
+                    f"Debug attempt {attempt} 仍有错误 ({fixed_node.exc_type})，继续",
                 )
+                current = fixed_node
+            else:
+                log_msg("INFO", f"Debug attempt {attempt} 未产生有效代码，停止")
+                break
 
+        # 所有尝试耗尽，标记为 dead
+        node.dead = True
+        node.debug_attempts = max_attempts
+        log_msg(
+            "WARNING",
+            f"Debug chain 耗尽（{max_attempts} 次），节点 {node.id[:8]} 标记为 dead",
+        )
         return node
+
+    def _build_draft_history(self) -> List[str]:
+        """收集已有方案的 approach_tag 列表（用于 Phase 1 多样性引导）。
+
+        从 Journal 中提取所有非死节点的 approach_tag，去重后按出现顺序返回。
+
+        Returns:
+            approach_tag 列表（已去重）
+        """
+        seen: set = set()
+        history: List[str] = []
+        with self.journal_lock:
+            for node in self.journal.nodes:
+                tag = node.approach_tag
+                if tag and not node.dead and tag not in seen:
+                    seen.add(tag)
+                    history.append(tag)
+        return history
+
+    def _draft_step(self, draft_history: Optional[List[str]] = None) -> Optional[Node]:
+        """执行单个 draft 步骤（Phase 1 专用）。
+
+        与 _step_task() 的区别：
+        - 始终使用 task_type="draft"（对应 draft.j2 模板，无父代）
+        - 注入 draft_history（已用方法列表，用于多样性引导）
+        - 使用 _debug_chain() 替代单次 debug
+
+        Args:
+            draft_history: 已用方法标签列表（None 表示首次）
+
+        Returns:
+            生成的节点（失败时返回 None）
+        """
+        try:
+            # draft 使用 explore 类型 Agent（功能相同）
+            if self.task_dispatcher:
+                agent = self.task_dispatcher.select_agent("explore")
+            else:
+                agent = random.choice(self.agents)
+
+            self._prepare_step()
+
+            with self.journal_lock:
+                current_step = len(self.journal.nodes)
+
+            context = AgentContext(
+                task_type="draft",
+                parent_node=None,
+                journal=self.journal,
+                config=self.config,
+                start_time=self.start_time,
+                current_step=current_step,
+                task_desc=self.task_desc,
+                device_info=self.device_info,
+                conda_packages=self.conda_packages,
+                conda_env_name=self.conda_env_name,
+                experience_pool=self.experience_pool,
+                draft_history=draft_history,
+            )
+
+            result = agent.generate(context)
+
+            if not result.success or result.node is None:
+                log_msg("WARNING", f"{agent.name} draft 生成失败: {result.error}")
+                return None
+
+            node = result.node
+
+            exec_result = self._execute_code(node.code, node.id)
+            node.term_out = "\n".join(exec_result.term_out)
+            node.exec_time = exec_result.exec_time
+            node.exc_type = exec_result.exc_type
+            node.exc_info = str(exec_result.exc_info) if exec_result.exc_info else None
+
+            node = self._debug_chain(node, agent, context)
+
+            self._review_node(node, parent_node=None)
+
+            with self.save_lock:
+                self._save_node_solution(node)
+
+            with self.journal_lock:
+                self.journal.append(node)
+                self._update_best_node(node)
+
+            if self.experience_pool:
+                self._write_experience_pool(agent.name, "draft", node)
+
+            self._print_node_summary(node)
+
+            log_msg(
+                "INFO",
+                f"{agent.name} draft 完成: is_buggy={node.is_buggy}, dead={node.dead}",
+            )
+            return node
+
+        except Exception as e:
+            log_exception(e, "Orchestrator _draft_step() 执行失败")
+            return None
+
+    def run_epoch_draft(self, steps: int) -> List[Node]:
+        """执行一个 Phase 1 Draft Epoch（固定步数，终止条件由调用方控制）。
+
+        与旧版的区别：
+        - 旧版：内部 while 循环，自行检查 valid_pool 目标和总预算
+        - 新版：跑满 steps 步后返回，valid_pool 检测和 Agent 进化由 main.py 的 while 循环负责
+
+        Args:
+            steps: 本次 epoch 执行的步数
+
+        Returns:
+            本 epoch 生成的所有 Node 列表（含 dead 节点）
+        """
+        generated: List[Node] = []
+
+        log_msg(
+            "INFO",
+            f"===== Phase 1 Draft Epoch 开始 (steps={steps}) =====",
+        )
+
+        for _ in range(steps):
+            if self._check_time_limit():
+                break
+
+            draft_history = self._build_draft_history() or None
+            node = self._draft_step(draft_history)
+
+            if node:
+                generated.append(node)
+
+        with self.journal_lock:
+            current_valid = len(
+                [n for n in self.journal.nodes if not n.is_buggy and not n.dead]
+            )
+        log_msg(
+            "INFO",
+            f"===== Phase 1 Draft Epoch 完成: 生成 {len(generated)} 个节点, "
+            f"valid={current_valid} =====",
+        )
+        return generated
 
     def _write_experience_pool(self, agent_id: str, task_type: str, node: Node) -> None:
         """写入经验池（Phase 3）。
@@ -1724,14 +1641,17 @@ Call `submit_review` with your analysis.
             log_msg("WARNING", f"写入经验池失败: {e}")
 
     def execute_merge_task(
-        self, parent_a: Node, parent_b: Node, gene_plan: Dict
+        self,
+        primary_parent: Node,
+        gene_plan: Dict,
+        gene_sources: Optional[Dict[str, str]] = None,
     ) -> Optional[Node]:
         """执行 merge 任务（基因交叉）。
 
         Args:
-            parent_a: 父代 A
-            parent_b: 父代 B
-            gene_plan: 基因交叉计划
+            primary_parent: 贡献基因最多的父代（用于 merge.j2 参考框架）
+            gene_plan: 基因交叉计划（pheromone_with_degenerate_check 的输出）
+            gene_sources: {locus: source_node_id} 字典（可选，用于 node.metadata 记录）
 
         Returns:
             合成的子代节点（失败时返回 None）
@@ -1745,7 +1665,7 @@ Call `submit_review` with your analysis.
 
             log_msg(
                 "INFO",
-                f"{agent.name} 开始 merge (parent_a={parent_a.id[:8]}, parent_b={parent_b.id[:8]})",
+                f"{agent.name} 开始 merge (primary_parent={primary_parent.id[:8]})",
             )
 
             # 构建上下文
@@ -1754,7 +1674,7 @@ Call `submit_review` with your analysis.
 
             context = AgentContext(
                 task_type="merge",
-                parent_node=None,  # merge 不使用 parent_node
+                parent_node=None,
                 journal=self.journal,
                 config=self.config,
                 start_time=self.start_time,
@@ -1763,9 +1683,9 @@ Call `submit_review` with your analysis.
                 device_info=self.device_info,
                 conda_packages=self.conda_packages,
                 conda_env_name=self.conda_env_name,
-                parent_a=parent_a,
-                parent_b=parent_b,
+                primary_parent=primary_parent,
                 gene_plan=gene_plan,
+                gene_sources=gene_sources,
                 experience_pool=self.experience_pool,
             )
 
@@ -1777,6 +1697,9 @@ Call `submit_review` with your analysis.
                 return None
 
             node = result.node
+            # 记录基因来源（用于分析）
+            if gene_sources:
+                node.metadata["gene_sources"] = gene_sources
 
             # 执行代码
             exec_result = self._execute_code(node.code, node.id)
@@ -1785,8 +1708,8 @@ Call `submit_review` with your analysis.
             node.exc_type = exec_result.exc_type
             node.exc_info = str(exec_result.exc_info) if exec_result.exc_info else None
 
-            # 即时 Debug（非超时/OOM 错误才重试）
-            node = self._try_immediate_debug(node, agent, context)
+            # 链式 Debug（非超时/OOM 错误才重试）
+            node = self._debug_chain(node, agent, context)
 
             # Review 评估（merge 使用基因选择方案而非代码 diff）
             self._review_node(node, gene_plan=gene_plan)
@@ -1872,8 +1795,8 @@ Call `submit_review` with your analysis.
             node.exc_type = exec_result.exc_type
             node.exc_info = str(exec_result.exc_info) if exec_result.exc_info else None
 
-            # 即时 Debug（非超时/OOM 错误才重试）
-            node = self._try_immediate_debug(node, agent, context)
+            # 链式 Debug（非超时/OOM 错误才重试）
+            node = self._debug_chain(node, agent, context)
 
             # Review 评估（mutate 使用代码 diff）
             self._review_node(node, parent_node=parent)

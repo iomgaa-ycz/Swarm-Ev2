@@ -30,6 +30,7 @@ from core.evolution import (
     SolutionEvolution,
     CodeEmbeddingManager,
     SkillManager,
+    validate_genes,
 )
 
 
@@ -205,13 +206,18 @@ def generate_markdown_report(
 
 ## 4. Agent 擅长度得分
 
-| Agent | explore | merge | mutate |
-|-------|---------|-------|--------|
+| Agent | draft | merge | mutate |
+|-------|-------|-------|--------|
 """
 
     scores = task_dispatcher.get_specialization_matrix()
     for agent_id, task_scores in scores.items():
-        content += f"| {agent_id} | {task_scores['explore']:.3f} | {task_scores['merge']:.3f} | {task_scores['mutate']:.3f} |\n"
+        content += (
+            f"| {agent_id} "
+            f"| {task_scores.get('draft', task_scores.get('explore', 0)):.3f} "
+            f"| {task_scores.get('merge', 0):.3f} "
+            f"| {task_scores.get('mutate', 0):.3f} |\n"
+        )
 
     # 节点历史
     content += """
@@ -302,7 +308,10 @@ def print_evolution_statistics(
     scores = task_dispatcher.get_specialization_matrix()
     for agent_id, task_scores in scores.items():
         print(
-            f"  {agent_id}: explore={task_scores['explore']:.3f}, merge={task_scores['merge']:.3f}, mutate={task_scores['mutate']:.3f}"
+            f"  {agent_id}: "
+            f"draft={task_scores.get('draft', task_scores.get('explore', 0)):.3f}, "
+            f"merge={task_scores.get('merge', 0):.3f}, "
+            f"mutate={task_scores.get('mutate', 0):.3f}"
         )
 
     # 最佳方案
@@ -467,39 +476,85 @@ def main() -> None:
         print(f"  Agent 数量: {config.evolution.agent.num_agents}")
         print(f"  每 Epoch 步数: {config.evolution.solution.steps_per_epoch}")
         print(f"  探索率: {config.evolution.agent.epsilon}")
+        print(f"  Phase 1 目标节点: {config.evolution.solution.phase1_target_nodes}")
+        print(f"  Debug 最大次数: {config.evolution.solution.debug_max_attempts}")
 
         # ============================================================
-        # Phase 4: 运行双层进化主循环
+        # Phase 4: 两阶段进化主循环
         # ============================================================
-        num_epochs = max(
-            1, config.agent.max_steps // config.evolution.solution.steps_per_epoch
-        )
+        print("\n[4/6] 运行两阶段进化主循环...")
+
+        total_budget = config.agent.max_steps
         steps_per_epoch = config.evolution.solution.steps_per_epoch
+        phase1_target = config.evolution.solution.phase1_target_nodes
+        global_epoch = 0  # Phase 1 + Phase 2 共享的全局 epoch 计数
 
-        print("\n[4/6] 运行双层进化主循环...")
-        print(f"  Epochs: {num_epochs}")
-        print(f"  Steps/Epoch: {steps_per_epoch}")
-        print(f"  总步数: {num_epochs * steps_per_epoch}")
+        print(f"  总预算: {total_budget} 步 (Phase 1 + Phase 2 共享)")
+        print(f"  Phase 1 目标 valid_pool: {phase1_target}")
+        print(f"  每 Epoch 步数: {steps_per_epoch}")
         print("")
 
-        # MVP 实现：先运行 Orchestrator 收集初始种群，再运行 SolutionEvolution
+        # --- Phase 1: Draft while 循环（每 epoch 后检查终止 + 触发 Agent 进化）---
+        log_msg("INFO", "===== 开始 Phase 1: Draft 模式 =====")
+
+        while len(journal.nodes) < total_budget and not orchestrator._check_time_limit():
+            remaining = total_budget - len(journal.nodes)
+            epoch_steps = min(steps_per_epoch, remaining)
+
+            orchestrator.run_epoch_draft(epoch_steps)  # 跑满一个固定 epoch
+            global_epoch += 1
+
+            # Agent 进化（全局 epoch 计数，Phase 1 + Phase 2 共享）
+            if agent_evolution and global_epoch % 3 == 0:
+                log_msg("INFO", f"触发 Agent 层进化（Phase 1, global_epoch={global_epoch}）")
+                agent_evolution.evolve(global_epoch)
+
+            valid_pool = [
+                n for n in journal.nodes
+                if not n.is_buggy and not n.dead and validate_genes(n.genes)
+            ]
+            log_msg(
+                "INFO",
+                f"Phase 1 | epoch={global_epoch}, nodes={len(journal.nodes)}/{total_budget}, "
+                f"valid={len(valid_pool)}/{phase1_target}",
+            )
+
+            if len(valid_pool) >= phase1_target:
+                log_msg("INFO", f"Phase 1 达标: valid_pool={len(valid_pool)}/{phase1_target}")
+                break
+
+        log_msg(
+            "INFO",
+            f"Phase 1 完成: journal={len(journal.nodes)}, "
+            f"valid_pool={len([n for n in journal.nodes if not n.is_buggy and not n.dead and validate_genes(n.genes)])}",
+        )
+
+        # --- Phase 2: 动态预算进化（merge + mutate）---
+        # 预算在 Phase 1 结束后动态计算，确保 Phase 1 提前结束时 Phase 2 获得剩余步数
+        phase2_remaining = total_budget - len(journal.nodes)
+        num_epochs = max(1, phase2_remaining // steps_per_epoch)
+
+        log_msg(
+            "INFO",
+            f"===== 开始 Phase 2: 进化模式 | 剩余预算={phase2_remaining} 步 ({num_epochs} epochs) =====",
+        )
         best_node = None
 
         for epoch in range(num_epochs):
-            log_msg("INFO", f"===== Epoch {epoch + 1}/{num_epochs} 开始 =====")
-
-            # [1] 运行 Orchestrator（生成初始/改进方案）
-            log_msg("INFO", f"运行 Orchestrator: {steps_per_epoch} 个 step")
-            epoch_completed = orchestrator._run_single_epoch(steps_per_epoch)
-            if not epoch_completed:
-                log_msg("INFO", "时间限制已达，停止进化主循环")
+            if orchestrator._check_time_limit():
+                log_msg("INFO", "时间限制已达，停止 Phase 2 进化")
                 break
 
-            # [2] 运行 SolutionEvolution（遗传算法）
-            log_msg("INFO", "运行 SolutionEvolution（遗传算法）")
-            epoch_best = solution_evolution.run_epoch(steps_per_epoch)
+            remaining = total_budget - len(journal.nodes)
+            if remaining <= 0:
+                break
 
-            # P0-1 修复：方向感知的 best_node 比较
+            log_msg("INFO", f"===== Phase 2 Epoch {epoch + 1}/{num_epochs} =====")
+            steps = min(steps_per_epoch, remaining)
+            epoch_best = solution_evolution.run_epoch(steps)
+
+            global_epoch += 1  # 接续 Phase 1 全局计数
+
             if epoch_best and epoch_best.metric_value is not None:
                 if best_node is None or best_node.metric_value is None:
                     best_node = epoch_best
@@ -513,28 +568,26 @@ def main() -> None:
                     if is_better:
                         best_node = epoch_best
 
-            # [3] Agent 层进化（每 3 Epoch）
-            if agent_evolution and (epoch + 1) % 3 == 0:
-                log_msg("INFO", "触发 Agent 层进化")
-                agent_evolution.evolve(epoch)
+            # Agent 进化（全局 epoch 计数，与 Phase 1 共享）
+            if agent_evolution and global_epoch % 3 == 0:
+                log_msg("INFO", f"触发 Agent 层进化（Phase 2, global_epoch={global_epoch}）")
+                agent_evolution.evolve(global_epoch)
 
-            # Epoch 结束日志
             current_best = journal.get_best_node(
                 lower_is_better=orchestrator._global_lower_is_better
             )
             log_msg(
                 "INFO",
-                f"===== Epoch {epoch + 1}/{num_epochs} 完成 | "
-                f"最佳 metric: {current_best.metric_value if current_best else 'N/A'} =====",
+                f"Phase 2 Epoch {epoch + 1}/{num_epochs} 完成 | "
+                f"最佳 metric: {current_best.metric_value if current_best else 'N/A'}",
             )
 
-        # 最终使用 Journal 中的最佳节点
         best_node = journal.get_best_node(
             only_good=True, lower_is_better=orchestrator._global_lower_is_better
         )
         log_msg(
             "INFO",
-            f"双层进化完成: best_node={'存在' if best_node else '不存在'}",
+            f"两阶段进化完成: best_node={'存在' if best_node else '不存在'}",
         )
 
         # ============================================================
