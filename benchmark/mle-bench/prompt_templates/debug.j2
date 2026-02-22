@@ -49,11 +49,13 @@ The following issues were detected before execution:
 
 1. **Analyze the error carefully** and identify the root cause.
 2. **Fix the bug with minimal changes** — do NOT refactor or add new features.
-3. Ensure the fixed code:
+3. **Preserve structure**: Your fix MUST keep all 7 `# [SECTION: X]` markers intact (`DATA`, `MODEL`, `LOSS`, `OPTIMIZER`, `REGULARIZATION`, `INITIALIZATION`, `TRAINING_TRICKS`).
+4. **Minimal change**: Change ONLY what is necessary to fix the error. Do not add, remove, or rename any section marker.
+5. Ensure the fixed code:
    - Prints the validation metric: `print(f"Validation metric: {value}")`
    - Saves predictions to `./submission/submission.csv`
    - Uses only available packages
-4. Your response: a brief description of the fix (2-3 sentences), followed by a **single complete code block**.
+6. Your response: a brief description of the fix (2-3 sentences), followed by a **single complete code block**.
 
 > **IMPORTANT**: Output the COMPLETE fixed code, not just the changed parts.
 {# END SECTION: INSTRUCTIONS #}

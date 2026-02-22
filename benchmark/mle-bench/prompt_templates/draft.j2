@@ -1,0 +1,95 @@
+{# ===================================================================== #}
+{# DRAFT TASK PROMPT TEMPLATE                                          #}
+{# 用于 Phase 1 纯 draft 模式：不参考父代，全力探索多样化方案              #}
+{# ===================================================================== #}
+
+{# SECTION: ROLE [EVOLVABLE] #}
+{{ load_agent_config(agent_id, "role") }}
+{# END SECTION: ROLE #}
+
+{# SECTION: FORMAT [STATIC_SKILL] #}
+{{ load_skill("static/output_format") }}
+{# END SECTION: FORMAT #}
+
+{# SECTION: TASK #}
+# Task Description
+
+{{ task_desc }}
+{# END SECTION: TASK #}
+
+{# SECTION: CONTEXT #}
+{% if draft_history %}
+# Approaches Already Tried
+
+The following approaches have already been attempted in this session.
+**You MUST propose a distinctly different method.**
+
+{% for tag in draft_history %}
+- {{ tag }}
+{% endfor %}
+
+> **Diversity Rule**: Do NOT repeat the same model family or feature engineering strategy listed above.
+> Pick a fundamentally different approach (e.g., if LightGBM was tried, try Neural Network, Ridge Regression, or an ensemble of different families).
+
+{% endif %}
+{% if memory %}
+# Evolution Log
+
+> **CRITICAL**: You MUST read and use this Evolution Log to inform your approach.
+
+{{ memory }}
+
+## Instructions for Using Evolution Log
+
+You MUST:
+1. **Read the Changelog** - Understand what changes improved/degraded performance
+2. **Respect Constraints** - NEVER repeat errors listed in Constraints section
+3. **Build on Insights** - Your approach should address identified bottlenecks
+4. **Explore New Directions** - Pick from Unexplored Directions or propose new ones
+
+Your **Thinking** section MUST reference:
+- Which insight from Changelog informed your approach
+- What specific bottleneck you're targeting
+- Why your proposed change should help
+
+**DO NOT** copy previous Thinking verbatim. Your analysis must be specific to this attempt.
+
+{% endif %}
+
+{% if data_preview %}
+# Data Overview
+
+{{ data_preview }}
+{% endif %}
+{# END SECTION: CONTEXT #}
+
+{# SECTION: STRATEGY #}
+{{ load_agent_config(agent_id, "strategy_explore") }}
+{# END SECTION: STRATEGY #}
+
+{# SECTION: EXAMPLES [DYNAMIC_SKILL] #}
+{% if dynamic_skills %}
+{{ dynamic_skills }}
+{% endif %}
+{# END SECTION: EXAMPLES #}
+
+{# SECTION: GUIDELINES #}
+{{ load_skill("static/workspace_rules") }}
+
+{{ load_skill("static/code_style") }}
+
+## Time and Resource Constraints
+
+- **Total Time Remaining**: {{ time_str }}
+- **Total Steps Remaining**: {{ steps_remaining }}
+
+## System Environment
+
+- **Device**: {{ device_info | default("CPU only") }}
+- **Conda Environment**: `{{ conda_env_name | default("python") }}`
+{% if conda_packages %}
+- **Installed Packages**: {{ conda_packages }}
+{% endif %}
+
+**Note**: Use time and steps efficiently. If GPU is available, prioritize GPU-accelerated solutions. (GPU > Multi-core CPU > Single-core CPU)
+{# END SECTION: GUIDELINES #}

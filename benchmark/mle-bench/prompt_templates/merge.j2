@@ -17,19 +17,18 @@
 You are performing **genetic crossover** to create a child solution
 by combining gene blocks from multiple source solutions.
 
-{% set scaffold = parent_a if (parent_a.metric_value or 0) >= (parent_b.metric_value or 0) else parent_b %}
-## Reference Solution (fitness={{ scaffold.metric_value if scaffold.metric_value else "N/A" }})
+## Reference Solution (fitness={{ primary_parent.metric_value if primary_parent.metric_value else "N/A" }})
 
 A complete working solution for structural reference (imports, helpers, main logic):
 
 ```python
-{{ scaffold.code }}
+{{ primary_parent.code }}
 ```
 
-{% if scaffold.term_out %}
+{% if primary_parent.term_out %}
 ### Execution Result
 ```
-{{ scaffold.term_out[:1000] }}{% if scaffold.term_out|length > 1000 %}... (truncated){% endif %}
+{{ primary_parent.term_out[:1000] }}{% if primary_parent.term_out|length > 1000 %}... (truncated){% endif %}
 ```
 {% endif %}
 
