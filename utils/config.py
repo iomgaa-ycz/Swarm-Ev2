@@ -123,12 +123,16 @@ class SolutionEvolutionConfig:
     """Solution 层遗传算法配置。"""
 
     population_size: int
+    ga_trigger_threshold: int  # GA 触发最小 good_nodes 数（解耦于 population_size）
     elite_size: int
     crossover_rate: float
     mutation_rate: float
     tournament_k: int
     steps_per_epoch: int
     crossover_strategy: str = "random"  # "random" 或 "pheromone"
+    # ---- 两阶段进化新增 ----
+    phase1_target_nodes: int = 8       # Phase 1 结束条件：valid_pool 达到此数量
+    debug_max_attempts: int = 2        # debug_chain 最大次数（两阶段共用）
 
 
 @dataclass
@@ -430,12 +434,15 @@ def validate_config(cfg: DictConfig) -> Config:
                 ),
                 solution=SolutionEvolutionConfig(
                     population_size=0,
+                    ga_trigger_threshold=0,
                     elite_size=0,
                     crossover_rate=0.0,
                     mutation_rate=0.0,
                     tournament_k=0,
                     steps_per_epoch=0,
                     crossover_strategy="random",
+                    phase1_target_nodes=8,
+                    debug_max_attempts=2,
                 ),
                 agent=AgentEvolutionConfig(
                     num_agents=0,

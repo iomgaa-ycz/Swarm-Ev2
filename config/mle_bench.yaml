@@ -69,13 +69,16 @@ evolution:
     save_path: "/home/workspace/evolution/experience_pool.json"
 
   solution:
-    population_size: 12
+    population_size: 12      # GA 操作时实际使用的种群大小上限
+    ga_trigger_threshold: 4  # GA 触发最小 good_nodes 数（原为 population_size=12）
     elite_size: 3
     crossover_rate: 0.8
     mutation_rate: 0.2
     tournament_k: 3
     steps_per_epoch: 10
     crossover_strategy: "random"
+    phase1_target_nodes: 8       # Phase 1 目标
+    debug_max_attempts: 2        # debug_chain 最大次数
 
   agent:
     num_agents: 4
