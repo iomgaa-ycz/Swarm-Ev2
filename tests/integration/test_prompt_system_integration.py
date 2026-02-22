@@ -35,7 +35,7 @@ class TestPromptSystemIntegration:
     def test_file_structure_templates(self, base_dir):
         """测试 Jinja2 模板文件存在。"""
         templates = [
-            "prompt_templates/explore.j2",
+            "prompt_templates/draft.j2",
             "prompt_templates/merge.j2",
             "prompt_templates/mutate.j2",
         ]

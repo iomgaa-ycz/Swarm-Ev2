@@ -17,7 +17,7 @@ class TestNode:
         assert len(node.id) == 32  # UUID hex 长度
         assert node.parent_id is None
         assert node.children_ids == []
-        assert node.task_type == "explore"  # Phase 2: 默认值改为 "explore"
+        assert node.task_type == "draft"  # 两阶段进化：默认值改为 "draft"
         assert node.metadata == {}
         assert not node.is_buggy
         assert node.is_valid
@@ -101,3 +101,27 @@ class TestNode:
         assert node.metadata["author"] == "agent1"
         assert "experimental" in node.metadata["tags"]
         assert node.metadata["score"] == 0.95
+
+    def test_node_two_phase_fields(self):
+        """测试两阶段进化新字段的默认值、赋值与序列化。"""
+        node = Node(code="x = 1")
+
+        # 默认值
+        assert node.dead is False
+        assert node.debug_attempts == 0
+        assert node.approach_tag is None
+
+        # 赋值
+        node.dead = True
+        node.debug_attempts = 2
+        node.approach_tag = "LightGBM + 5-fold CV"
+        assert node.dead is True
+        assert node.debug_attempts == 2
+        assert node.approach_tag == "LightGBM + 5-fold CV"
+
+        # 序列化 / 反序列化完整保留
+        d = node.to_dict()
+        restored = Node.from_dict(d)
+        assert restored.dead is True
+        assert restored.debug_attempts == 2
+        assert restored.approach_tag == "LightGBM + 5-fold CV"

@@ -28,6 +28,7 @@ def mock_config(tmp_path):
             },
             "execution": {
                 "timeout": 60,
+                "adaptive_timeout": False,
             },
             "llm": {
                 "feedback": {
@@ -79,108 +80,6 @@ class TestOrchestrator:
         assert orchestrator.task_desc == "Test task description"
         assert orchestrator.current_epoch == 0
         assert orchestrator.best_node is None
-
-    def test_select_parent_node_initial_drafts(self, orchestrator):
-        """测试初稿模式选择（draft 数量不足）。"""
-        # 当前无 draft
-        assert len(orchestrator.journal.draft_nodes) == 0
-
-        # 应该返回 None（初稿模式）
-        parent = orchestrator._select_parent_node()
-        assert parent is None
-
-    def test_select_parent_node_debug_mode(self, orchestrator, monkeypatch):
-        """测试修复模式选择（debug_prob=1.0 强制触发）。"""
-        # 添加 3 个 draft（满足 num_drafts）
-        for i in range(3):
-            node = Node(code=f"code_{i}", plan=f"plan_{i}")
-            orchestrator.journal.append(node)
-
-        # 添加 1 个 buggy 节点
-        buggy_node = Node(code="buggy_code", plan="buggy_plan", is_buggy=True)
-        orchestrator.journal.append(buggy_node)
-
-        # 强制触发修复模式（debug_prob=1.0）
-        monkeypatch.setattr("random.random", lambda: 0.0)
-
-        parent = orchestrator._select_parent_node()
-        assert parent == buggy_node
-
-    def test_select_parent_node_improve_mode(self, orchestrator, monkeypatch):
-        """测试改进模式选择（best_node 存在）。"""
-        # 添加 3 个 draft
-        nodes = []
-        for i in range(3):
-            node = Node(
-                code=f"code_{i}",
-                plan=f"plan_{i}",
-                metric_value=0.8 + i * 0.05,
-                is_buggy=False,
-            )
-            orchestrator.journal.append(node)
-            nodes.append(node)
-
-        # 不触发修复模式（debug_prob=0.0）
-        monkeypatch.setattr("random.random", lambda: 1.0)
-
-        parent = orchestrator._select_parent_node()
-
-        # 应该选择 metric 最高的节点
-        best = max(nodes, key=lambda n: n.metric_value)
-        assert parent == best
-
-    def test_step_success(self, orchestrator, mock_agent):
-        """测试单步执行成功流程。"""
-        # Mock Agent.generate() 返回成功结果
-        node = Node(
-            code="print('Hello')",
-            plan="Simple plan",
-            term_out="Hello\n",
-            exec_time=0.1,
-        )
-        mock_agent.generate.return_value = AgentResult(node=node, success=True)
-
-        # Mock Review 和执行
-        with patch.object(orchestrator, "_review_node") as mock_review:
-            with patch.object(orchestrator, "_execute_code") as mock_exec:
-                from core.executor.interpreter import ExecutionResult
-
-                mock_exec.return_value = ExecutionResult(
-                    term_out=["Hello\n"],
-                    exec_time=0.1,
-                    exc_type=None,
-                    exc_info=None,
-                )
-
-                def set_node_attrs(n, parent_node=None, gene_plan=None):
-                    n.metric_value = 0.85
-                    n.is_buggy = False
-                    n.lower_is_better = False
-
-                mock_review.side_effect = set_node_attrs
-
-                # 执行 _step_task
-                orchestrator._step_task(None)
-
-        # 验证
-        assert len(orchestrator.journal) == 1
-        assert orchestrator.journal[0].code == "print('Hello')"
-        assert orchestrator.best_node is not None
-        assert orchestrator.best_node.metric_value == 0.85
-
-    def test_step_agent_failure(self, orchestrator, mock_agent):
-        """测试 Agent 生成失败场景。"""
-        # Mock Agent.generate() 返回失败结果
-        mock_agent.generate.return_value = AgentResult(
-            node=None, success=False, error="LLM timeout"
-        )
-
-        # 执行 _step_task
-        result = orchestrator._step_task(None)
-
-        # 验证：返回 None，Journal 不应该有新节点
-        assert result is None
-        assert len(orchestrator.journal) == 0
 
     def test_review_node_success(self, orchestrator):
         """测试 Review 评估成功。"""
@@ -293,23 +192,6 @@ class TestOrchestrator:
         orchestrator._update_best_node(node3)
         assert orchestrator.best_node == node2  # 仍然是 node2
 
-    def test_run_time_limit(self, orchestrator, mock_agent, monkeypatch):
-        """测试时间限制中断。"""
-        # Mock Agent.generate() 返回成功结果
-        node = Node(code="print('test')", plan="plan", metric_value=0.8)
-        mock_agent.generate.return_value = AgentResult(node=node, success=True)
-
-        # Mock Review
-        with patch.object(orchestrator, "_review_node"):
-            # 设置时间限制为 0（立即超时）
-            monkeypatch.setattr(orchestrator.config.agent, "time_limit", 0)
-
-            # 运行（使用新的 run 接口）
-            orchestrator.run(num_epochs=1, steps_per_epoch=10)
-
-        # 验证：应该立即停止，Journal 应该为空
-        assert len(orchestrator.journal) == 0
-
     def test_get_review_tool_schema(self, orchestrator):
         """测试 Review tool schema 生成（增强版）。"""
         schema = orchestrator._get_review_tool_schema()
@@ -350,42 +232,52 @@ class TestOrchestrator:
         assert "Initial solution" in messages
 
 
-def test_time_limit_main_loop(mock_config, tmp_path):
-    """测试主循环正确响应时间限制。
+class TestDebugChain:
+    """_debug_chain 链式 Debug 逻辑测试。"""
 
-    验证点：
-    1. _run_single_epoch() 返回 False 时，主循环应停止
-    2. 只运行到返回 False 的 Epoch
-    """
-    from unittest.mock import MagicMock
+    def test_skips_debug_when_no_error(self, orchestrator, mock_agent):
+        """exc_type 为 None 时直接跳过 debug，不调用 agent._debug。"""
+        node = Node(code="print('ok')", plan="plan", exc_type=None)
 
-    # 准备
-    mock_config.agent.time_limit = 10  # 10 秒限制
-    journal = Journal()
-    mock_agent = MagicMock()
-    mock_agent.name = "test_agent"
+        result = orchestrator._debug_chain(node, mock_agent, context=None, max_attempts=2)
 
-    orchestrator = Orchestrator(
-        agents=[mock_agent],
-        config=mock_config,
-        journal=journal,
-        task_desc="test",
-    )
+        # 没有异常，立即返回原节点
+        assert result is node
+        mock_agent._debug.assert_not_called()
 
-    # 模拟：第 2 个 Epoch 时触发时间限制
-    call_count = [0]
+    def test_marks_dead_after_max_attempts(self, orchestrator, mock_agent):
+        """agent._debug 始终返回仍有异常的节点，耗尽后标记 node.dead=True。"""
+        from unittest.mock import MagicMock
 
-    def mock_run_epoch(steps):
-        call_count[0] += 1
-        if call_count[0] == 1:
-            return True  # 第 1 次正常完成
-        else:
-            return False  # 第 2 次时间限制
+        node = Node(code="raise ValueError()", plan="plan", exc_type="ValueError")
 
-    orchestrator._run_single_epoch = mock_run_epoch
+        # Mock context（_debug_chain 内部会访问 context 的属性）
+        mock_context = MagicMock()
+        mock_context.task_desc = "test task"
+        mock_context.device_info = "CPU"
+        mock_context.conda_packages = "pandas"
+        mock_context.conda_env_name = "Swarm-Evo"
 
-    # 执行
-    orchestrator.run(num_epochs=5, steps_per_epoch=10)
+        # _debug 每次都返回一个仍然有错的新节点（不同 code，仍有 exc_type）
+        def make_buggy_node(*args, **kwargs):
+            n = Node(code="raise RuntimeError()", plan="plan", exc_type="RuntimeError")
+            return n
 
-    # 验证
-    assert call_count[0] == 2, "应该只运行了 2 个 Epoch"
+        mock_agent._debug.side_effect = make_buggy_node
+
+        # _execute_code 也需要 mock（返回仍有 exc_type 的结果）
+        exec_result = MagicMock()
+        exec_result.term_out = ["error output"]
+        exec_result.exec_time = 0.1
+        exec_result.exc_type = "RuntimeError"
+        exec_result.exc_info = "RuntimeError: ..."
+
+        with patch.object(orchestrator, "_execute_code", return_value=exec_result):
+            result = orchestrator._debug_chain(
+                node, mock_agent, context=mock_context, max_attempts=2
+            )
+
+        # 耗尽 2 次后，原节点应被标记为 dead
+        assert result.dead is True
+        assert result.debug_attempts == 2
+        assert mock_agent._debug.call_count == 2

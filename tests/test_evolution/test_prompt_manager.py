@@ -23,8 +23,8 @@ def temp_prompt_system(tmp_path):
     skills_dir.mkdir()
     agent_configs_dir.mkdir()
 
-    # 创建测试模板（explore.j2）
-    (template_dir / "explore.j2").write_text(
+    # 创建测试模板（draft.j2）
+    (template_dir / "draft.j2").write_text(
         """# Role
 {{ load_agent_config(agent_id, 'role') }}
 
