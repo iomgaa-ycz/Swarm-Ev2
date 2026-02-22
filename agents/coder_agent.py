@@ -50,7 +50,7 @@ class CoderAgent(BaseAgent):
             AgentResult 对象
         """
         try:
-            if context.task_type == "explore":
+            if context.task_type in ("draft", "explore"):
                 node = self._explore(context)
                 # 静态预验证 + LLM 自修复
                 node = self._validate_and_fix(node, context)
@@ -94,7 +94,7 @@ class CoderAgent(BaseAgent):
         """
         log_msg(
             "INFO",
-            f"{self.name} 开始 explore (parent_id={context.parent_node.id if context.parent_node else 'None'})",
+            f"{self.name} 开始 {context.task_type} (parent_id={context.parent_node.id if context.parent_node else 'None'})",
         )
 
         # Phase 1: 准备上下文
@@ -104,7 +104,7 @@ class CoderAgent(BaseAgent):
 
         # Phase 2: 构建 Prompt
         prompt = self.prompt_manager.build_prompt(
-            "explore",
+            context.task_type,   # "draft" → draft.j2, "explore" → explore.j2
             self.name,
             {
                 "task_desc": context.task_desc,
@@ -117,6 +117,7 @@ class CoderAgent(BaseAgent):
                 "conda_packages": context.conda_packages,
                 "conda_env_name": context.conda_env_name,
                 "experience_pool": getattr(context, "experience_pool", None),
+                "draft_history": getattr(context, "draft_history", None),  # 新增
             },
         )
 
@@ -271,13 +272,12 @@ class CoderAgent(BaseAgent):
         """
         log_msg(
             "INFO",
-            f"{self.name} 开始 merge (parent_a={context.parent_a.id[:8] if context.parent_a else 'None'}, "
-            f"parent_b={context.parent_b.id[:8] if context.parent_b else 'None'})",
+            f"{self.name} 开始 merge (primary_parent={context.primary_parent.id[:8] if context.primary_parent else 'None'})",
         )
 
         # 验证必需字段
-        if not context.parent_a or not context.parent_b or not context.gene_plan:
-            raise ValueError("merge 任务需要 parent_a, parent_b, gene_plan 字段")
+        if not context.primary_parent or not context.gene_plan:
+            raise ValueError("merge 任务需要 primary_parent, gene_plan 字段")
 
         # 计算剩余时间和步数
         time_remaining, steps_remaining = self._calculate_remaining(context)
@@ -288,8 +288,7 @@ class CoderAgent(BaseAgent):
             self.name,
             {
                 "task_desc": context.task_desc,
-                "parent_a": context.parent_a,
-                "parent_b": context.parent_b,
+                "primary_parent": context.primary_parent,   # 改：取代 parent_a/parent_b
                 "gene_plan": context.gene_plan,
                 "time_remaining": time_remaining,
                 "steps_remaining": steps_remaining,
@@ -313,7 +312,7 @@ class CoderAgent(BaseAgent):
         node = Node(
             code=code,
             plan=plan,
-            parent_id=context.parent_a.id,  # 主父代
+            parent_id=context.primary_parent.id,  # 改：使用 primary_parent
             task_type=context.task_type,
             prompt_data=prompt_data,
         )

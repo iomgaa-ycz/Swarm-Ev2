@@ -5,7 +5,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Optional, Literal
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Literal
 
 from dataclasses_json import DataClassJsonMixin
 
@@ -23,7 +23,7 @@ class AgentContext(DataClassJsonMixin):
     封装 Agent 执行所需的所有上下文信息。
 
     Attributes:
-        task_type: 任务类型（"explore"、"merge" 或 "mutate"）
+        task_type: 任务类型（"draft"、"explore"、"merge" 或 "mutate"）
         parent_node: 父节点（None=初稿, buggy=修复, normal=改进）
         journal: 历史节点记录（用于 Memory 机制）
         config: 全局配置
@@ -36,10 +36,13 @@ class AgentContext(DataClassJsonMixin):
         parent_a: merge 任务专用 - 父代 A
         parent_b: merge 任务专用 - 父代 B
         gene_plan: merge 任务专用 - 基因交叉计划
+        primary_parent: merge 任务专用 - 贡献基因最多的父代（取代 parent_a 作为语义主父代）
+        gene_sources: merge 任务专用 - {locus: source_node_id} 字典，记录每个位点的来源
         target_gene: mutate 任务专用 - 目标基因块名称
+        draft_history: draft 任务专用 - 已用方法标签列表，用于多样性引导
     """
 
-    task_type: Literal["explore", "merge", "mutate"]
+    task_type: Literal["draft", "explore", "merge", "mutate"]
     parent_node: Optional[Node]
     journal: Journal
     config: Config
@@ -50,11 +53,15 @@ class AgentContext(DataClassJsonMixin):
     conda_packages: str = ""
     conda_env_name: str = ""
     # merge 任务专用字段
-    parent_a: Optional[Node] = None
-    parent_b: Optional[Node] = None
+    parent_a: Optional[Node] = None       # 保留：兼容旧 execute_merge_task 过渡期
+    parent_b: Optional[Node] = None       # 保留：兼容旧 execute_merge_task 过渡期
+    primary_parent: Optional[Node] = None  # 新增：贡献基因最多的父代
     gene_plan: Optional[dict] = None
+    gene_sources: Optional[Dict[str, str]] = None  # 新增：{locus: source_node_id}
     # mutate 任务专用字段
     target_gene: Optional[str] = None
+    # draft 任务专用字段
+    draft_history: Optional[List[str]] = None  # 新增：已用方法标签列表
     # 经验池（用于动态 Skill 注入）
     experience_pool: Optional[Any] = field(
         default=None, metadata={"dataclasses_json": {"exclude": lambda _: True}}
