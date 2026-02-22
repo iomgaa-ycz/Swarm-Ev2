@@ -3,8 +3,12 @@
 提供 Solution 代码的基因块提取、验证和合并功能。
 """
 
+import random
 import re
-from typing import Dict
+from typing import TYPE_CHECKING, Dict
+
+if TYPE_CHECKING:
+    from core.state.node import Node
 
 # 7 个必需基因块（Swarm-Evo 标准）
 REQUIRED_GENES = [
@@ -160,3 +164,26 @@ def merge_genes(
 
     # 合并所有基因块
     return "\n".join(merged_sections)
+
+
+def select_non_stub_gene(node: "Node", stub_threshold: int = 20) -> str:
+    """从节点中随机选择一个非 stub 的基因位点（用于 mutate 目标选择）。
+
+    内容 strip 后长度 < stub_threshold 视为 stub（如 "# Not applicable..."）。
+    对表格任务，LOSS/OPTIMIZER/INITIALIZATION 通常是 stub，自动跳过。
+
+    Args:
+        node: 待变异的节点
+        stub_threshold: 内容长度阈值，低于此值视为 stub（默认 20）
+
+    Returns:
+        随机选中的非 stub 基因位点名称；若所有基因均为 stub，则 fallback 到随机选择
+    """
+    candidates = [
+        gene for gene in REQUIRED_GENES
+        if len((node.genes.get(gene) or "").strip()) >= stub_threshold
+    ]
+    if candidates:
+        return random.choice(candidates)
+    # fallback: 所有基因均为 stub（极端情况），随机选一个
+    return random.choice(REQUIRED_GENES)
