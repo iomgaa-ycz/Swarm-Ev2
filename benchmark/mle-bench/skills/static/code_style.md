@@ -15,29 +15,32 @@
 ## Code Organization
 
 ### Section Markers
-Organize code into logical sections using **`# [SECTION: NAME]`** markers:
+Organize code into 4 logical sections using **`# [SECTION: NAME]`** markers:
 
 ```python
 # [SECTION: DATA]
-# Data loading and preprocessing
+# Data loading, cleaning, feature engineering, augmentation
+# sklearn: read_csv, missing values, encoding, feature construction, train_test_split
+# GBDT: same as sklearn + categorical feature declaration
+# DL: same + Dataset/DataLoader, image augmentation, Tokenizer
 
 # [SECTION: MODEL]
-# Model definition and configuration
+# Model definition + all configuration (loss, optimizer, regularization, initialization)
+# sklearn: RandomForestClassifier(n_estimators=100, max_depth=10)
+# GBDT: lgb.LGBMRegressor(objective='regression', learning_rate=0.05, reg_lambda=0.1)
+# DL: nn.Module definition + criterion = ... + optimizer = Adam(lr=...) + weight init
 
-# [SECTION: LOSS]
-# Loss function definition
+# [SECTION: TRAIN]
+# Training/fitting execution + CV strategy + early stopping + LR scheduling
+# sklearn: cross_val_score(model, X, y, cv=5)
+# GBDT: lgb.train(params, dtrain, callbacks=[...])
+# DL: training loop + ReduceLROnPlateau + gradient clipping
 
-# [SECTION: OPTIMIZER]
-# Optimizer configuration
-
-# [SECTION: REGULARIZATION]
-# Regularization techniques (dropout, L2, etc.)
-
-# [SECTION: INITIALIZATION]
-# Weight initialization
-
-# [SECTION: TRAINING_TRICKS]
-# Training loop, early stopping, learning rate scheduling
+# [SECTION: POSTPROCESS]
+# Inference + post-processing + ensemble + submission generation
+# sklearn: model.predict(X_test), threshold tuning, to_csv()
+# GBDT: same as sklearn
+# DL: model.eval(), TTA, ensemble, submission generation
 ```
 
 ### Function Length

@@ -1,25 +1,31 @@
 """基因解析器模块。
 
 提供 Solution 代码的基因块提取、验证和合并功能。
+基因方案 V6：4 基因（DATA, MODEL, TRAIN, POSTPROCESS）。
 """
 
 import random
 import re
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING, Dict, Tuple
 
 if TYPE_CHECKING:
     from core.state.node import Node
 
-# 7 个必需基因块（Swarm-Evo 标准）
+# 4 个必需基因块（V6 标准）
 REQUIRED_GENES = [
     "DATA",
     "MODEL",
-    "LOSS",
-    "OPTIMIZER",
-    "REGULARIZATION",
-    "INITIALIZATION",
-    "TRAINING_TRICKS",
+    "TRAIN",
+    "POSTPROCESS",
 ]
+
+# 每个基因的可变异子方面（用于精细化变异控制）
+GENE_SUB_ASPECTS: Dict[str, list] = {
+    "DATA": ["feature_engineering", "data_cleaning", "augmentation", "encoding"],
+    "MODEL": ["architecture", "loss_function", "optimizer", "regularization"],
+    "TRAIN": ["cv_strategy", "early_stopping", "lr_schedule", "epochs"],
+    "POSTPROCESS": ["ensemble", "threshold", "tta"],
+}
 
 
 def parse_solution_genes(code: str) -> Dict[str, str]:
@@ -82,12 +88,12 @@ def validate_genes(genes: Dict[str, str]) -> bool:
     Returns:
         True 表示所有必需基因块都存在，False 表示有缺失
 
-    时间复杂度: O(1)（常数级别，7 个基因块）
+    时间复杂度: O(1)（常数级别，4 个基因块）
 
     示例:
-        >>> genes = {"DATA": "...", "MODEL": "...", "LOSS": "..."}
+        >>> genes = {"DATA": "...", "MODEL": "..."}
         >>> validate_genes(genes)
-        False  # 缺失 OPTIMIZER, REGULARIZATION, INITIALIZATION, TRAINING_TRICKS
+        False  # 缺失 TRAIN, POSTPROCESS
 
         >>> complete_genes = {g: "..." for g in REQUIRED_GENES}
         >>> validate_genes(complete_genes)
@@ -119,7 +125,7 @@ def merge_genes(
     Raises:
         ValueError: 如果 gene_plan 中指定的基因块在对应父代中不存在
 
-    时间复杂度: O(k)，其中 k 为基因块数量（通常为 7）
+    时间复杂度: O(k)，其中 k 为基因块数量（通常为 4）
 
     示例:
         >>> genes_a = {"DATA": "import pandas", "MODEL": "RandomForest"}
@@ -166,24 +172,31 @@ def merge_genes(
     return "\n".join(merged_sections)
 
 
-def select_non_stub_gene(node: "Node", stub_threshold: int = 20) -> str:
-    """从节点中随机选择一个非 stub 的基因位点（用于 mutate 目标选择）。
+def select_mutation_target(
+    node: "Node", stub_threshold: int = 20
+) -> Tuple[str, str]:
+    """从节点中随机选择一个非 stub 的基因位点和子方面（用于 mutate 目标选择）。
 
     内容 strip 后长度 < stub_threshold 视为 stub（如 "# Not applicable..."）。
-    对表格任务，LOSS/OPTIMIZER/INITIALIZATION 通常是 stub，自动跳过。
+    选择基因后，再从该基因的 GENE_SUB_ASPECTS 中随机选择一个子方面。
 
     Args:
         node: 待变异的节点
         stub_threshold: 内容长度阈值，低于此值视为 stub（默认 20）
 
     Returns:
-        随机选中的非 stub 基因位点名称；若所有基因均为 stub，则 fallback 到随机选择
+        (gene, aspect) 元组：随机选中的非 stub 基因位点名称和子方面；
+        若所有基因均为 stub，则 fallback 到随机选择
     """
     candidates = [
         gene for gene in REQUIRED_GENES
         if len((node.genes.get(gene) or "").strip()) >= stub_threshold
     ]
     if candidates:
-        return random.choice(candidates)
-    # fallback: 所有基因均为 stub（极端情况），随机选一个
-    return random.choice(REQUIRED_GENES)
+        gene = random.choice(candidates)
+    else:
+        # fallback: 所有基因均为 stub（极端情况），随机选一个
+        gene = random.choice(REQUIRED_GENES)
+
+    aspect = random.choice(GENE_SUB_ASPECTS[gene])
+    return gene, aspect

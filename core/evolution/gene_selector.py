@@ -33,11 +33,8 @@ from utils.logger_system import log_msg
 LOCUS_TO_FIELD = {
     "DATA": "data_source",
     "MODEL": "model_source",
-    "LOSS": "loss_source",
-    "OPTIMIZER": "optimizer_source",
-    "REGULARIZATION": "regularization_source",
-    "INITIALIZATION": "initialization_source",
-    "TRAINING_TRICKS": "tricks_source",
+    "TRAIN": "train_source",
+    "POSTPROCESS": "postprocess_source",
 }
 
 ALL_LOCI = list(LOCUS_TO_FIELD.keys())
@@ -360,7 +357,7 @@ def pheromone_with_degenerate_check(
         return gene_plan  # 来源多样，无退化
 
     dominant_id = next(iter(source_ids))
-    log_msg("WARNING", f"[DEGENERATE] 7 基因全来自节点 {dominant_id[:8]}，启动退化检测替换")
+    log_msg("WARNING", f"[DEGENERATE] 4 基因全来自节点 {dominant_id[:8]}，启动退化检测替换")
 
     pools = build_decision_gene_pools(journal, gene_registry, current_step)
 

@@ -39,6 +39,7 @@ class AgentContext(DataClassJsonMixin):
         primary_parent: merge 任务专用 - 贡献基因最多的父代（取代 parent_a 作为语义主父代）
         gene_sources: merge 任务专用 - {locus: source_node_id} 字典，记录每个位点的来源
         target_gene: mutate 任务专用 - 目标基因块名称
+        mutation_aspect: mutate 任务专用 - 目标基因的子方面（如 "optimizer", "architecture"）
         draft_history: draft 任务专用 - 已用方法标签列表，用于多样性引导
     """
 
@@ -60,6 +61,7 @@ class AgentContext(DataClassJsonMixin):
     gene_sources: Optional[Dict[str, str]] = None  # 新增：{locus: source_node_id}
     # mutate 任务专用字段
     target_gene: Optional[str] = None
+    mutation_aspect: Optional[str] = None
     # draft 任务专用字段
     draft_history: Optional[List[str]] = None  # 新增：已用方法标签列表
     # 经验池（用于动态 Skill 注入）

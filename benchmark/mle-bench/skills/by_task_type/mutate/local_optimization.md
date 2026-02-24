@@ -21,26 +21,26 @@ Parent Solution Analysis
     ├─ Validation metric is poor (< baseline)?
     │   ├─ Training metric also poor?
     │   │   └─ Yes → UNDERFITTING
-    │   │       ├─ Mutate: MODEL (increase capacity)
-    │   │       ├─ Mutate: DATA (add features, augmentation)
-    │   │       └─ Mutate: INITIALIZATION (better init)
+    │   │       ├─ Mutate: MODEL [architecture] (increase capacity)
+    │   │       ├─ Mutate: DATA [feature_engineering] (add features, augmentation)
+    │   │       └─ Mutate: MODEL [regularization] (remove excessive regularization)
     │   └─ Training metric good?
     │       └─ Yes → OVERFITTING
-    │           ├─ Mutate: REGULARIZATION (add/increase dropout, L2)
-    │           ├─ Mutate: DATA (reduce noise, remove outliers)
-    │           └─ Mutate: TRAINING_TRICKS (early stopping)
+    │           ├─ Mutate: MODEL [regularization] (add/increase dropout, L2)
+    │           ├─ Mutate: DATA [augmentation] (reduce noise, add augmentation)
+    │           └─ Mutate: TRAIN [early_stopping] (early stopping)
     │
     ├─ Loss not decreasing?
-    │   └─ Mutate: OPTIMIZER (change optimizer, adjust learning rate)
-    │       └─ Mutate: INITIALIZATION (better weight init)
+    │   └─ Mutate: MODEL [optimizer] (change optimizer, adjust learning rate)
+    │       └─ Mutate: TRAIN [lr_schedule] (add LR schedule)
     │
     ├─ Training too slow?
-    │   └─ Mutate: OPTIMIZER (use faster optimizer, increase batch size)
-    │       └─ Mutate: MODEL (reduce complexity)
+    │   └─ Mutate: MODEL [optimizer] (use faster optimizer, increase batch size)
+    │       └─ Mutate: MODEL [architecture] (reduce complexity)
     │
     └─ Metrics oscillating/unstable?
-        └─ Mutate: OPTIMIZER (reduce learning rate)
-            └─ Mutate: TRAINING_TRICKS (add gradient clipping)
+        └─ Mutate: MODEL [optimizer] (reduce learning rate)
+            └─ Mutate: TRAIN [lr_schedule] (add gradient clipping)
 ```
 
 ## Bottleneck-Specific Mutations
@@ -49,11 +49,11 @@ Parent Solution Analysis
 
 **Root Cause**: Model capacity too low, or insufficient training
 
-**Target Genes**: `MODEL`, `DATA`, `TRAINING_TRICKS`
+**Target Genes**: `MODEL` [architecture], `DATA` [feature_engineering], `TRAIN` [epochs]
 
 **Mutations**:
 ```python
-# [SECTION: MODEL]
+# [SECTION: MODEL] — aspect: architecture
 # Increase model depth (add layers)
 model = Sequential([
     Dense(256, activation='relu'),  # Increased from 128
@@ -62,13 +62,13 @@ model = Sequential([
     Dense(num_classes, activation='softmax'),
 ])
 
-# [SECTION: DATA]
+# [SECTION: DATA] — aspect: feature_engineering
 # Add polynomial features to capture non-linearity
 from sklearn.preprocessing import PolynomialFeatures
 poly = PolynomialFeatures(degree=2, include_bias=False)
 X_poly = poly.fit_transform(X)
 
-# [SECTION: TRAINING_TRICKS]
+# [SECTION: TRAIN] — aspect: epochs
 # Train longer (increase epochs)
 model.fit(X, y, epochs=100)  # Increased from 50
 ```
@@ -77,11 +77,11 @@ model.fit(X, y, epochs=100)  # Increased from 50
 
 **Root Cause**: Model memorizing training data, poor generalization
 
-**Target Genes**: `REGULARIZATION`, `DATA`, `TRAINING_TRICKS`
+**Target Genes**: `MODEL` [regularization], `DATA` [augmentation], `TRAIN` [early_stopping]
 
 **Mutations**:
 ```python
-# [SECTION: REGULARIZATION]
+# [SECTION: MODEL] — aspect: regularization
 # Increase dropout rate
 model = Sequential([
     Dense(128, activation='relu'),
@@ -90,12 +90,11 @@ model = Sequential([
     Dropout(0.5),
     Dense(num_classes, activation='softmax'),
 ])
-
 # Add L2 regularization
 from tensorflow.keras.regularizers import l2
 model.add(Dense(64, kernel_regularizer=l2(0.01)))
 
-# [SECTION: DATA]
+# [SECTION: DATA] — aspect: augmentation
 # Add data augmentation (for images)
 datagen = ImageDataGenerator(
     rotation_range=20,
@@ -104,7 +103,7 @@ datagen = ImageDataGenerator(
     horizontal_flip=True
 )
 
-# [SECTION: TRAINING_TRICKS]
+# [SECTION: TRAIN] — aspect: early_stopping
 # Early stopping based on validation loss
 from tensorflow.keras.callbacks import EarlyStopping
 early_stop = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
@@ -115,18 +114,18 @@ model.fit(X, y, validation_split=0.2, callbacks=[early_stop])
 
 **Root Cause**: Learning rate too high/low, or optimizer stuck in local minimum
 
-**Target Genes**: `OPTIMIZER`, `TRAINING_TRICKS`
+**Target Genes**: `MODEL` [optimizer], `TRAIN` [lr_schedule]
 
 **Mutations**:
 ```python
-# [SECTION: OPTIMIZER]
+# [SECTION: MODEL] — aspect: optimizer
 # Switch optimizer
 optimizer = AdamW(lr=0.001, weight_decay=0.01)  # Changed from Adam
 
 # Adjust learning rate
 optimizer = Adam(lr=0.0005)  # Reduced from 0.001
 
-# [SECTION: TRAINING_TRICKS]
+# [SECTION: TRAIN] — aspect: lr_schedule
 # Add learning rate schedule
 from tensorflow.keras.callbacks import ReduceLROnPlateau
 lr_schedule = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=1e-6)
@@ -144,49 +143,42 @@ def lr_schedule(epoch):
 
 **Root Cause**: Inefficient optimizer, poor initialization, or large model
 
-**Target Genes**: `OPTIMIZER`, `INITIALIZATION`, `MODEL`
+**Target Genes**: `MODEL` [optimizer], `MODEL` [architecture], `TRAIN` [lr_schedule]
 
 **Mutations**:
 ```python
-# [SECTION: OPTIMIZER]
-# Use faster optimizer
+# [SECTION: MODEL] — aspect: optimizer
+# Use faster optimizer + better initialization
 optimizer = AdamW(lr=0.001)  # AdamW often converges faster than SGD
-
-# Increase batch size (if memory allows)
-model.fit(X, y, batch_size=128)  # Increased from 32
-
-# [SECTION: INITIALIZATION]
-# Use better initialization
-from tensorflow.keras.initializers import HeNormal
 model = Sequential([
     Dense(128, kernel_initializer=HeNormal()),
     Dense(64, kernel_initializer=HeNormal()),
 ])
 
-# [SECTION: MODEL]
+# [SECTION: MODEL] — aspect: architecture
 # Reduce model complexity if overly large
 model = Sequential([
     Dense(64, activation='relu'),  # Reduced from 256
     Dense(num_classes, activation='softmax'),
 ])
+
+# [SECTION: TRAIN] — aspect: epochs
+# Increase batch size (if memory allows)
+model.fit(X, y, batch_size=128)  # Increased from 32
 ```
 
 ### 5. Unstable Training (Metrics oscillate)
 
 **Root Cause**: Learning rate too high, exploding gradients
 
-**Target Genes**: `OPTIMIZER`, `TRAINING_TRICKS`
+**Target Genes**: `MODEL` [optimizer], `TRAIN` [lr_schedule]
 
 **Mutations**:
 ```python
-# [SECTION: OPTIMIZER]
-# Reduce learning rate
-optimizer = Adam(lr=0.0001)  # Reduced from 0.001
-
-# [SECTION: TRAINING_TRICKS]
-# Add gradient clipping
+# [SECTION: MODEL] — aspect: optimizer
+# Reduce learning rate + add gradient clipping
 from tensorflow.keras.optimizers import Adam
-optimizer = Adam(lr=0.001, clipnorm=1.0)
+optimizer = Adam(lr=0.0001, clipnorm=1.0)  # Reduced from 0.001
 
 # Add batch normalization to stabilize training
 from tensorflow.keras.layers import BatchNormalization
@@ -200,14 +192,14 @@ model = Sequential([
 
 ## Heuristic Table
 
-| Symptom | Likely Bottleneck | Target Gene | Mutation Example |
-|---------|-------------------|-------------|------------------|
-| Train ↓ Val ↓ | Underfitting | MODEL | Add layers, increase width |
-| Train ↑ Val ↓ | Overfitting | REGULARIZATION | Increase dropout, add L2 |
-| Loss plateau | Optimizer stuck | OPTIMIZER | Reduce lr, switch optimizer |
-| Slow training | Inefficient optimization | OPTIMIZER, INITIALIZATION | Use Adam, He init |
-| Unstable metrics | High learning rate | OPTIMIZER | Reduce lr, gradient clipping |
-| Poor predictions on specific classes | Data imbalance | DATA, LOSS | SMOTE, focal loss |
+| Symptom | Likely Bottleneck | Target Gene [Aspect] | Mutation Example |
+|---------|-------------------|---------------------|------------------|
+| Train ↓ Val ↓ | Underfitting | MODEL [architecture] | Add layers, increase width |
+| Train ↑ Val ↓ | Overfitting | MODEL [regularization] | Increase dropout, add L2 |
+| Loss plateau | Optimizer stuck | MODEL [optimizer] | Reduce lr, switch optimizer |
+| Slow training | Inefficient optimization | MODEL [optimizer] | Use Adam, He init |
+| Unstable metrics | High learning rate | MODEL [optimizer] | Reduce lr, gradient clipping |
+| Poor predictions on specific classes | Data imbalance | DATA [encoding], MODEL [loss_function] | SMOTE, focal loss |
 
 ## Validation Strategy
 

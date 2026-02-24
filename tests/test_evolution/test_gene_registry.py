@@ -81,7 +81,7 @@ class TestGeneRegistry:
         """测试初始化。"""
         registry = GeneRegistry()
 
-        assert len(registry._registry) == 7  # 7 个基因位点
+        assert len(registry._registry) == 4  # 4 个基因位点
         assert "DATA" in registry._registry
         assert "MODEL" in registry._registry
 
@@ -225,10 +225,10 @@ class TestGeneRegistry:
 
         pools = registry.build_gene_pools()
 
-        assert len(pools) == 7
+        assert len(pools) == 4
         assert len(pools["DATA"]) == 1
         assert len(pools["MODEL"]) == 1
-        assert len(pools["LOSS"]) == 0
+        assert len(pools["TRAIN"]) == 0
 
         # 验证基因池内容
         data_gene = pools["DATA"][0]

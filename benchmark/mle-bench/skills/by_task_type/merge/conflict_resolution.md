@@ -112,7 +112,7 @@ After resolving conflicts:
 **Setup**:
 - Parent A: XGBoost on tabular data (fitness: 0.88)
 - Parent B: ResNet-18 on images (fitness: 0.91)
-- Gene Plan: `{"DATA": "A", "MODEL": "B", "LOSS": "B", ...}`
+- Gene Plan: `{"DATA": "A", "MODEL": "B", "TRAIN": "B", "POSTPROCESS": "A"}`
 
 **Conflict**: ResNet-18 expects image input, but DATA comes from Parent A (tabular)
 

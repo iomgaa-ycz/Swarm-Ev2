@@ -233,7 +233,7 @@ class TestBuildDecisionGenePools:
         # 验证基因池
         assert len(pools["DATA"]) == 2  # 2 个不同的 DATA 基因
         assert len(pools["MODEL"]) == 1  # 1 个 MODEL 基因（去重）
-        assert len(pools["LOSS"]) == 0  # 无 LOSS 基因
+        assert len(pools["TRAIN"]) == 0  # 无 TRAIN 基因
 
     def test_build_decision_gene_pools_skip_invalid(self):
         """测试跳过无效节点。"""
@@ -272,18 +272,15 @@ class TestSelectGenePlan:
         journal = Journal()
         gene_registry = GeneRegistry()
 
-        # 创建节点（包含所有 7 个基因）
+        # 创建节点（包含所有 4 个基因）
         node1 = Node(id="node1", code="code1", step=0)
         node1.metric_value = 0.8
         node1.is_buggy = False
         node1.genes = {
             "DATA": "data code 1",
             "MODEL": "model code 1",
-            "LOSS": "loss code 1",
-            "OPTIMIZER": "optimizer code 1",
-            "REGULARIZATION": "reg code 1",
-            "INITIALIZATION": "init code 1",
-            "TRAINING_TRICKS": "tricks code 1",
+            "TRAIN": "train code 1",
+            "POSTPROCESS": "postprocess code 1",
         }
         node1.metadata = {"pheromone_node": 0.7}
         journal.append(node1)
@@ -296,11 +293,8 @@ class TestSelectGenePlan:
         assert "reasoning" in gene_plan
         assert "data_source" in gene_plan
         assert "model_source" in gene_plan
-        assert "loss_source" in gene_plan
-        assert "optimizer_source" in gene_plan
-        assert "regularization_source" in gene_plan
-        assert "initialization_source" in gene_plan
-        assert "tricks_source" in gene_plan
+        assert "train_source" in gene_plan
+        assert "postprocess_source" in gene_plan
 
         # 验证单个基因来源
         assert gene_plan["data_source"]["locus"] == "DATA"

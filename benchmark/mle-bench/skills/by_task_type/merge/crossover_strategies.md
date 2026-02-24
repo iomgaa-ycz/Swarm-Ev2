@@ -39,8 +39,8 @@ When merging two parent solutions, the goal is to **combine their strengths** wh
 
 ### Handle Dependencies
 - **DATA ↔ MODEL**: Model architecture must match data format
-- **MODEL ↔ LOSS**: Loss function must align with model output (e.g., binary vs. multi-class)
-- **OPTIMIZER ↔ MODEL**: Learning rate and optimizer type should match model complexity
+- **MODEL ↔ TRAIN**: Training strategy (CV, callbacks) must align with model type (sklearn vs DL)
+- **TRAIN ↔ POSTPROCESS**: Inference must match the training paradigm (e.g., fold models for CV ensemble)
 
 ## Conflict Resolution Examples
 
@@ -58,17 +58,23 @@ cnn_features = extract_features_with_cnn(image_data)
 model = XGBoost().fit(cnn_features, labels)
 ```
 
-### Example 2: Mismatched LOSS and MODEL
-**Parent A**: Binary classification (sigmoid output)
-**Parent B**: Multi-class classification (softmax output)
+### Example 2: Mismatched TRAIN and MODEL
+**Parent A**: sklearn model with cross_val_score
+**Parent B**: PyTorch model with training loop
 
-**Gene Plan**: `{"MODEL": "A", "LOSS": "B"}`
+**Gene Plan**: `{"MODEL": "B", "TRAIN": "A"}`
 
-**Solution**: Adapt LOSS to binary case:
+**Solution**: Adapt TRAIN to DL model:
 ```python
-# Parent B's loss is categorical_crossentropy
-# → Replace with binary_crossentropy for Parent A's model
-loss = tf.keras.losses.BinaryCrossentropy()
+# Parent A's TRAIN uses cross_val_score (sklearn-only)
+# → Replace with PyTorch training loop for Parent B's model
+for epoch in range(num_epochs):
+    model.train()
+    for batch in train_loader:
+        optimizer.zero_grad()
+        loss = criterion(model(batch_x), batch_y)
+        loss.backward()
+        optimizer.step()
 ```
 
 ## Validation Checklist
@@ -76,7 +82,7 @@ loss = tf.keras.losses.BinaryCrossentropy()
 After merging, ensure:
 - [ ] All gene blocks are present and non-empty
 - [ ] DATA block produces data in the format expected by MODEL
-- [ ] MODEL output shape matches LOSS function requirements
-- [ ] OPTIMIZER parameters are compatible with MODEL
+- [ ] MODEL output shape matches TRAIN expectations
+- [ ] TRAIN strategy is compatible with MODEL type (sklearn vs DL)
 - [ ] Code is syntactically correct and executable
 - [ ] No undefined variables or missing imports

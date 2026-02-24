@@ -143,11 +143,8 @@ class TestBuildGenePlanMarkdown:
         parent_a.genes = {
             "DATA": "df = pd.read_csv('train.csv')",
             "MODEL": "model = LGBMClassifier()",
-            "LOSS": "loss = 'binary_crossentropy'",
-            "OPTIMIZER": "opt = Adam(lr=0.001)",
-            "REGULARIZATION": "dropout = 0.5",
-            "INITIALIZATION": "seed = 42",
-            "TRAINING_TRICKS": "early_stopping = True",
+            "TRAIN": "model.fit(X_train, y_train)",
+            "POSTPROCESS": "predictions = model.predict(X_test)",
         }
 
         parent_b = Node(id="bbbbbbbb", code="code_b", step=1)
@@ -155,11 +152,8 @@ class TestBuildGenePlanMarkdown:
         parent_b.genes = {
             "DATA": "df = pd.read_parquet('train.parquet')",
             "MODEL": "model = XGBClassifier()",
-            "LOSS": "loss = 'hinge'",
-            "OPTIMIZER": "opt = SGD(lr=0.01)",
-            "REGULARIZATION": "l2 = 0.01",
-            "INITIALIZATION": "seed = 0",
-            "TRAINING_TRICKS": "lr_schedule = True",
+            "TRAIN": "cross_val_score(model, X, y, cv=5)",
+            "POSTPROCESS": "submission.to_csv('submission.csv')",
         }
 
         md = solution_evolution._build_gene_plan_markdown_from_random(
@@ -193,13 +187,15 @@ class TestBuildGenePlanMarkdown:
             },
         }
 
-        md = solution_evolution._build_gene_plan_markdown_from_pheromone(raw_plan)
+        md, gene_sources = solution_evolution._build_gene_plan_markdown_from_pheromone(raw_plan)
 
         # 验证格式
         assert "### DATA (from node_abc, fitness=0.8500)" in md
         assert "### MODEL (from node_xyz, fitness=0.8300)" in md
         assert "```python" in md
         assert "pd.read_csv" in md
+        assert gene_sources["DATA"] == "node_abc123"
+        assert gene_sources["MODEL"] == "node_xyz789"
 
     def test_crossover_mvp_random_calls_orchestrator(self, solution_evolution):
         """测试 _crossover_mvp 随机策略调用 Orchestrator。"""
@@ -218,11 +214,8 @@ class TestBuildGenePlanMarkdown:
             for g in [
                 "DATA",
                 "MODEL",
-                "LOSS",
-                "OPTIMIZER",
-                "REGULARIZATION",
-                "INITIALIZATION",
-                "TRAINING_TRICKS",
+                "TRAIN",
+                "POSTPROCESS",
             ]
         }
         parent_b = Node(id="bbbbbbbb", code="code_b", step=1)
@@ -232,11 +225,8 @@ class TestBuildGenePlanMarkdown:
             for g in [
                 "DATA",
                 "MODEL",
-                "LOSS",
-                "OPTIMIZER",
-                "REGULARIZATION",
-                "INITIALIZATION",
-                "TRAINING_TRICKS",
+                "TRAIN",
+                "POSTPROCESS",
             ]
         }
 

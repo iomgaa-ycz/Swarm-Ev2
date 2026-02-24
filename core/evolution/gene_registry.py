@@ -9,15 +9,12 @@ from typing import Any, Dict, List, Optional
 
 from core.state import Node
 
-# 基因位点名称
+# 基因位点名称（V6：4 基因）
 _LOCUS_NAMES = [
     "DATA",
     "MODEL",
-    "LOSS",
-    "OPTIMIZER",
-    "REGULARIZATION",
-    "INITIALIZATION",
-    "TRAINING_TRICKS",
+    "TRAIN",
+    "POSTPROCESS",
 ]
 
 

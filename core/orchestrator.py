@@ -1738,12 +1738,15 @@ Call `submit_review` with your analysis.
             log_exception(e, "execute_merge_task() 失败")
             return None
 
-    def execute_mutate_task(self, parent: Node, target_gene: str) -> Optional[Node]:
+    def execute_mutate_task(
+        self, parent: Node, target_gene: str, mutation_aspect: str = ""
+    ) -> Optional[Node]:
         """执行 mutate 任务（基因变异）。
 
         Args:
             parent: 父代节点
             target_gene: 目标基因块名称
+            mutation_aspect: 目标基因的子方面（如 "optimizer", "architecture"）
 
         Returns:
             变异后的节点（失败时返回 None）
@@ -1757,7 +1760,7 @@ Call `submit_review` with your analysis.
 
             log_msg(
                 "INFO",
-                f"{agent.name} 开始 mutate (parent={parent.id[:8]}, gene={target_gene})",
+                f"{agent.name} 开始 mutate (parent={parent.id[:8]}, gene={target_gene}, aspect={mutation_aspect})",
             )
 
             # 构建上下文
@@ -1776,6 +1779,7 @@ Call `submit_review` with your analysis.
                 conda_packages=self.conda_packages,
                 conda_env_name=self.conda_env_name,
                 target_gene=target_gene,
+                mutation_aspect=mutation_aspect,
                 experience_pool=self.experience_pool,
             )
 

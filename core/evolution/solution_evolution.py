@@ -10,7 +10,7 @@ import random
 from typing import List, Dict, Any, Optional, Tuple
 
 from core.state import Node, Journal
-from core.evolution.gene_parser import select_non_stub_gene, validate_genes
+from core.evolution.gene_parser import select_mutation_target, validate_genes
 from core.evolution.gene_registry import GeneRegistry
 from core.evolution.gene_selector import (
     pheromone_with_degenerate_check,
@@ -231,7 +231,7 @@ class SolutionEvolution:
         """执行一次 merge 操作（Phase 2 内部使用）。
 
         策略：
-        1. pheromone_with_degenerate_check() 选 7 个全局最优基因
+        1. pheromone_with_degenerate_check() 选 4 个全局最优基因
         2. get_primary_parent() 推断主父代（贡献基因最多的节点）
         3. 调用 Orchestrator 执行 merge 任务
 
@@ -271,7 +271,7 @@ class SolutionEvolution:
 
         策略：
         1. Tournament 选父代（质量最优）
-        2. select_non_stub_gene() 选非 stub 基因块
+        2. select_mutation_target() 选非 stub 基因块和子方面
         3. 调用 Orchestrator 执行 mutate 任务
 
         Returns:
@@ -289,7 +289,7 @@ class SolutionEvolution:
             return None
 
         parent = self._tournament_select()
-        target_gene = select_non_stub_gene(parent)
+        target_gene, mutation_aspect = select_mutation_target(parent)
 
-        log_msg("INFO", f"Mutate: parent={parent.id[:8]}, gene={target_gene}")
-        return self.orchestrator.execute_mutate_task(parent, target_gene)
+        log_msg("INFO", f"Mutate: parent={parent.id[:8]}, gene={target_gene}, aspect={mutation_aspect}")
+        return self.orchestrator.execute_mutate_task(parent, target_gene, mutation_aspect)

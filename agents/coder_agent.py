@@ -350,6 +350,7 @@ class CoderAgent(BaseAgent):
                 "task_desc": context.task_desc,
                 "parent_node": context.parent_node,
                 "target_gene": context.target_gene,
+                "mutation_aspect": context.mutation_aspect or "",
                 "time_remaining": time_remaining,
                 "steps_remaining": steps_remaining,
                 "device_info": context.device_info,

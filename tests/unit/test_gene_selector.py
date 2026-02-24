@@ -2,7 +2,7 @@
 get_primary_parent 单元测试。
 
 测试目标：
-- 单一主导节点（7 基因全来自同一节点）
+- 单一主导节点（4 基因全来自同一节点）
 - 多数节点胜出（贡献基因数最多者）
 - 并列时选 metric_value 更高的节点
 - 空 gene_plan 抛出 ValueError
@@ -52,7 +52,7 @@ def _gene_plan_from_sources(sources: dict[str, str]) -> dict:
 class TestGetPrimaryParent:
 
     def test_single_dominant_source(self):
-        """7 基因全来自同一节点，直接返回该节点。"""
+        """4 基因全来自同一节点，直接返回该节点。"""
         node_a = _make_node("aaaa1111", 0.9)
         journal = _make_journal(node_a)
         gene_plan = _gene_plan_from_sources({locus: "aaaa1111" for locus in LOCUS_TO_FIELD})
@@ -60,44 +60,37 @@ class TestGetPrimaryParent:
         result = get_primary_parent(gene_plan, journal)
         assert result.id == "aaaa1111"
 
-    def test_majority_wins_4_vs_3(self):
-        """A 贡献 4 个基因，B 贡献 3 个，A 胜出。"""
+    def test_majority_wins_3_vs_1(self):
+        """A 贡献 3 个基因，B 贡献 1 个，A 胜出。"""
         node_a = _make_node("aaaa1111", 0.5)
         node_b = _make_node("bbbb2222", 0.9)
         journal = _make_journal(node_a, node_b)
 
         loci = list(LOCUS_TO_FIELD.keys())
-        # 前 4 个位点来自 A，后 3 个来自 B
-        sources = {loci[i]: "aaaa1111" if i < 4 else "bbbb2222" for i in range(7)}
+        # 前 3 个位点来自 A，最后 1 个来自 B
+        sources = {loci[i]: "aaaa1111" if i < 3 else "bbbb2222" for i in range(4)}
         gene_plan = _gene_plan_from_sources(sources)
 
         result = get_primary_parent(gene_plan, journal)
         assert result.id == "aaaa1111"
 
     def test_tie_broken_by_higher_metric(self):
-        """并列时（各贡献 3 个基因，第 7 个给第三方），选 metric 最高的节点。
-
-        注意：7 个基因中，让 A 和 B 各贡献 3 个，第 7 个来自 C（第三方）。
-        A vs B 并列 3:3，应选 metric 更高的那个。
-        """
+        """并列时（各贡献 2 个基因），选 metric 最高的节点。"""
         node_low  = _make_node("low_11111", metric=0.3)
         node_high = _make_node("high_2222", metric=0.8)
-        node_c    = _make_node("cccc3333",  metric=0.1)
-        journal   = _make_journal(node_low, node_high, node_c)
+        journal   = _make_journal(node_low, node_high)
 
         loci = list(LOCUS_TO_FIELD.keys())
-        # low_node 贡献 0,1,2；high_node 贡献 3,4,5；c 贡献 6
+        # low_node 贡献 0,1；high_node 贡献 2,3
         sources = {}
         for i, locus in enumerate(loci):
-            if i < 3:
+            if i < 2:
                 sources[locus] = "low_11111"
-            elif i < 6:
-                sources[locus] = "high_2222"
             else:
-                sources[locus] = "cccc3333"
+                sources[locus] = "high_2222"
         gene_plan = _gene_plan_from_sources(sources)
 
-        # high_node 和 low_node 各贡献 3 个，并列 → 选 metric 高的
+        # high_node 和 low_node 各贡献 2 个，并列 → 选 metric 高的
         result = get_primary_parent(gene_plan, journal)
         assert result.id == "high_2222", (
             f"并列时应选 metric 更高的 high_2222，实际选了 {result.id}"
@@ -123,9 +116,9 @@ class TestGetPrimaryParent:
         journal = _make_journal(node_a, node_b)
 
         loci = list(LOCUS_TO_FIELD.keys())
-        sources = {loci[i]: "aaaa1111" if i < 4 else "bbbb2222" for i in range(7)}
+        sources = {loci[i]: "aaaa1111" if i < 3 else "bbbb2222" for i in range(4)}
         gene_plan = _gene_plan_from_sources(sources)
 
-        # A 贡献 4 个，直接胜出，不需要走 metric 比较
+        # A 贡献 3 个，直接胜出，不需要走 metric 比较
         result = get_primary_parent(gene_plan, journal)
         assert result.id == "aaaa1111"

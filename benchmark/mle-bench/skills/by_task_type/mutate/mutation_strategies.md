@@ -89,19 +89,19 @@ Choose which gene block to mutate based on **performance bottleneck analysis**:
 
 ### Heuristics
 
-1. **Loss Plateau** → Mutate `OPTIMIZER` or `LEARNING_RATE`
+1. **Loss Plateau** → Mutate `MODEL` (optimizer aspect) or `TRAIN` (lr_schedule aspect)
    - If validation loss stops decreasing, adjust optimization strategy
 
-2. **Overfitting** (val << train) → Mutate `REGULARIZATION`
+2. **Overfitting** (val << train) → Mutate `MODEL` (regularization aspect) or `TRAIN` (early_stopping aspect)
    - Add/increase dropout, L2 penalty, or data augmentation
 
-3. **Underfitting** (both metrics low) → Mutate `MODEL`
+3. **Underfitting** (both metrics low) → Mutate `MODEL` (architecture aspect)
    - Increase model capacity (more layers, wider layers)
 
-4. **Slow Convergence** → Mutate `INITIALIZATION` or `OPTIMIZER`
+4. **Slow Convergence** → Mutate `MODEL` (optimizer aspect) or `TRAIN` (lr_schedule aspect)
    - Try better weight initialization (Xavier, He) or adaptive optimizers
 
-5. **Poor Data Representation** → Mutate `DATA`
+5. **Poor Data Representation** → Mutate `DATA` (feature_engineering aspect)
    - Add feature engineering, data augmentation, or normalization
 
 ## Adaptive Mutation Rate
@@ -121,6 +121,7 @@ else:
 
 ### DATA
 ```python
+# Aspect: feature_engineering
 # Original: Standard normalization
 X = (X - X.mean()) / X.std()
 
@@ -131,6 +132,7 @@ X['feature_C_squared'] = X['feature_C'] ** 2
 
 ### MODEL
 ```python
+# Aspect: architecture
 # Original: Simple MLP
 model = Sequential([Dense(64), Dense(num_classes)])
 
@@ -139,55 +141,66 @@ model = Sequential([
     Dense(64), BatchNormalization(), Dropout(0.3),
     Dense(num_classes)
 ])
-```
 
-### LOSS
-```python
+# Aspect: loss_function (within MODEL block)
 # Original: Categorical cross-entropy
-loss = CategoricalCrossentropy()
-
+criterion = CategoricalCrossentropy()
 # Mutation: Focal loss (for imbalanced classes)
-loss = FocalLoss(gamma=2.0)
-```
+criterion = FocalLoss(gamma=2.0)
 
-### OPTIMIZER
-```python
+# Aspect: optimizer (within MODEL block)
 # Original: Adam with default lr
 optimizer = Adam(lr=0.001)
-
 # Mutation: AdamW with weight decay
 optimizer = AdamW(lr=0.001, weight_decay=0.01)
-```
 
-### REGULARIZATION
-```python
-# Original: L2 penalty
-regularizer = l2(0.01)
-
-# Mutation: Increase L2 strength + add early stopping
-regularizer = l2(0.05)
-early_stopping = EarlyStopping(patience=10, restore_best_weights=True)
-```
-
-### INITIALIZATION
-```python
-# Original: Default initialization
-model = Sequential([Dense(64)])
-
-# Mutation: He initialization
+# Aspect: regularization (within MODEL block)
+# Original: No regularization
+# Mutation: Add L2 + Dropout
 model = Sequential([
-    Dense(64, kernel_initializer='he_normal')
+    Dense(64, kernel_regularizer=l2(0.01)),
+    Dropout(0.3),
+    Dense(num_classes)
 ])
 ```
 
-### TRAINING_TRICKS
+### TRAIN
 ```python
-# Original: Fixed learning rate
-model.fit(X, y, epochs=50, lr=0.001)
+# Aspect: cv_strategy
+# Original: Simple train/test split
+model.fit(X_train, y_train)
 
-# Mutation: Learning rate schedule
+# Mutation: 5-fold cross-validation
+from sklearn.model_selection import cross_val_score
+scores = cross_val_score(model, X, y, cv=5)
+
+# Aspect: early_stopping
+# Original: Fixed epochs
+model.fit(X, y, epochs=50)
+
+# Mutation: Early stopping + LR schedule
+early_stop = EarlyStopping(patience=10, restore_best_weights=True)
 lr_schedule = ReduceLROnPlateau(factor=0.5, patience=5)
-model.fit(X, y, epochs=50, callbacks=[lr_schedule])
+model.fit(X, y, epochs=100, callbacks=[early_stop, lr_schedule])
+```
+
+### POSTPROCESS
+```python
+# Aspect: ensemble
+# Original: Single model prediction
+predictions = model.predict(X_test)
+
+# Mutation: Average ensemble from CV folds
+predictions = np.mean([m.predict(X_test) for m in fold_models], axis=0)
+
+# Aspect: threshold
+# Original: Default 0.5 threshold
+preds = (proba > 0.5).astype(int)
+
+# Mutation: Optimized threshold search
+from sklearn.metrics import f1_score
+best_thresh = max(np.arange(0.3, 0.7, 0.01), key=lambda t: f1_score(y_val, proba_val > t))
+preds = (proba > best_thresh).astype(int)
 ```
 
 ## Validation After Mutation

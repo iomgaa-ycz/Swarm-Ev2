@@ -37,14 +37,17 @@ You are performing **genetic mutation** on a solution to explore variations and 
 ## Target Gene Block
 
 **Block to Mutate**: `{{ target_gene }}`
+{% if mutation_aspect %}
+**Aspect to Focus**: `{{ mutation_aspect }}` — Only modify this specific aspect within the `{{ target_gene }}` block. Keep all other parts of this gene block UNCHANGED.
+{% endif %}
 
 **Your Task**: Modify **only** the `{{ target_gene }}` gene block to:
 1. Introduce a meaningful variation (not trivial or arbitrary)
-2. Address a suspected performance bottleneck
+{% if mutation_aspect %}2. Focus specifically on the `{{ mutation_aspect }}` aspect{% else %}2. Address a suspected performance bottleneck{% endif %}
 3. Maintain compatibility with other gene blocks
 4. Aim to improve the validation metric
 
-**Important**: Leave all other gene blocks unchanged. Focus your mutation on `{{ target_gene }}` only.
+**Important**: Leave all other gene blocks unchanged. Focus your mutation on `{{ target_gene }}`{% if mutation_aspect %} (specifically the `{{ mutation_aspect }}` aspect){% endif %} only.
 {# END SECTION: TASK #}
 
 {# SECTION: STRATEGY [HYBRID] #}
