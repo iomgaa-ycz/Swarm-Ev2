@@ -1428,6 +1428,39 @@ Call `submit_review` with your analysis.
             f"{error_details}",
         )
 
+    def _get_cached_data_preview(self) -> str:
+        """读取缓存的数据预览，缓存不存在时重新生成。
+
+        优先读取 coder_agent._generate_data_preview() 首次生成的缓存文件，
+        若缓存不存在则调用 utils.data_preview.generate() 重新生成并写入缓存。
+
+        Returns:
+            数据预览字符串，生成失败时返回空字符串
+        """
+        preview_file = self.config.project.workspace_dir / "logs" / "data_preview.md"
+        if preview_file.exists():
+            try:
+                return preview_file.read_text(encoding="utf-8")
+            except Exception:
+                return ""
+
+        # 缓存不存在，重新生成
+        try:
+            from utils.data_preview import generate
+
+            input_dir = self.config.project.workspace_dir / "input"
+            if not input_dir.exists():
+                return ""
+
+            preview = generate(input_dir)
+            preview_file.parent.mkdir(parents=True, exist_ok=True)
+            preview_file.write_text(preview, encoding="utf-8")
+            log_msg("INFO", f"数据预览已重新生成并缓存: {preview_file}")
+            return preview
+        except Exception as e:
+            log_msg("WARNING", f"数据预览生成失败: {e}")
+            return ""
+
     def _debug_chain(
         self,
         node: Node,
@@ -1474,7 +1507,7 @@ Call `submit_review` with your analysis.
                 "exc_type": current.exc_type or "",
                 "term_out": current.term_out if isinstance(current.term_out, str) else "",
                 "task_desc": context.task_desc,
-                "data_preview": "",
+                "data_preview": self._get_cached_data_preview(),
                 "device_info": context.device_info,
                 "conda_packages": context.conda_packages,
                 "conda_env_name": context.conda_env_name,
@@ -1534,6 +1567,20 @@ Call `submit_review` with your analysis.
                 if tag and not node.dead and tag not in seen:
                     seen.add(tag)
                     history.append(tag)
+
+            # 收集 TimeoutError 死节点的警告，避免后续 Draft 重复超时方案
+            for node in self.journal.nodes:
+                if node.dead and node.exc_type in ("TimeoutError", "TimeoutExpired"):
+                    tag = node.approach_tag or "Unknown approach"
+                    exec_time = int(node.exec_time) if node.exec_time else "?"
+                    warning = (
+                        f"[TIMED OUT after {exec_time}s] {tag} — "
+                        f"reduce model complexity, use fewer epochs, "
+                        f"or downsample images/data"
+                    )
+                    if warning not in seen:
+                        seen.add(warning)
+                        history.append(warning)
         return history
 
     def _draft_step(self, draft_history: Optional[List[str]] = None) -> Optional[Node]:

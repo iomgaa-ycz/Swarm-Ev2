@@ -474,7 +474,7 @@ class CoderAgent(BaseAgent):
             "term_out": "",
             "validation_errors": "\n".join(validation.errors + validation.warnings),
             "task_desc": context.task_desc,
-            "data_preview": "",
+            "data_preview": self._generate_data_preview() or "",
             "device_info": context.device_info,
             "conda_packages": context.conda_packages,
             "conda_env_name": context.conda_env_name,

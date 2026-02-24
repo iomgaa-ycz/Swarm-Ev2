@@ -207,17 +207,21 @@ class TestCoderAgentExplore:
 class TestCoderAgentLLMRetry:
     """测试 CoderAgent LLM 重试机制。"""
 
+    @patch("agents.coder_agent.validate_code")
     @patch("agents.coder_agent.query_with_config")
     @patch("time.sleep")
     def test_coder_agent_llm_retry_on_api_error(
         self,
         mock_sleep,
         mock_query,
+        mock_validate,
         mock_config,
         mock_prompt_manager,
         agent_context,
     ):
         """测试 LLM API 重试机制。"""
+        # mock 预验证通过，避免触发 debug 路径的额外 LLM 调用
+        mock_validate.return_value = MagicMock(valid=True, errors=[], warnings=[])
         mock_query.side_effect = [
             Exception("API Error 1"),
             Exception("API Error 2"),

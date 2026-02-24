@@ -297,12 +297,15 @@ def preview_special_file(file_path: Path, max_lines: int = 5) -> str:
 
         # 推断分隔符
         first_line = lines[0].strip()
+        sep_to_repr = {"\t": "\\t", ",": ",", " ": " "}
         for sep, name in [("\t", "tab"), (",", "comma"), (" ", "space")]:
             if sep in first_line:
                 num_cols = len(first_line.split(sep))
                 preview = "\n".join(line.rstrip() for line in lines)
+                sep_repr = sep_to_repr[sep]
                 return (
                     f"-> {file_path.name}: {name}-separated, ~{num_cols} columns\n"
+                    f"   Usage: pd.read_csv('{file_path.name}', sep='{sep_repr}')\n"
                     f"   First {len(lines)} lines:\n```\n{preview}\n```"
                 )
 
