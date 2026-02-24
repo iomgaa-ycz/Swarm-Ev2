@@ -25,6 +25,7 @@ import re
 
 from core.evolution.gene_parser import parse_solution_genes
 from utils.logger_system import log_msg, log_json, log_exception
+from utils.text_utils import truncate_term_out
 from utils.system_info import (
     get_hardware_description,
     get_conda_packages,
@@ -671,7 +672,7 @@ class Orchestrator:
 
 **Execution Output:**
 ```
-{node.term_out}
+{truncate_term_out(node.term_out)}
 ```
 
 **Status**: Time={node.exec_time:.2f}s, Exception={node.exc_type or "None"}
@@ -1045,12 +1046,12 @@ Respond with JSON:
 ```
 """
 
-        # 执行输出（必须保留）
+        # 执行输出（截断保护，避免 Prompt 超长）
         prompt += f"""
 ## Execution Output
 
 ```
-{node.term_out}
+{truncate_term_out(node.term_out)}
 ```
 
 **Status**: Time={node.exec_time:.2f}s, Exception={node.exc_type or "None"}
@@ -1302,7 +1303,15 @@ Call `submit_review` with your analysis.
         log_msg("INFO", f"[评估] {summary}")
 
     def _estimate_timeout(self) -> int:
-        """根据数据集大小估算合理超时时间（自适应超时）。
+        """根据数据集大小和文件类型估算合理超时时间（自适应超时）。
+
+        分档策略（取所有条件的最大 multiplier）:
+        - 图像文件 > 1000 张 → 3.0x
+        - 图像文件 > 200 张  → 2.0x
+        - 文件总大小 > 1GB   → 3.0x
+        - 文件总大小 > 500MB  → 2.0x
+        - 文件总大小 > 100MB  → 1.5x
+        - 否则               → 1.0x
 
         Returns:
             超时时间（秒）
@@ -1312,37 +1321,53 @@ Call `submit_review` with your analysis.
             return self.config.execution.timeout
 
         base_timeout = self.config.execution.timeout  # 3600s
-        max_timeout = self.config.execution.timeout_max  # 7200s
+        max_timeout = self.config.execution.timeout_max  # 10800s
 
-        # 计算数据集总大小
+        # 扫描 input 目录
         input_dir = self.config.project.workspace_dir / "input"
         if not input_dir.exists():
             log_msg("WARNING", "input 目录不存在，使用基础超时")
             return base_timeout
 
         try:
-            total_size_bytes = sum(
-                f.stat().st_size for f in input_dir.rglob("*") if f.is_file()
-            )
+            image_exts = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".dcm"}
+            total_size_bytes = 0
+            image_count = 0
+            for f in input_dir.rglob("*"):
+                if f.is_file():
+                    total_size_bytes += f.stat().st_size
+                    if f.suffix.lower() in image_exts:
+                        image_count += 1
             total_size_mb = total_size_bytes / (1024 * 1024)
         except Exception as e:
             log_msg("WARNING", f"计算数据集大小失败: {e}，使用基础超时")
             return base_timeout
 
-        # 根据数据集大小确定倍数
-        multiplier = 1.0
-        if total_size_mb > 500:  # 大数据集 (>500MB)
-            multiplier = 2.0
-        elif total_size_mb > 100:  # 中等数据集 (>100MB)
-            multiplier = 1.5
+        # 按文件大小确定倍数
+        size_multiplier = 1.0
+        if total_size_mb > 1024:
+            size_multiplier = 3.0
+        elif total_size_mb > 500:
+            size_multiplier = 2.0
+        elif total_size_mb > 100:
+            size_multiplier = 1.5
 
+        # 按图像文件数确定倍数
+        image_multiplier = 1.0
+        if image_count > 1000:
+            image_multiplier = 3.0
+        elif image_count > 200:
+            image_multiplier = 2.0
+
+        multiplier = max(size_multiplier, image_multiplier)
         estimated_timeout = int(base_timeout * multiplier)
         final_timeout = min(estimated_timeout, max_timeout)
 
         log_msg(
             "INFO",
-            f"自适应超时: dataset={total_size_mb:.1f}MB, multiplier={multiplier:.1f}x, "
-            f"timeout={final_timeout}s (base={base_timeout}s, max={max_timeout}s)",
+            f"自适应超时: dataset={total_size_mb:.1f}MB, images={image_count}, "
+            f"multiplier={multiplier:.1f}x, timeout={final_timeout}s "
+            f"(base={base_timeout}s, max={max_timeout}s)",
         )
         return final_timeout
 
@@ -1370,6 +1395,38 @@ Call `submit_review` with your analysis.
             return node.metric_value < best_node.metric_value
         else:
             return node.metric_value > best_node.metric_value
+
+    def _check_submission_and_set_error(self, node: Node) -> None:
+        """在 debug_chain 前检查 submission 格式，NaN 等问题设为可 debug 的错误。
+
+        当代码执行成功（exc_type=None）但 submission 格式校验失败时，
+        设置 exc_type="SubmissionValidationError" 使其能进入 debug_chain。
+
+        Args:
+            node: 执行后的节点
+        """
+        if node.exc_type is not None:
+            return  # 已有执行错误，交给 debug_chain 处理
+
+        if not self._check_submission_exists(node.id):
+            return  # 无 submission 文件，review 阶段会处理
+
+        submission_check = self._validate_submission_format(node.id)
+        if submission_check["valid"]:
+            return  # 格式正确，无需干预
+
+        error_details = "; ".join(submission_check["errors"])
+        node.exc_type = "SubmissionValidationError"
+        node.term_out = (node.term_out or "") + (
+            f"\n\n[SUBMISSION VALIDATION FAILED]: {error_details}\n"
+            f"Your code ran without errors but produced an invalid submission.\n"
+            f"Fix the root cause in your code (do NOT use fillna as a patch)."
+        )
+        log_msg(
+            "INFO",
+            f"节点 {node.id[:8]} submission 校验失败 → exc_type=SubmissionValidationError: "
+            f"{error_details}",
+        )
 
     def _debug_chain(
         self,
@@ -1534,6 +1591,8 @@ Call `submit_review` with your analysis.
             node.exc_type = exec_result.exc_type
             node.exc_info = str(exec_result.exc_info) if exec_result.exc_info else None
 
+            # Submission 格式校验（NaN 等问题提前标记，使 debug_chain 可处理）
+            self._check_submission_and_set_error(node)
             node = self._debug_chain(node, agent, context)
 
             self._review_node(node, parent_node=None)
@@ -1597,6 +1656,55 @@ Call `submit_review` with your analysis.
         log_msg(
             "INFO",
             f"===== Phase 1 Draft Epoch 完成: 生成 {len(generated)} 个节点, "
+            f"valid={current_valid} =====",
+        )
+        return generated
+
+    def run_epoch_hybrid(self, steps: int, solution_evolution) -> List[Node]:
+        """执行混合 Epoch：30% Draft（多样性搜索）+ 70% GA（定向优化）。
+
+        Args:
+            steps: 本次 epoch 执行的步数
+            solution_evolution: SolutionEvolution 实例
+
+        Returns:
+            本 epoch 生成的所有 Node 列表
+        """
+        generated: List[Node] = []
+        draft_count = 0
+        ga_count = 0
+
+        log_msg(
+            "INFO",
+            f"===== Hybrid Epoch 开始 (steps={steps}, 30% Draft + 70% GA) =====",
+        )
+
+        for _ in range(steps):
+            if self._check_time_limit():
+                break
+
+            if random.random() < 0.3:
+                # Draft 步骤（多样性）
+                draft_history = self._build_draft_history() or None
+                node = self._draft_step(draft_history)
+                if node:
+                    draft_count += 1
+            else:
+                # GA 步骤（定向优化）
+                node = solution_evolution.run_single_ga_step()
+                if node:
+                    ga_count += 1
+
+            if node:
+                generated.append(node)
+
+        with self.journal_lock:
+            current_valid = len(
+                [n for n in self.journal.nodes if not n.is_buggy and not n.dead]
+            )
+        log_msg(
+            "INFO",
+            f"===== Hybrid Epoch 完成: draft={draft_count}, ga={ga_count}, "
             f"valid={current_valid} =====",
         )
         return generated
@@ -1708,6 +1816,8 @@ Call `submit_review` with your analysis.
             node.exc_type = exec_result.exc_type
             node.exc_info = str(exec_result.exc_info) if exec_result.exc_info else None
 
+            # Submission 格式校验（NaN 等问题提前标记，使 debug_chain 可处理）
+            self._check_submission_and_set_error(node)
             # 链式 Debug（非超时/OOM 错误才重试）
             node = self._debug_chain(node, agent, context)
 
@@ -1799,6 +1909,8 @@ Call `submit_review` with your analysis.
             node.exc_type = exec_result.exc_type
             node.exc_info = str(exec_result.exc_info) if exec_result.exc_info else None
 
+            # Submission 格式校验（NaN 等问题提前标记，使 debug_chain 可处理）
+            self._check_submission_and_set_error(node)
             # 链式 Debug（非超时/OOM 错误才重试）
             node = self._debug_chain(node, agent, context)
 

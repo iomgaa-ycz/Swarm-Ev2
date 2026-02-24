@@ -7,6 +7,32 @@ import re
 from typing import Optional
 
 
+def truncate_term_out(term_out: str, max_len: int = 3500) -> str:
+    """截断终端输出，保留头部和尾部关键信息。
+
+    头部包含初始化/导入信息，尾部包含 metric 输出和报错信息，
+    中间为训练 epoch 日志（信息密度最低），优先截断。
+
+    Args:
+        term_out: 终端输出原文
+        max_len: 最大字符数（默认 3500 = head 1500 + tail 2000）
+
+    Returns:
+        截断后的字符串（未超限时原样返回）
+    """
+    if not term_out or len(term_out) <= max_len:
+        return term_out or ""
+
+    head_len = 1500
+    tail_len = 2000
+    omitted = len(term_out) - head_len - tail_len
+    return (
+        term_out[:head_len]
+        + f"\n\n... ({omitted} chars truncated) ...\n\n"
+        + term_out[-tail_len:]
+    )
+
+
 def compress_task_desc(full_desc: str) -> str:
     """从完整竞赛描述中提取 Review 所需的最小信息。
 

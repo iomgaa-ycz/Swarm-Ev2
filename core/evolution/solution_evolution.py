@@ -149,6 +149,35 @@ class SolutionEvolution:
 
         return best_node
 
+    def run_single_ga_step(self) -> Optional[Node]:
+        """执行单步 GA 操作（供混合模式调用）。
+
+        包含 valid_pool 检查 + 种群刷新 + 50% merge / 50% mutate。
+
+        Returns:
+            生成的子代节点（条件不满足或失败时返回 None）
+        """
+        valid_pool = [
+            n for n in self.journal.nodes
+            if not n.is_buggy and not n.dead and validate_genes(n.genes)
+        ]
+
+        if len(valid_pool) < self.ga_trigger_threshold:
+            log_msg(
+                "DEBUG",
+                f"GA 单步: valid_pool 不足 ({len(valid_pool)}/{self.ga_trigger_threshold})，跳过",
+            )
+            return None
+
+        # 刷新种群
+        actual_size = min(self.population_size, len(valid_pool))
+        self.population = valid_pool[-actual_size:]
+
+        if random.random() < 0.5:
+            return self._run_merge_step()
+        else:
+            return self._run_mutate_step()
+
     def _is_lower_better(self) -> bool:
         """判断当前任务的 metric 方向（P0-1 修复：优先使用全局方向）。
 

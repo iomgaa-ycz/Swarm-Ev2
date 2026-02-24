@@ -59,6 +59,7 @@ from core.evolution import (  # noqa: E402
     SolutionEvolution,
     CodeEmbeddingManager,
     SkillManager,
+    validate_genes,
 )
 
 
@@ -299,52 +300,55 @@ def run_adapter() -> None:
     )
     log_msg("INFO", "所有组件初始化完成")
 
-    # Phase 7: 双层进化主循环
-    num_epochs = max(
-        1, config.agent.max_steps // config.evolution.solution.steps_per_epoch
-    )
+    # Phase 7: 混合进化主循环（Draft + GA 交替）
+    total_budget = config.agent.max_steps
     steps_per_epoch = config.evolution.solution.steps_per_epoch
-    log_msg("INFO", f"开始进化: {num_epochs} Epochs x {steps_per_epoch} Steps")
+    ga_trigger = config.evolution.solution.ga_trigger_threshold
+    global_epoch = 0
+    hybrid_active = False  # 是否已切换到混合模式
 
-    best_node: Optional[Node] = None
-    for epoch in range(num_epochs):
-        log_msg("INFO", f"===== Epoch {epoch + 1}/{num_epochs} =====")
+    log_msg("INFO", f"开始进化: total_budget={total_budget}, GA 触发阈值={ga_trigger}")
 
-        # 运行 Orchestrator（检查返回值）
-        epoch_completed = orchestrator._run_single_epoch(steps_per_epoch)
-        if not epoch_completed:
-            log_msg("INFO", "时间限制已达，停止进化主循环")
-            break
+    while len(journal.nodes) < total_budget and not orchestrator._check_time_limit():
+        remaining = total_budget - len(journal.nodes)
+        epoch_steps = min(steps_per_epoch, remaining)
 
-        epoch_best = solution_evolution.run_epoch(steps_per_epoch)
+        # 检查 valid_pool 是否达到 GA 触发条件
+        valid_pool = [
+            n for n in journal.nodes
+            if not n.is_buggy and not n.dead and validate_genes(n.genes)
+        ]
 
-        # P0-1 修复：方向感知的 best_node 比较
-        if epoch_best and epoch_best.metric_value is not None:
-            if best_node is None or best_node.metric_value is None:
-                best_node = epoch_best
-            else:
-                lower = orchestrator._global_lower_is_better or False
-                is_better = (
-                    epoch_best.metric_value < best_node.metric_value
-                    if lower
-                    else epoch_best.metric_value > best_node.metric_value
-                )
-                if is_better:
-                    best_node = epoch_best
+        if len(valid_pool) >= ga_trigger:
+            # 混合模式：30% Draft + 70% GA
+            if not hybrid_active:
+                log_msg("INFO", f"===== 切换到混合模式: valid_pool={len(valid_pool)}>={ga_trigger} =====")
+                hybrid_active = True
+            orchestrator.run_epoch_hybrid(epoch_steps, solution_evolution)
+        else:
+            # 纯 Draft 模式（积累种群）
+            orchestrator.run_epoch_draft(epoch_steps)
 
-        if agent_evolution and (epoch + 1) % 3 == 0:
-            agent_evolution.evolve(epoch)
+        global_epoch += 1
 
-        # P0-1 修复：传入全局方向参数
+        if agent_evolution and global_epoch % 3 == 0:
+            log_msg("INFO", f"触发 Agent 层进化（global_epoch={global_epoch}）")
+            agent_evolution.evolve(global_epoch)
+
+        valid_pool = [
+            n for n in journal.nodes
+            if not n.is_buggy and not n.dead and validate_genes(n.genes)
+        ]
         current_best = journal.get_best_node(
             lower_is_better=orchestrator._global_lower_is_better
         )
         log_msg(
             "INFO",
-            f"Epoch {epoch + 1} 完成 | best={current_best.metric_value if current_best else 'N/A'}",
+            f"Epoch {global_epoch} | nodes={len(journal.nodes)}/{total_budget}, "
+            f"valid={len(valid_pool)}, hybrid={hybrid_active}, "
+            f"best={current_best.metric_value if current_best else 'N/A'}",
         )
 
-    # P0-1 修复：传入全局方向参数
     best_node = journal.get_best_node(
         only_good=True, lower_is_better=orchestrator._global_lower_is_better
     )
