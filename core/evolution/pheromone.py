@@ -50,7 +50,11 @@ def _normalize_score(
     score_range = score_max - score_min
     if score_range <= 0:
         return 0.3
-    return max(0.0, min(1.0, (node.metric_value - score_min) / score_range))
+    if node.lower_is_better:
+        normalized = (score_max - node.metric_value) / score_range
+    else:
+        normalized = (node.metric_value - score_min) / score_range
+    return max(0.0, min(1.0, normalized))
 
 
 def compute_node_pheromone(

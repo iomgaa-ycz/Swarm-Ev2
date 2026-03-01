@@ -63,6 +63,7 @@ class GeneItem:
     node_pheromone: float
     source_score: float
     created_step: int
+    lower_is_better: bool = False
     quality: float = 0.0
 
 
@@ -202,6 +203,7 @@ def build_decision_gene_pools(
                 source_score=float(
                     node.metric_value if node.metric_value is not None else 0.0
                 ),
+                lower_is_better=node.lower_is_better,
                 created_step=int(node.step),
             )
             item.quality = _compute_quality(item)
@@ -233,11 +235,15 @@ def _select_locus_winner(items: List[GeneItem]) -> GeneItem:
     for item in items:
         scored.append((item.quality, item))
 
+    # 根据方向决定 source_score 排序符号
+    lower = items[0].lower_is_better if items else False
+    score_sign = 1 if lower else -1
+
     scored.sort(
         key=lambda x: (
             -x[0],  # quality（主排序）
             -x[1].node_pheromone,  # 来自更强 node
-            -x[1].source_score,  # 更高原始得分
+            score_sign * x[1].source_score,  # 根据方向决定排序
             x[1].created_step,  # 更新的 gene 优先
             x[1].source_node_id,  # 稳定 tie-break
             x[1].gene_id,
@@ -300,6 +306,8 @@ def _is_better_item(candidate: GeneItem, incumbent: GeneItem) -> bool:
     if candidate.node_pheromone != incumbent.node_pheromone:
         return candidate.node_pheromone > incumbent.node_pheromone
     if candidate.source_score != incumbent.source_score:
+        if candidate.lower_is_better:
+            return candidate.source_score < incumbent.source_score
         return candidate.source_score > incumbent.source_score
     return candidate.source_node_id < incumbent.source_node_id
 
@@ -423,15 +431,24 @@ def get_primary_parent(gene_plan: Dict[str, Any], journal: Journal) -> "Node":
             raise ValueError(f"Journal 中找不到节点: {candidates[0][:8]}")
         return node
 
-    # 并列时选 metric 最高的节点
+    # 确定方向（从任一候选节点读取）
+    first_node = None
+    for nid in candidates:
+        first_node = journal.get_node_by_id(nid)
+        if first_node is not None:
+            break
+    lower = first_node.lower_is_better if first_node else False
+
+    # 并列时选 metric 最优的节点
     best_id = None
-    best_metric = float("-inf")
+    best_metric = float("inf") if lower else float("-inf")
     for nid in candidates:
         node = journal.get_node_by_id(nid)
         if node is None:
             continue
         metric = node.metric_value or 0.0
-        if metric > best_metric:
+        is_better = metric < best_metric if lower else metric > best_metric
+        if is_better:
             best_metric = metric
             best_id = nid
 
