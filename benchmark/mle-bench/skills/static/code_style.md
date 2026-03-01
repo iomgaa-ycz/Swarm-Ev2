@@ -140,13 +140,28 @@ tf.random.set_seed(RANDOM_SEED)
 ## Output
 
 ### Print Statements
-- Use **informative print statements** for debugging:
-  ```python
-  print(f"Training data shape: {X_train.shape}")
-  print(f"Validation metric: {score:.6f}")
-  ```
 
-- Avoid excessive output (only essential information)
+Your solution's stdout is parsed by an automated review system. Excessive output (progress bars, per-epoch logs) can cause the review system to miss your validation metric. Follow these rules strictly:
+
+**MUST**:
+- Print data shape after loading: `print(f"Train shape: {train.shape}, Test shape: {test.shape}")`
+- Print per-fold summary (1 line per fold): `print(f"Fold {i+1}: {metric_name}={value:.6f}")`
+- Print final metric as the LAST informational line: `print(f"Validation metric: {mean_value:.6f}")`
+
+**MUST NOT**:
+- Print per-epoch training logs. Only print final epoch or every 10th epoch at most
+- Use tqdm progress bars on stdout. Either disable them or redirect to stderr:
+  ```python
+  # Option 1: disable
+  for batch in tqdm(loader, disable=True):
+  # Option 2: redirect to stderr (won't pollute stdout)
+  import sys
+  for batch in tqdm(loader, file=sys.stderr):
+  ```
+- Use `verbose=1` or higher in Keras `model.fit()`. Use `verbose=0`
+- Print large arrays, dataframes, or model summaries
+
+**Target**: Total stdout should be under 5000 characters. The shorter, the better.
 
 ### Submission File
 - **Always verify submission format** before saving:

@@ -59,7 +59,9 @@
 - Set random seeds for reproducibility
 - Handle edge cases (missing values, data type mismatches)
 - Use appropriate data types to minimize memory usage
-- Add informative print statements for debugging (but keep output concise)
+- **Minimize stdout**: Disable tqdm (`disable=True`), suppress per-epoch logs (`verbose=0`).
+  Only print: data shape, per-fold metric, and final `Validation metric: {value}`.
+  Total stdout MUST be under 5000 characters — excessive output degrades automated evaluation.
 
 ## Example Code Structure
 
