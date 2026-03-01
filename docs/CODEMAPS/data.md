@@ -1,9 +1,9 @@
 # 数据流与配置管理
 
-**Last Updated:** 2026-02-11 (Codemap 同步: P0 修复 + Metric 校验体系增强 + K-Fold 强制验证)
-**Version:** 0.4.1
-**模块范围:** main.py (592行), config/, .env, utils/, core/executor/, core/orchestrator.py (1626行), core/evolution/ (solution_evolution.py 329行), benchmark/
-**当前阶段:** Phase 3.5 Skill 进化（已完成）+ P0 修复（K-Fold 强制 + Metric 对齐检查 + lower_is_better 修复）
+**Last Updated:** 2026-03-01 (Codemap 同步: 两阶段进化架构 + 4基因重设计 + Review纯文本JSON + gene_compatibility)
+**Version:** 0.5.0
+**模块范围:** main.py (669行), config/, .env, utils/, core/executor/, core/orchestrator.py (1835行), core/evolution/ (solution_evolution.py 324行), benchmark/
+**当前阶段:** 两阶段进化 (Phase 1 Draft + Phase 2 GA) + P0 Bug 修复完成
 
 ---
 
@@ -111,7 +111,7 @@ llm:
     max_tokens: ${env:MAX_TOKENS, null}
   feedback:                   # Feedback Agent 的 LLM（Review 评估）
     provider: ${env:LLM_PROVIDER, "openai"}
-    model: ${env:LLM_MODEL, "glm-4.6"}  # 默认 GLM-4.6（支持 Function Calling）
+    model: ${env:LLM_MODEL, "glm-4.6"}  # 默认 GLM-4.6（纯文本 JSON Review）
     temperature: 0.5
     api_key: ${env:OPENAI_API_KEY}
     base_url: ${env:OPENAI_BASE_URL, "https://open.bigmodel.cn/api/coding/paas/v4"}
@@ -149,14 +149,17 @@ evolution:
     top_k: 5                  # Top-K 查询默认值
     save_path: "workspace/evolution/experience_pool.json"
 
-  solution:                   # Solution 层 GA 配置
+  solution:                   # Solution 层 GA 配置（两阶段）
     population_size: 12       # 种群大小
+    ga_trigger_threshold: 4   # GA 触发阈值（Phase 1 目标节点数）
     elite_size: 3             # 精英保留数量
+    phase1_target_nodes: 8    # Phase 1 Draft 目标节点数
+    debug_max_attempts: 2     # debug 最大尝试次数
     crossover_rate: 0.8       # 交叉概率
     mutation_rate: 0.2        # 变异概率
     tournament_k: 3           # 锦标赛选择 k 值
     steps_per_epoch: 10       # 每 Epoch 步数
-    use_pheromone_crossover: true  # 使用信息素驱动交叉 [P3.4]
+    use_pheromone_crossover: true  # 使用信息素驱动交叉
 
   agent:                      # Agent 层进化配置
     num_agents: 4             # Agent 数量
@@ -239,7 +242,7 @@ workspace/                    # project.workspace_dir
 ```
 benchmark/mle-bench/          # MLE-Bench 特定资源
 +-- prompt_templates/         # Jinja2 模板
-|   +-- explore.j2            # 探索任务模板
+|   +-- draft.j2              # 初稿任务模板 (原 explore.j2)
 |   +-- merge.j2              # 合并任务模板
 |   +-- mutate.j2             # 变异任务模板
 +-- skills/                   # Skill 文件
@@ -262,7 +265,7 @@ benchmark/mle-bench/          # MLE-Bench 特定资源
 +-- agent_configs/            # Agent 配置（4 个差异化 Agent）
     +-- agent_0/
     |   +-- role.md           # 角色定位
-    |   +-- strategy_explore.md
+    |   +-- strategy_draft.md
     |   +-- strategy_merge.md
     |   +-- strategy_mutate.md
     +-- agent_1/
@@ -362,7 +365,7 @@ logs/                        # project.log_dir
     "request": {
         "system_message": str,      # Review 系统提示
         "user_message": str,        # Review 用户提示（包含 change_context）
-        "tool_schema": dict,        # Function Calling Schema
+        "prompt_template": str,     # Review Prompt 模板
     },
     "output_raw": str,              # LLM 原始输出
     "output_parsed": {              # 解析后的结构化数据
@@ -379,8 +382,8 @@ logs/                        # project.log_dir
 
 **调试流程**:
 
-1. 正常流程: Function Calling 成功 -> 存储 output_raw + output_parsed
-2. 失败回退: Function Calling 失败 -> 改用无 Tool 方案 -> 设置 fallback_used=true
+1. 正常流程: 纯文本 JSON 解析成功 -> 存储 output_raw + output_parsed
+2. 失败回退: JSON 解析失败 -> 回退方案 -> 设置 fallback_used=true
 3. 问题排查: 读取 review_debug 检查 LLM 响应质量
 
 ### 5.3 Prompt 压缩效果 [NEW - P3.6]
@@ -410,7 +413,7 @@ logs/                        # project.log_dir
 [2026-02-01 10:30:01] [INFO] === Step 1/50 ===
 [2026-02-01 10:30:01] [INFO] [search_policy] 初稿模式
 [2026-02-01 10:30:02] [INFO] 查询 LLM: model=gpt-4-turbo, provider=openai
-[2026-02-01 10:30:10] [INFO] Function Calling 响应: submit_review, 234 字符
+[2026-02-01 10:30:10] [INFO] Review JSON 解析完成: 234 字符
 [2026-02-01 10:30:10] [INFO] Review 完成: 节点 abc12345, metric=0.85, lower_is_better=false
 [2026-02-01 10:30:10] [INFO] 新的最佳节点: abc12345, metric=0.85
 ```
@@ -468,9 +471,10 @@ config.yaml --> Config 对象 --> Agent 配置
         |         +-- AgentEvolution               |
         |       Orchestrator(agent_evolution=...)  |
         |                                          |
-        |  [Phase 4] 双层进化主循环                 |
+        |  [Phase 4] 两阶段进化主循环                |
+        |       orchestrator.run_epoch_draft()     |  # Phase 1: Draft
         |       for epoch in range(num_epochs):    |
-        |         orchestrator._run_single_epoch() |
+        |         orchestrator.run_epoch()         |  # Phase 2: GA
         |         solution_evolution.run_epoch()    |
         |         agent_evolution.evolve(epoch)     |
         |                                          |
@@ -663,10 +667,10 @@ _execute_code(node.code, node.id)
     +-- workspace.rewrite_submission_path()
     +-- interpreter.run()
     |
-_review_node(node) <- Function Calling (GLM-4.6)
-    +-- 构建 review 消息
-    +-- backend.query(tools=[submit_review])
-    +-- 解析 JSON -> 更新 node 字段
+_review_node(node) <- 纯文本 JSON Review (GLM-4.6)
+    +-- 构建 review 消息（压缩任务描述 via text_utils）
+    +-- backend.query() -> 纯文本 JSON 响应
+    +-- 解析 JSON -> _sanitize_metric_value() -> 更新 node 字段
     |
 journal.append(node)
     |
@@ -688,7 +692,7 @@ Agent 执行完成
     v
 TaskRecord 创建
     - agent_id: "agent_0"
-    - task_type: "explore" | "merge" | "mutate"
+    - task_type: "draft" | "merge" | "mutate"
     - input_hash: hashlib.md5(...)
     - output_quality: float (归一化适应度)
     - strategy_summary: node.plan
@@ -875,7 +879,7 @@ candidate (提取) → active (添加) → deprecated (淘汰)
 | `agent.time_limit` | **43200** | **总时间限制 12 小时** |
 | `search.num_drafts` | 5 | 初稿数量（达到后切换到改进/修复模式） |
 | `search.debug_prob` | 0.5 | 修复模式触发概率 |
-| `llm.feedback.model` | **"glm-4.6"** | **Review 使用的模型（支持 Function Calling）** |
+| `llm.feedback.model` | **"glm-4.6"** | **Review 使用的模型（纯文本 JSON 模式）** |
 | `llm.feedback.base_url` | `open.bigmodel.cn/...` | **智谱 AI API 端点** |
 | `execution.timeout` | 3600 | 单次代码执行超时 |
 
@@ -888,7 +892,7 @@ llm.code: 代码生成 Agent (CoderAgent)
 +-- 调用方: CoderAgent._call_llm_with_retry()
 
 llm.feedback: Review 评估 (Orchestrator)
-+-- model: glm-4.6 (默认) - 支持 Function Calling
++-- model: glm-4.6 (默认) - 纯文本 JSON Review
 +-- 用途: 评估代码执行结果
 +-- 调用方: Orchestrator._review_node()
 +-- base_url: https://open.bigmodel.cn/api/coding/paas/v4
@@ -1080,7 +1084,7 @@ context = {
 }
 
 prompt = pm.build_prompt(
-    task_type="explore",
+    task_type="draft",
     agent_id="agent_0",
     context=context,
 )
