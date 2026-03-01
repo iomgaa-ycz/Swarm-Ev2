@@ -96,6 +96,29 @@ class TestGetPrimaryParent:
             f"并列时应选 metric 更高的 high_2222，实际选了 {result.id}"
         )
 
+    def test_tie_broken_by_lower_metric_when_lower_is_better(self):
+        """RMSE 竞赛并列时选 metric 最小（最好）的节点。"""
+        node_low = _make_node("low_11111", metric=0.05)
+        node_low.lower_is_better = True
+        node_high = _make_node("high_2222", metric=0.30)
+        node_high.lower_is_better = True
+        journal = _make_journal(node_low, node_high)
+
+        loci = list(LOCUS_TO_FIELD.keys())
+        sources = {}
+        for i, locus in enumerate(loci):
+            if i < 2:
+                sources[locus] = "low_11111"
+            else:
+                sources[locus] = "high_2222"
+        gene_plan = _gene_plan_from_sources(sources)
+
+        # 并列 → lower_is_better=True → 选 metric 更小的
+        result = get_primary_parent(gene_plan, journal)
+        assert result.id == "low_11111", (
+            f"RMSE 竞赛并列时应选 metric 更小的 low_11111，实际选了 {result.id}"
+        )
+
     def test_raises_on_empty_plan(self):
         """gene_plan 为空时抛出 ValueError。"""
         journal = _make_journal()

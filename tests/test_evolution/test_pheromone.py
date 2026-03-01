@@ -99,6 +99,39 @@ class TestNormalizeScore:
 
         assert normalized == 0.3
 
+    def test_normalize_score_lower_is_better(self):
+        """RMSE=0.05, range=[0, 0.15] → 归一化=(0.15-0.05)/0.15≈0.67（高分）。"""
+        node = Node(id="test", code="test", step=0)
+        node.metric_value = 0.05
+        node.is_buggy = False
+        node.lower_is_better = True
+
+        normalized = _normalize_score(node, score_min=0.0, score_max=0.15)
+
+        assert normalized == pytest.approx((0.15 - 0.05) / 0.15, rel=1e-6)
+
+    def test_normalize_score_lower_is_better_worst(self):
+        """RMSE=0.15（最差值）, range=[0, 0.15] → 归一化=0.0（低分）。"""
+        node = Node(id="test", code="test", step=0)
+        node.metric_value = 0.15
+        node.is_buggy = False
+        node.lower_is_better = True
+
+        normalized = _normalize_score(node, score_min=0.0, score_max=0.15)
+
+        assert normalized == pytest.approx(0.0)
+
+    def test_normalize_score_higher_is_better_unchanged(self):
+        """AUC=0.8, range=[0.5, 1.0] → 归一化=0.6（不变）。"""
+        node = Node(id="test", code="test", step=0)
+        node.metric_value = 0.8
+        node.is_buggy = False
+        node.lower_is_better = False
+
+        normalized = _normalize_score(node, score_min=0.5, score_max=1.0)
+
+        assert normalized == pytest.approx(0.6, rel=1e-6)
+
     def test_normalize_score_clipping(self):
         """测试得分被截断到 [0, 1]。"""
         node = Node(id="test", code="test", step=0)
