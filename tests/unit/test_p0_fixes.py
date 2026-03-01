@@ -225,6 +225,52 @@ class TestP0A_IsLowerBetter:
 # ============================================================
 
 
+class TestSanitizeMetricValue:
+    """_sanitize_metric_value() 负数 metric 修正测试。"""
+
+    def test_sanitize_negative_rmsle(self, orchestrator):
+        """metric=-0.065, metric_name='rmsle' → 返回 0.065（不可能为负）。"""
+        result = orchestrator._sanitize_metric_value(-0.065, "rmsle")
+        assert result == pytest.approx(0.065)
+
+    def test_sanitize_negative_rmse(self, orchestrator):
+        """metric=-0.5, metric_name='rmse' → 返回 0.5（不可能为负）。"""
+        result = orchestrator._sanitize_metric_value(-0.5, "rmse")
+        assert result == pytest.approx(0.5)
+
+    def test_sanitize_negative_kappa_kept(self, orchestrator):
+        """metric=-0.3, metric_name='qwk' → 保留 -0.3（合法负值）。"""
+        result = orchestrator._sanitize_metric_value(-0.3, "qwk")
+        assert result == pytest.approx(-0.3)
+
+    def test_sanitize_positive_unchanged(self, orchestrator):
+        """metric=0.85, metric_name='auc' → 保留 0.85（正值不处理）。"""
+        result = orchestrator._sanitize_metric_value(0.85, "auc")
+        assert result == pytest.approx(0.85)
+
+    def test_sanitize_unknown_metric_kept(self, orchestrator):
+        """metric=-0.5, metric_name='custom_score' → 保留 -0.5（未知指标不敢改）。"""
+        result = orchestrator._sanitize_metric_value(-0.5, "custom_score")
+        assert result == pytest.approx(-0.5)
+
+
+class TestPlausibilityNoBestNode:
+    """_check_metric_plausibility() 无 best_node 时仍执行 METRIC_BOUNDS 检查。"""
+
+    def test_plausibility_no_best_node_bounds_still_checked(self, orchestrator):
+        """best_node=None 时，METRIC_BOUNDS 绝对范围检查仍生效。"""
+        orchestrator.best_node = None
+        orchestrator._task_desc_compressed = "Evaluate using auc metric"
+        # AUC > 1.0 应被 Phase 1 拒绝，即使 best_node 为 None
+        assert orchestrator._check_metric_plausibility(1.5) is False
+
+    def test_plausibility_no_best_node_normal_passes(self, orchestrator):
+        """best_node=None 时，正常值仍通过。"""
+        orchestrator.best_node = None
+        orchestrator._task_desc_compressed = "Evaluate using auc metric"
+        assert orchestrator._check_metric_plausibility(0.85) is True
+
+
 class TestP0B_MetricBounds:
     """METRIC_BOUNDS 常量测试。"""
 

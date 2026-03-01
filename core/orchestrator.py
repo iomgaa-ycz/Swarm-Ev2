@@ -433,8 +433,11 @@ class Orchestrator:
 
         # Phase 5: 异常值检测
         metric_value = review_data.get("metric")
+        if metric_value is not None:
+            metric_name = review_data.get("metric_name", "")
+            metric_value = self._sanitize_metric_value(metric_value, metric_name)
         is_metric_plausible = True
-        if metric_value is not None and self.best_node is not None:
+        if metric_value is not None:
             is_metric_plausible = self._check_metric_plausibility(metric_value)
             if not is_metric_plausible:
                 log_msg(
@@ -612,6 +615,44 @@ class Orchestrator:
         if not exists:
             log_msg("DEBUG", f"submission_{node_id}.csv 不存在")
         return exists
+
+    def _sanitize_metric_value(
+        self, metric: float, metric_name: str
+    ) -> float:
+        """Metric 入口常识性校验：修正 sklearn neg_ 前缀导致的负数。
+
+        逻辑:
+        - metric >= 0 → 直接返回
+        - metric_name 在 METRIC_BOUNDS 中匹配且 min_val >= 0 → abs(metric) + WARNING
+        - 未匹配 → 保留原值（不敢乱改）
+
+        Args:
+            metric: 原始指标值
+            metric_name: 指标名称（来自 LLM review）
+
+        Returns:
+            校验后的指标值
+        """
+        if metric >= 0:
+            return metric
+
+        # 在 METRIC_BOUNDS 中查找匹配
+        name_lower = metric_name.lower().strip()
+        for keyword, (min_val, _max_val) in METRIC_BOUNDS.items():
+            if keyword in name_lower:
+                if min_val is not None and min_val >= 0:
+                    log_msg(
+                        "WARNING",
+                        f"[sanitize] metric={metric} 对 '{metric_name}' "
+                        f"数学上不可能为负（{keyword} min={min_val}），"
+                        f"修正为 abs={abs(metric)}",
+                    )
+                    return abs(metric)
+                # 匹配到但 min_val < 0（如 qwk/kappa），合法负值
+                return metric
+
+        # 未匹配任何已知指标，保留原值
+        return metric
 
     def _check_metric_plausibility(self, metric: float) -> bool:
         """检测指标是否在合理范围内（防止 LLM 幻觉）。
