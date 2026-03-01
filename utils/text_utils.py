@@ -1,37 +1,82 @@
 """文本处理工具模块。
 
-提供 Review Prompt 压缩等文本处理功能。
+提供 Review Prompt 压缩、执行输出精炼等文本处理功能。
 """
 
 import re
-from typing import Optional
+from typing import Optional, Callable
 
 
-def truncate_term_out(term_out: str, max_len: int = 3500) -> str:
-    """截断终端输出，保留头部和尾部关键信息。
+# ── 前置 LLM 提取模板 ──────────────────────────────────────────────
 
-    头部包含初始化/导入信息，尾部包含 metric 输出和报错信息，
-    中间为训练 epoch 日志（信息密度最低），优先截断。
+CONDENSE_PROMPT_TEMPLATE = """You are a log parser. Extract structured information from the following ML solution execution output.
+
+<execution_output>
+{term_out}
+</execution_output>
+
+Respond in EXACTLY this format (preserve exact numerical values, do NOT round or interpret):
+
+=== EXECUTION SUMMARY ===
+
+[STATUS]
+<"success" or "error">
+<if error, copy the exact exception line: "ExceptionType: message">
+
+[METRIC]
+<copy the exact "Validation metric: ..." line from output, or "not found">
+<metric name used in code, e.g. "rmse", "auc", "log_loss">
+
+[TRAINING]
+- Data: <train and test shapes if printed>
+- Model: <model type/name>
+- CV: <number of folds, per-fold metric values if available>
+- Training: <total epochs, final losses if available>
+- Convergence: <converged / not converged / early stopped>
+
+[WARNINGS]
+<any warnings, deprecation notices, or data issues — or "None">
+
+[ERROR_TRACE]
+<if error, copy the COMPLETE traceback verbatim — or "None">
+
+[OUTPUT_FILES]
+submission.csv: <"created" or "not created">
+
+RULES:
+- Copy values EXACTLY as they appear in the output. Do NOT round, reformat, or interpret.
+- For [METRIC], look for lines matching "Validation metric: <number>". Copy the LAST occurrence.
+- For [ERROR_TRACE], copy the full traceback starting from "Traceback (most recent call last):" to the final error line. Do NOT summarize.
+- If a section has no relevant information in the output, write "N/A".
+"""
+
+
+def condense_term_out(
+    term_out: str,
+    max_len: int = 8000,
+    llm_fn: Callable[[str], str] = None,
+) -> str:
+    """当 stdout 过长时，用前置 LLM 按固定格式提取关键信息。
 
     Args:
-        term_out: 终端输出原文
-        max_len: 最大字符数（默认 3500 = head 1500 + tail 2000）
+        term_out: 完整终端输出
+        max_len: 超过此长度触发 LLM 压缩（默认 8000 chars）
+        llm_fn: LLM 调用函数 (prompt: str) -> str，超长时必须提供
 
     Returns:
-        截断后的字符串（未超限时原样返回）
+        原文（未超限）或 LLM 提取的结构化摘要
+
+    Raises:
+        LLM 调用异常直接向上传播，不做降级处理
     """
     if not term_out or len(term_out) <= max_len:
         return term_out or ""
 
-    head_len = 1500
-    tail_len = 2000
-    omitted = len(term_out) - head_len - tail_len
-    return (
-        term_out[:head_len]
-        + f"\n\n... ({omitted} chars truncated) ...\n\n"
-        + term_out[-tail_len:]
-    )
+    prompt = CONDENSE_PROMPT_TEMPLATE.format(term_out=term_out)
+    return llm_fn(prompt)
 
+
+# ── Review Prompt 任务描述压缩 ─────────────────────────────────────
 
 def compress_task_desc(full_desc: str) -> str:
     """从完整竞赛描述中提取 Review 所需的最小信息。

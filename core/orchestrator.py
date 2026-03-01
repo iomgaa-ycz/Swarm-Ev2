@@ -24,8 +24,8 @@ from utils.config import Config
 import re
 
 from core.evolution.gene_parser import parse_solution_genes
-from utils.logger_system import log_msg, log_json, log_exception
-from utils.text_utils import truncate_term_out
+from utils.logger_system import log_msg, log_exception
+from utils.text_utils import condense_term_out
 from utils.system_info import (
     get_hardware_description,
     get_conda_packages,
@@ -369,17 +369,18 @@ class Orchestrator:
                     )
                 has_submission = False  # 格式无效等同于不存在
 
-        # Phase 2: LLM Function Calling（收集调试数据）
+        # Phase 2: 构建 Review Prompt
+        from utils.response import extract_review
+
         review_data = None
         review_debug = {
-            "method": None,
+            "method": "text_json",
             "input": None,
             "output_raw": None,
             "output_parsed": None,
             "error": None,
         }
 
-        # 构建 Review 输入
         review_input = self._build_review_messages(node, change_context, parent_node)
         review_debug["input"] = {
             "user_message": review_input,
@@ -387,40 +388,48 @@ class Orchestrator:
             "provider": self.config.llm.feedback.provider,
         }
 
-        try:
-            review_debug["method"] = "function_calling"
-            raw_response, parsed_data = self._call_review_with_tool_debug(
-                node, change_context, review_input
-            )
-            review_debug["output_raw"] = raw_response
-            review_debug["output_parsed"] = parsed_data
-            review_data = parsed_data
-        except Exception as e:
-            log_msg("WARNING", f"Function Calling 失败: {e}，尝试回退方案")
-            review_debug["error"] = str(e)
-
-        # Phase 3: 回退到无 Tool 方案
-        if review_data is None:
+        # Phase 3: 纯文本 JSON 调用（无 tools）+ 重试
+        for attempt in range(2):
             try:
-                review_debug["method"] = "fallback"
-                raw_response, parsed_data = self._review_node_without_tool_debug(node)
+                raw_response = backend_query(
+                    system_message=None,
+                    user_message=review_input,
+                    model=self.config.llm.feedback.model,
+                    provider=self.config.llm.feedback.provider,
+                    temperature=self.config.llm.feedback.temperature + attempt * 0.1,
+                    api_key=self.config.llm.feedback.api_key,
+                    base_url=getattr(self.config.llm.feedback, "base_url", None),
+                )
                 review_debug["output_raw"] = raw_response
-                review_debug["output_parsed"] = parsed_data
-                review_data = parsed_data
-            except Exception as e:
-                log_exception(e, "回退方案也失败")
-                review_debug["error"] = str(e)
-                review_data = {
-                    "is_bug": True,
-                    "metric": None,
-                    "summary": f"Review 完全失败: {str(e)}",
-                    "lower_is_better": False,
-                    "has_csv_submission": False,
-                }
+                parsed_data = extract_review(raw_response)
+                # _validate_review_response 内含必填字段检查，缺失时抛 ValueError
+                review_data = self._validate_review_response(
+                    parsed_data, node, has_submission
+                )
                 review_debug["output_parsed"] = review_data
+                break
+            except Exception as e:
+                log_msg(
+                    "WARNING",
+                    f"Review 调用失败 (attempt {attempt + 1}/2): {e}",
+                )
+                review_debug["error"] = str(e)
 
-        # Phase 4: 验证响应
-        review_data = self._validate_review_response(review_data, node, has_submission)
+        if review_data is None:
+            log_msg("WARNING", "Review 两次尝试均失败，使用 fallback 默认值")
+            review_data = {
+                "is_bug": True,
+                "metric": None,
+                "key_change": f"Review failed: {review_debug.get('error', 'unknown')}",
+                "insight": "",
+                "lower_is_better": False,
+                "has_csv_submission": False,
+                "metric_name": "",
+                "bottleneck": "",
+                "suggested_direction": "",
+                "approach_tag": "Failed: Review extraction error",
+            }
+            review_debug["output_parsed"] = review_data
 
         # Phase 5: 异常值检测
         metric_value = review_data.get("metric")
@@ -432,30 +441,6 @@ class Orchestrator:
                     "WARNING",
                     f"节点 {node.id[:8]} 指标值异常 ({metric_value})，标记为 buggy",
                 )
-
-        # Phase 5.5: stdout metric 数据收集（LLM 优先，仅记录差异）
-        stdout_metric = self._parse_metric_from_stdout(node.term_out)
-        if stdout_metric is not None and metric_value is not None:
-            diff = abs(stdout_metric - metric_value)
-            if diff > max(abs(stdout_metric) * 0.01, 1e-6):
-                log_json(
-                    {
-                        "event": "metric_mismatch",
-                        "node_id": node.id,
-                        "llm_metric": metric_value,
-                        "stdout_metric": stdout_metric,
-                        "diff": diff,
-                    }
-                )
-                log_msg(
-                    "WARNING",
-                    f"Metric 不一致: LLM={metric_value}, stdout={stdout_metric}（保留 LLM 值）",
-                )
-        elif stdout_metric is not None and metric_value is None:
-            # LLM 未提取到但 stdout 有值：用 stdout 补位
-            log_msg("INFO", f"LLM 未提取 metric，使用 stdout 值: {stdout_metric}")
-            metric_value = stdout_metric
-            review_data["metric"] = stdout_metric
 
         # Phase 6: 综合判断 is_buggy（5 条件 OR）
         node.is_buggy = (
@@ -535,160 +520,21 @@ class Orchestrator:
                 node.metadata["pheromone_node"] = pheromone
                 self.gene_registry.update_from_reviewed_node(node)
 
-    def _call_review_with_tool(self, node: Node, change_context: str) -> Dict:
-        """使用 Function Calling 调用 Review LLM。
+    def _condense_output(self, term_out: str) -> str:
+        """压缩执行输出，超长时用前置 LLM 提取关键信息。"""
 
-        Args:
-            node: 待评估的节点
-            change_context: 变更上下文（diff 或 gene selection）
+        def llm_fn(prompt: str) -> str:
+            return backend_query(
+                system_message=None,
+                user_message=prompt,
+                model=self.config.llm.feedback.model,
+                provider=self.config.llm.feedback.provider,
+                temperature=0.0,
+                api_key=self.config.llm.feedback.api_key,
+                base_url=getattr(self.config.llm.feedback, "base_url", None),
+            )
 
-        Returns:
-            LLM 返回的 review 数据 dict
-
-        Raises:
-            Exception: LLM 调用或解析失败
-        """
-        messages_content = self._build_review_messages(node, change_context)
-        tool_schema = self._get_review_tool_schema()
-
-        response = backend_query(
-            system_message=None,
-            user_message=messages_content,
-            model=self.config.llm.feedback.model,
-            provider=self.config.llm.feedback.provider,
-            temperature=self.config.llm.feedback.temperature,
-            api_key=self.config.llm.feedback.api_key,
-            base_url=getattr(self.config.llm.feedback, "base_url", None),
-            tools=[{"type": "function", "function": tool_schema}],
-            tool_choice={
-                "type": "function",
-                "function": {"name": "submit_review"},
-            },
-        )
-
-        return json.loads(response)
-
-    def _call_review_with_tool_debug(
-        self, node: Node, change_context: str, review_input: str
-    ) -> tuple:
-        """Function Calling 调用 Review LLM（返回调试信息）。
-
-        Args:
-            node: 待评估的节点
-            change_context: 变更上下文
-            review_input: 已构建的输入消息
-
-        Returns:
-            (原始响应字符串, 解析后的 dict) 元组
-        """
-        tool_schema = self._get_review_tool_schema()
-
-        response = backend_query(
-            system_message=None,
-            user_message=review_input,
-            model=self.config.llm.feedback.model,
-            provider=self.config.llm.feedback.provider,
-            temperature=self.config.llm.feedback.temperature,
-            api_key=self.config.llm.feedback.api_key,
-            base_url=getattr(self.config.llm.feedback, "base_url", None),
-            tools=[{"type": "function", "function": tool_schema}],
-            tool_choice={
-                "type": "function",
-                "function": {"name": "submit_review"},
-            },
-        )
-
-        return response, json.loads(response)
-
-    def _review_node_without_tool_debug(self, node: Node) -> tuple:
-        """回退方案（返回调试信息）。
-
-        Args:
-            node: 待评估的节点
-
-        Returns:
-            (原始响应字符串, 解析后的 dict) 元组
-        """
-        from utils.response import extract_review
-
-        prompt = self._build_review_prompt_without_tool(node)
-
-        response_text = backend_query(
-            system_message=None,
-            user_message=prompt,
-            model=self.config.llm.feedback.model,
-            provider=self.config.llm.feedback.provider,
-            temperature=self.config.llm.feedback.temperature,
-            api_key=self.config.llm.feedback.api_key,
-            base_url=getattr(self.config.llm.feedback, "base_url", None),
-            tools=None,
-            tool_choice=None,
-        )
-
-        return response_text, extract_review(response_text)
-
-    def _review_node_without_tool(self, node: Node) -> Dict:
-        """回退方案：无 Tool 的 LLM 调用 + JSON 提取。
-
-        参考: ML-Master parse_exec_result_without_tool()
-
-        Args:
-            node: 待评估的节点
-
-        Returns:
-            解析后的 review 数据 dict
-        """
-        from utils.response import extract_review
-
-        prompt = self._build_review_prompt_without_tool(node)
-
-        response_text = backend_query(
-            system_message=None,
-            user_message=prompt,
-            model=self.config.llm.feedback.model,
-            provider=self.config.llm.feedback.provider,
-            temperature=self.config.llm.feedback.temperature,
-            api_key=self.config.llm.feedback.api_key,
-            base_url=getattr(self.config.llm.feedback, "base_url", None),
-            tools=None,  # 无 Tool
-            tool_choice=None,
-        )
-
-        return extract_review(response_text)
-
-    def _build_review_prompt_without_tool(self, node: Node) -> str:
-        """构建回退方案的 Prompt（压缩版，要求 LLM 输出 JSON）。
-
-        Args:
-            node: 节点对象
-
-        Returns:
-            Prompt 字符串
-        """
-        return f"""You are evaluating a ML solution.
-
-**Task Summary:**
-{self._task_desc_compressed}
-
-**Execution Output:**
-```
-{truncate_term_out(node.term_out)}
-```
-
-**Status**: Time={node.exec_time:.2f}s, Exception={node.exc_type or "None"}
-
----
-
-Respond with JSON:
-```json
-{{
-    "is_bug": <bool>,
-    "has_csv_submission": <bool>,
-    "metric": <number|null>,
-    "lower_is_better": <bool>
-}}
-```
-"""
+        return condense_term_out(term_out, max_len=8000, llm_fn=llm_fn)
 
     def _validate_review_response(
         self, response: Dict, node: Node, has_submission: bool
@@ -709,6 +555,23 @@ Respond with JSON:
             验证/修正后的 response dict
         """
         validated = dict(response)
+
+        # 规则 0: 必填字段检查（缺失时抛 ValueError 触发重试）
+        required_keys = {
+            "is_bug", "has_csv_submission", "metric",
+            "lower_is_better", "metric_name", "key_change", "insight",
+            "bottleneck", "suggested_direction", "approach_tag",
+        }
+        missing = required_keys - validated.keys()
+        if missing:
+            raise ValueError(f"Review 响应缺少必填字段: {missing}")
+
+        # 非空检查（metric 允许 null，其余字段不允许空字符串）
+        for key in required_keys - {"metric"}:
+            if validated.get(key) is None or (
+                isinstance(validated[key], str) and validated[key].strip() == ""
+            ):
+                raise ValueError(f"Review 响应字段 '{key}' 为空")
 
         # 规则 1: 类型检查
         metric = validated.get("metric")
@@ -956,31 +819,6 @@ Respond with JSON:
 
         return result
 
-    def _parse_metric_from_stdout(self, term_out: str) -> Optional[float]:
-        """从终端输出中正则提取 Validation metric 值。
-
-        匹配格式: "Validation metric: {number}"
-        如果有多行匹配（如多折输出），取最后一个（通常是平均值）。
-
-        Args:
-            term_out: 终端输出文本
-
-        Returns:
-            提取的 metric 值，未匹配返回 None
-        """
-        if not term_out:
-            return None
-        matches = re.findall(
-            r"Validation metric:\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)",
-            term_out,
-        )
-        if matches:
-            try:
-                return float(matches[-1])
-            except ValueError:
-                return None
-        return None
-
     def _build_review_messages(
         self,
         node: Node,
@@ -1051,7 +889,7 @@ Respond with JSON:
 ## Execution Output
 
 ```
-{truncate_term_out(node.term_out)}
+{self._condense_output(node.term_out)}
 ```
 
 **Status**: Time={node.exec_time:.2f}s, Exception={node.exc_type or "None"}
@@ -1060,86 +898,22 @@ Respond with JSON:
 
 **Metric Alignment Check**: Verify that the validation metric printed in output matches the competition's evaluation metric. If the code uses a different loss function for training (e.g., Focal Loss) but reports that loss as the validation metric instead of the actual competition metric (e.g., log_loss), set `is_bug=true` and explain in `key_change`.
 
-Call `submit_review` with your analysis.
+Respond with a JSON object (no markdown, no explanation, ALL 10 keys required, only "metric" may be null):
+{{
+    "is_bug": <bool>,
+    "has_csv_submission": <bool>,
+    "metric": <number or null if buggy/crashed>,
+    "lower_is_better": <bool>,
+    "metric_name": "<string: e.g. 'log_loss', 'rmse', 'auc'>",
+    "key_change": "<string: 1-2 sentence summary of core change>",
+    "insight": "<string: what worked/didn't and why>",
+    "bottleneck": "<string: main limitation of current approach>",
+    "suggested_direction": "<string: recommended next optimization>",
+    "approach_tag": "<string: e.g. 'LightGBM + 5-fold CV + log1p'>"
+}}
+For buggy solutions, still fill all string fields (e.g. approach_tag="Failed: OOM in CharCNN training").
 """
         return prompt
-
-    def _get_review_tool_schema(self) -> Dict:
-        """获取 Review Function Calling 的 schema（增强版）。
-
-        Returns:
-            tool schema 字典
-        """
-        return {
-            "name": "submit_review",
-            "description": "提交代码评估结果（包含详细分析）",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "is_bug": {
-                        "type": "boolean",
-                        "description": "代码是否有 bug 或执行失败",
-                    },
-                    "has_csv_submission": {
-                        "type": "boolean",
-                        "description": "代码是否生成了 submission.csv 文件",
-                    },
-                    "metric": {
-                        "type": "number",
-                        "description": "验证集指标值（如 RMSE），失败时为 null",
-                        "nullable": True,
-                    },
-                    "lower_is_better": {
-                        "type": "boolean",
-                        "description": "指标是否越小越好（如 RMSE=true）",
-                    },
-                    "metric_name": {
-                        "type": "string",
-                        "description": (
-                            "验证集使用的评估指标名称（如 log_loss, auc, rmse）。"
-                            "必须与竞赛要求一致。如果代码使用了不同的指标"
-                            "（如用 Focal Loss 代替 log_loss），请说明。"
-                        ),
-                    },
-                    # ===== 新增字段 =====
-                    "key_change": {
-                        "type": "string",
-                        "description": "本次方案的核心改动点（基于 diff 总结，1-2 句话）",
-                    },
-                    "insight": {
-                        "type": "string",
-                        "description": "从本次实验得到的洞察（什么有效/无效，为什么）",
-                    },
-                    "bottleneck": {
-                        "type": "string",
-                        "description": "当前方案的主要瓶颈或限制",
-                        "nullable": True,
-                    },
-                    "suggested_direction": {
-                        "type": "string",
-                        "description": "建议的下一步优化方向",
-                        "nullable": True,
-                    },
-                    "approach_tag": {
-                        "type": "string",
-                        "description": (
-                            "本方案的核心方法摘要（1 句话，如 'LightGBM + 5-fold CV + log1p feature'），"
-                            "供后续 Draft 多样性引导使用。非 buggy 节点必填。"
-                        ),
-                        "nullable": True,
-                    },
-                },
-                "required": [
-                    "is_bug",
-                    "has_csv_submission",
-                    "metric",
-                    "lower_is_better",
-                    "metric_name",
-                    "key_change",
-                    "insight",
-                ],
-            },
-        }
 
     def _update_best_node(self, node: Node) -> None:
         """更新最佳节点（线程安全，需在 journal_lock 内调用）。
@@ -1505,7 +1279,9 @@ Call `submit_review` with your analysis.
             debug_context = {
                 "buggy_code": current.code,
                 "exc_type": current.exc_type or "",
-                "term_out": current.term_out if isinstance(current.term_out, str) else "",
+                "term_out": self._condense_output(
+                    current.term_out if isinstance(current.term_out, str) else ""
+                ),
                 "task_desc": context.task_desc,
                 "data_preview": self._get_cached_data_preview(),
                 "device_info": context.device_info,

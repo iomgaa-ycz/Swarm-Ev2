@@ -1,79 +1,19 @@
 """P0/P1 V6 修复的单元测试。
 
 覆盖：
-- P0-2: truncate_term_out
 - P0-3: _check_submission_and_set_error
 - P0-4: _estimate_timeout 图像检测
 - P0-1: run_single_ga_step
 - P1-2: _build_draft_history TimeoutError 警告注入
 - P1-3A: _get_cached_data_preview 缓存读取
 - P1-3B: preview_special_file pd.read_csv 提示
+
+注: condense_term_out 测试已迁移到 test_text_utils.py
 """
 
 import pytest
 from unittest.mock import MagicMock, patch, PropertyMock
 from pathlib import Path
-
-
-# ============================================================
-# P0-2: truncate_term_out
-# ============================================================
-
-
-class TestTruncateTermOut:
-    """测试 Review Prompt 截断功能。"""
-
-    def test_short_text_unchanged(self):
-        """短文本原样返回。"""
-        from utils.text_utils import truncate_term_out
-
-        text = "Hello world"
-        assert truncate_term_out(text) == text
-
-    def test_none_returns_empty(self):
-        """None 输入返回空字符串。"""
-        from utils.text_utils import truncate_term_out
-
-        assert truncate_term_out(None) == ""
-
-    def test_empty_returns_empty(self):
-        """空字符串返回空字符串。"""
-        from utils.text_utils import truncate_term_out
-
-        assert truncate_term_out("") == ""
-
-    def test_exact_limit_unchanged(self):
-        """恰好等于限制时不截断。"""
-        from utils.text_utils import truncate_term_out
-
-        text = "x" * 3500
-        assert truncate_term_out(text, max_len=3500) == text
-
-    def test_over_limit_truncated(self):
-        """超过限制时截断，保留头尾。"""
-        from utils.text_utils import truncate_term_out
-
-        # 构造 5000 字符文本
-        text = "H" * 2000 + "M" * 1000 + "T" * 2000
-        result = truncate_term_out(text, max_len=3500)
-
-        # 检查头部
-        assert result.startswith("H" * 1500)
-        # 检查尾部
-        assert result.endswith("T" * 2000)
-        # 检查截断标记
-        assert "truncated" in result
-        # 检查长度小于原始
-        assert len(result) < len(text)
-
-    def test_truncation_message_contains_char_count(self):
-        """截断消息包含省略字符数。"""
-        from utils.text_utils import truncate_term_out
-
-        text = "x" * 10000
-        result = truncate_term_out(text, max_len=3500)
-        # 省略 = 10000 - 1500 - 2000 = 6500
-        assert "6500" in result
 
 
 # ============================================================

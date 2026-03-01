@@ -1,12 +1,12 @@
 """Orchestrator 单元测试模块。"""
 
+import json
 import pytest
 from unittest.mock import Mock, patch
 from omegaconf import OmegaConf
 
 from core.orchestrator import Orchestrator
 from core.state import Node, Journal
-from agents.base_agent import AgentResult
 
 
 @pytest.fixture
@@ -82,11 +82,23 @@ class TestOrchestrator:
         assert orchestrator.best_node is None
 
     def test_review_node_success(self, orchestrator):
-        """测试 Review 评估成功。"""
+        """测试 Review 评估成功（纯文本 JSON 方案）。"""
         node = Node(code="print('test')", plan="Test plan")
 
-        # Mock backend.query 返回 Function Calling 响应（使用新的 schema）
-        # 同时 mock _check_submission_exists 返回 True
+        # Mock backend_query 返回纯文本 JSON（无 function calling）
+        review_json = json.dumps({
+            "is_bug": False,
+            "metric": 0.90,
+            "key_change": "Added print statement",
+            "insight": "Good result",
+            "lower_is_better": False,
+            "has_csv_submission": True,
+            "metric_name": "auc",
+            "bottleneck": "Limited features",
+            "suggested_direction": "Add more features",
+            "approach_tag": "Simple print test",
+        })
+
         with patch("core.orchestrator.backend_query") as mock_query:
             with patch.object(
                 orchestrator, "_check_submission_exists", return_value=True
@@ -96,14 +108,13 @@ class TestOrchestrator:
                     "_validate_submission_format",
                     return_value={"valid": True, "errors": [], "row_count": 100},
                 ):
-                    mock_query.return_value = '{"is_bug": false, "metric": 0.90, "key_change": "Added print statement", "insight": "Good result", "lower_is_better": false, "has_csv_submission": true}'
-
+                    mock_query.return_value = review_json
                     orchestrator._review_node(node)
 
         # 验证
         assert node.is_buggy is False
         assert node.metric_value == 0.90
-        assert node.analysis == "Added print statement"  # 现在存储 key_change
+        assert node.analysis == "Added print statement"
         assert node.analysis_detail is not None
         assert node.analysis_detail["key_change"] == "Added print statement"
         assert node.lower_is_better is False
@@ -192,26 +203,8 @@ class TestOrchestrator:
         orchestrator._update_best_node(node3)
         assert orchestrator.best_node == node2  # 仍然是 node2
 
-    def test_get_review_tool_schema(self, orchestrator):
-        """测试 Review tool schema 生成（增强版）。"""
-        schema = orchestrator._get_review_tool_schema()
-
-        assert schema["name"] == "submit_review"
-        assert "parameters" in schema
-        assert "properties" in schema["parameters"]
-        # 验证基础字段
-        assert "is_bug" in schema["parameters"]["properties"]
-        assert "metric" in schema["parameters"]["properties"]
-        assert "lower_is_better" in schema["parameters"]["properties"]
-        # 验证新增字段
-        assert "key_change" in schema["parameters"]["properties"]
-        assert "metric_delta" not in schema["parameters"]["properties"]
-        assert "insight" in schema["parameters"]["properties"]
-        assert "bottleneck" in schema["parameters"]["properties"]
-        assert "suggested_direction" in schema["parameters"]["properties"]
-
     def test_build_review_messages(self, orchestrator):
-        """测试 Review messages 构建（包含变更上下文）。"""
+        """测试 Review messages 构建（包含变更上下文 + JSON 模板）。"""
         node = Node(
             code="print('test')",
             plan="Test plan",
@@ -228,8 +221,14 @@ class TestOrchestrator:
         assert "print('test')" in messages
         assert "test\n" in messages
         assert "0.50s" in messages
-        assert "Code Changes" in messages  # 新增的变更上下文部分
+        assert "Code Changes" in messages
         assert "Initial solution" in messages
+        # 验证 JSON 模板（取代了 "Call submit_review"）
+        assert "submit_review" not in messages
+        assert '"is_bug"' in messages
+        assert '"metric_name"' in messages
+        assert '"approach_tag"' in messages
+        assert "ALL 10 keys required" in messages
 
 
 class TestDebugChain:

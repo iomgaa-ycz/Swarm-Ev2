@@ -42,7 +42,7 @@ def mock_config(tmp_path):
             "project": {"workspace_dir": str(tmp_path)},
             "agent": {"max_steps": 10, "time_limit": 3600},
             "search": {"num_drafts": 3, "debug_prob": 0.5, "parallel_num": 1},
-            "execution": {"timeout": 60},
+            "execution": {"timeout": 60, "adaptive_timeout": False},
             "llm": {
                 "feedback": {
                     "model": "test",
@@ -294,82 +294,36 @@ class TestP0B_CheckMetricPlausibility:
 
 
 # ============================================================
-# P0-C: stdout Metric 正则提取
-# ============================================================
-
-
-class TestP0C_ParseMetricFromStdout:
-    """_parse_metric_from_stdout() 测试。"""
-
-    def test_single_match(self, orchestrator):
-        """单行匹配。"""
-        stdout = "Training done.\nValidation metric: 0.95432\nSaved submission."
-        assert orchestrator._parse_metric_from_stdout(stdout) == pytest.approx(0.95432)
-
-    def test_multi_fold_takes_last(self, orchestrator):
-        """多折输出取最后一个（平均值）。"""
-        stdout = (
-            "Fold 1 - Validation metric: 0.91\n"
-            "Fold 2 - Validation metric: 0.93\n"
-            "Fold 3 - Validation metric: 0.92\n"
-            "Mean - Validation metric: 0.9200\n"
-        )
-        assert orchestrator._parse_metric_from_stdout(stdout) == pytest.approx(0.92)
-
-    def test_scientific_notation(self, orchestrator):
-        """科学计数法。"""
-        stdout = "Validation metric: 1.23e-04"
-        assert orchestrator._parse_metric_from_stdout(stdout) == pytest.approx(1.23e-4)
-
-    def test_no_match_returns_none(self, orchestrator):
-        """无匹配返回 None。"""
-        stdout = "Training complete. Loss: 0.5"
-        assert orchestrator._parse_metric_from_stdout(stdout) is None
-
-    def test_empty_input(self, orchestrator):
-        """空输入返回 None。"""
-        assert orchestrator._parse_metric_from_stdout("") is None
-        assert orchestrator._parse_metric_from_stdout(None) is None
-
-    def test_negative_value(self, orchestrator):
-        """负数值。"""
-        stdout = "Validation metric: -0.532"
-        assert orchestrator._parse_metric_from_stdout(stdout) == pytest.approx(-0.532)
-
-    def test_integer_value(self, orchestrator):
-        """整数值。"""
-        stdout = "Validation metric: 100"
-        assert orchestrator._parse_metric_from_stdout(stdout) == pytest.approx(100.0)
-
-    def test_no_leading_zero(self, orchestrator):
-        """无前导零的小数。"""
-        stdout = "Validation metric: .95"
-        assert orchestrator._parse_metric_from_stdout(stdout) == pytest.approx(0.95)
-
-
-# ============================================================
-# P0-C (补充): Review 集成测试 — Phase 5.5 三路决策
+# P0-C: Review 集成测试
 # ============================================================
 
 
 class TestP0C_ReviewIntegration:
-    """_review_node() Phase 5.5 集成测试：LLM 与 stdout metric 合并逻辑。"""
+    """_review_node() 集成测试：纯文本 JSON 方案。"""
 
-    def test_stdout_fallback_when_llm_no_metric(self, orchestrator):
-        """LLM 未提取 metric 时使用 stdout 值补位。"""
-        node = Node(code="print('test')", plan="plan")
-        node.term_out = "Training done.\nValidation metric: 0.8500\nSaved."
-        node.exec_time = 1.0
-        node.exc_type = None
-
-        review_data = {
+    def _make_review_json(self, **overrides) -> str:
+        """构建完整 10 字段 review JSON 字符串。"""
+        data = {
             "is_bug": False,
-            "metric": None,
+            "metric": 0.90,
             "lower_is_better": False,
             "has_csv_submission": True,
-            "key_change": "test",
-            "insight": "test",
+            "key_change": "test change",
+            "insight": "test insight",
+            "metric_name": "log_loss",
+            "bottleneck": "test bottleneck",
+            "suggested_direction": "test direction",
+            "approach_tag": "test approach",
         }
+        data.update(overrides)
+        return json.dumps(data)
+
+    def test_llm_metric_used_directly(self, orchestrator):
+        """LLM 返回 metric 直接使用（不再有 stdout 兜底）。"""
+        node = Node(code="print('test')", plan="plan")
+        node.term_out = "Training done.\nSaved."
+        node.exec_time = 1.0
+        node.exc_type = None
 
         with (
             patch.object(orchestrator, "_check_submission_exists", return_value=True),
@@ -378,112 +332,51 @@ class TestP0C_ReviewIntegration:
                 "_validate_submission_format",
                 return_value={"valid": True, "errors": [], "row_count": 100},
             ),
-            patch.object(
-                orchestrator,
-                "_call_review_with_tool_debug",
-                return_value=(json.dumps(review_data), review_data),
-            ),
+            patch("core.orchestrator.backend_query") as mock_query,
         ):
+            mock_query.return_value = self._make_review_json(metric=0.85)
             orchestrator._review_node(node)
 
-        # stdout 值应被用作补位
         assert node.metric_value == pytest.approx(0.85)
         assert node.is_buggy is False
 
-    def test_llm_priority_on_mismatch(self, orchestrator):
-        """LLM 与 stdout 不一致时保留 LLM 值，并记录 mismatch。"""
-        node = Node(code="print('test')", plan="plan")
-        node.term_out = "Validation metric: 0.7000"
-        node.exec_time = 1.0
-        node.exc_type = None
-
-        review_data = {
-            "is_bug": False,
-            "metric": 0.90,
-            "lower_is_better": False,
-            "has_csv_submission": True,
-            "key_change": "test",
-            "insight": "test",
-        }
-
-        with (
-            patch.object(orchestrator, "_check_submission_exists", return_value=True),
-            patch.object(
-                orchestrator,
-                "_validate_submission_format",
-                return_value={"valid": True, "errors": [], "row_count": 100},
-            ),
-            patch.object(
-                orchestrator,
-                "_call_review_with_tool_debug",
-                return_value=(json.dumps(review_data), review_data),
-            ),
-            patch("core.orchestrator.log_json") as mock_log_json,
-        ):
-            orchestrator._review_node(node)
-
-        # LLM 值优先
-        assert node.metric_value == pytest.approx(0.90)
-        assert node.is_buggy is False
-        # 应记录 mismatch 事件
-        mock_log_json.assert_called_once()
-        call_args = mock_log_json.call_args[0][0]
-        assert call_args["event"] == "metric_mismatch"
-        assert call_args["llm_metric"] == 0.90
-        assert call_args["stdout_metric"] == pytest.approx(0.70)
-
-    def test_both_agree_no_mismatch_log(self, orchestrator):
-        """LLM 与 stdout 一致（<1%差异）时不记录 mismatch。"""
-        node = Node(code="print('test')", plan="plan")
-        # 0.9005 vs 0.90 → diff=0.0005, threshold=0.009 → 不触发
-        node.term_out = "Validation metric: 0.9005"
-        node.exec_time = 1.0
-        node.exc_type = None
-
-        review_data = {
-            "is_bug": False,
-            "metric": 0.90,
-            "lower_is_better": False,
-            "has_csv_submission": True,
-            "key_change": "test",
-            "insight": "test",
-        }
-
-        with (
-            patch.object(orchestrator, "_check_submission_exists", return_value=True),
-            patch.object(
-                orchestrator,
-                "_validate_submission_format",
-                return_value={"valid": True, "errors": [], "row_count": 100},
-            ),
-            patch.object(
-                orchestrator,
-                "_call_review_with_tool_debug",
-                return_value=(json.dumps(review_data), review_data),
-            ),
-            patch("core.orchestrator.log_json") as mock_log_json,
-        ):
-            orchestrator._review_node(node)
-
-        assert node.metric_value == pytest.approx(0.90)
-        # 不应记录 mismatch
-        mock_log_json.assert_not_called()
-
-    def test_both_none_marks_buggy(self, orchestrator):
-        """LLM 和 stdout 都无 metric 时节点标记为 buggy。"""
+    def test_none_metric_marks_buggy(self, orchestrator):
+        """LLM 返回 metric=None 时节点标记为 buggy。"""
         node = Node(code="print('test')", plan="plan")
         node.term_out = "Training complete. No metric output."
         node.exec_time = 1.0
         node.exc_type = None
 
-        review_data = {
-            "is_bug": False,
-            "metric": None,
-            "lower_is_better": False,
-            "has_csv_submission": True,
-            "key_change": "test",
-            "insight": "test",
-        }
+        with (
+            patch.object(orchestrator, "_check_submission_exists", return_value=True),
+            patch.object(
+                orchestrator,
+                "_validate_submission_format",
+                return_value={"valid": True, "errors": [], "row_count": 100},
+            ),
+            patch("core.orchestrator.backend_query") as mock_query,
+        ):
+            mock_query.return_value = self._make_review_json(metric=None)
+            orchestrator._review_node(node)
+
+        assert node.metric_value is None
+        assert node.is_buggy is True
+
+    def test_retry_on_missing_fields(self, orchestrator):
+        """首次返回缺失字段时触发重试，第二次成功。"""
+        node = Node(code="print('test')", plan="plan")
+        node.term_out = "Validation metric: 0.90"
+        node.exec_time = 1.0
+        node.exc_type = None
+
+        # 首次返回缺少 approach_tag，第二次返回完整
+        incomplete_json = json.dumps({
+            "is_bug": False, "metric": 0.90,
+            "lower_is_better": False, "has_csv_submission": True,
+            "key_change": "test", "insight": "test",
+            "metric_name": "auc",
+        })
+        complete_json = self._make_review_json(metric=0.90)
 
         with (
             patch.object(orchestrator, "_check_submission_exists", return_value=True),
@@ -492,17 +385,14 @@ class TestP0C_ReviewIntegration:
                 "_validate_submission_format",
                 return_value={"valid": True, "errors": [], "row_count": 100},
             ),
-            patch.object(
-                orchestrator,
-                "_call_review_with_tool_debug",
-                return_value=(json.dumps(review_data), review_data),
-            ),
+            patch("core.orchestrator.backend_query") as mock_query,
         ):
+            mock_query.side_effect = [incomplete_json, complete_json]
             orchestrator._review_node(node)
 
-        # metric_value=None → is_buggy 条件 3 触发
-        assert node.metric_value is None
-        assert node.is_buggy is True
+        assert node.metric_value == pytest.approx(0.90)
+        assert node.is_buggy is False
+        assert mock_query.call_count == 2
 
 
 # ============================================================
@@ -510,14 +400,8 @@ class TestP0C_ReviewIntegration:
 # ============================================================
 
 
-class TestP0E_ReviewSchema:
-    """Review tool schema 和 prompt 增强测试。"""
-
-    def test_metric_name_in_schema_and_required(self, orchestrator):
-        """metric_name 字段存在且在 required 列表中。"""
-        schema = orchestrator._get_review_tool_schema()
-        assert "metric_name" in schema["parameters"]["properties"]
-        assert "metric_name" in schema["parameters"]["required"]
+class TestP0E_ReviewPrompt:
+    """Review prompt 增强测试（纯文本 JSON 方案）。"""
 
     def test_alignment_check_in_prompt(self, orchestrator):
         """Review prompt 包含 Metric Alignment Check 段落。"""
@@ -531,7 +415,25 @@ class TestP0E_ReviewSchema:
             node, "(Initial solution, no diff)"
         )
         assert "Metric Alignment Check" in messages
-        assert "Focal Loss" in messages  # 提示检查 loss/metric 对齐
+        assert "Focal Loss" in messages
+
+    def test_json_template_in_prompt(self, orchestrator):
+        """Review prompt 包含 JSON 输出模板（10 个字段）。"""
+        node = Node(
+            code="print('test')",
+            plan="plan",
+            term_out="output",
+            exec_time=1.0,
+        )
+        messages = orchestrator._build_review_messages(
+            node, "(Initial solution, no diff)"
+        )
+        assert "submit_review" not in messages
+        assert '"is_bug"' in messages
+        assert '"metric_name"' in messages
+        assert '"approach_tag"' in messages
+        assert '"bottleneck"' in messages
+        assert "ALL 10 keys required" in messages
 
 
 # ============================================================
@@ -662,20 +564,20 @@ class TestP0F_ValidateSubmissionFormat:
         sub = pd.DataFrame({"id": [1, 2], "target": [0.5, np.nan]})
         sub.to_csv(sub_dir / f"submission_{node.id}.csv", index=False)
 
-        review_data = {
+        review_json = json.dumps({
             "is_bug": False,
             "metric": 0.90,
             "lower_is_better": False,
             "has_csv_submission": True,
-            "key_change": "test",
-            "insight": "test",
-        }
+            "key_change": "test change",
+            "insight": "test insight",
+            "metric_name": "auc",
+            "bottleneck": "test bottleneck",
+            "suggested_direction": "test direction",
+            "approach_tag": "test approach",
+        })
 
-        with patch.object(
-            orchestrator,
-            "_call_review_with_tool_debug",
-            return_value=(json.dumps(review_data), review_data),
-        ):
+        with patch("core.orchestrator.backend_query", return_value=review_json):
             orchestrator._review_node(node)
 
         # 格式无效 → has_submission=False → is_buggy 条件 4 触发
