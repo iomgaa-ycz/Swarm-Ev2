@@ -270,13 +270,13 @@ def generate_markdown_report(
     return report_path
 
 
-def print_evolution_statistics(
+def log_evolution_statistics(
     journal: Journal,
     experience_pool: ExperiencePool,
     task_dispatcher: TaskDispatcher,
     best_node: Optional[Node],
 ) -> None:
-    """打印进化统计信息。
+    """记录进化统计信息。
 
     Args:
         journal: 历史节点记录
@@ -284,47 +284,36 @@ def print_evolution_statistics(
         task_dispatcher: 任务分发器
         best_node: 最佳节点
     """
-    print("\n" + "=" * 60)
-    print("📊 进化统计")
-    print("=" * 60)
-
-    # 节点统计
     total_nodes = len(journal.nodes)
     success_nodes = len([n for n in journal.nodes if not n.is_buggy])
-    print("\n[节点统计]")
-    print(f"  总节点数: {total_nodes}")
-    print(f"  成功节点: {success_nodes}")
-    print(f"  失败节点: {total_nodes - success_nodes}")
-    print(
-        f"  成功率: {success_nodes / total_nodes * 100 if total_nodes > 0 else 0:.1f}%"
+    success_rate = success_nodes / total_nodes * 100 if total_nodes > 0 else 0
+
+    log_msg("INFO", "=" * 60)
+    log_msg("INFO", "进化统计")
+    log_msg(
+        "INFO",
+        f"[节点] 总={total_nodes}, 成功={success_nodes}, 失败={total_nodes - success_nodes}, 成功率={success_rate:.1f}%",
     )
+    log_msg("INFO", f"[经验池] 记录数={len(experience_pool.records)}")
 
-    # 经验池统计
-    print("\n[经验池]")
-    print(f"  记录数: {len(experience_pool.records)}")
-
-    # Agent 擅长度得分
-    print("\n[Agent 擅长度得分]")
     scores = task_dispatcher.get_specialization_matrix()
     for agent_id, task_scores in scores.items():
-        print(
-            f"  {agent_id}: "
+        log_msg(
+            "INFO",
+            f"[Agent] {agent_id}: "
             f"draft={task_scores.get('draft', task_scores.get('explore', 0)):.3f}, "
             f"merge={task_scores.get('merge', 0):.3f}, "
-            f"mutate={task_scores.get('mutate', 0):.3f}"
+            f"mutate={task_scores.get('mutate', 0):.3f}",
         )
 
-    # 最佳方案
-    print("\n[最佳方案]")
     if best_node:
-        print(f"  节点 ID: {best_node.id[:12]}")
-        print(f"  评估指标: {best_node.metric_value}")
-        print(f"  越小越好: {best_node.lower_is_better}")
-        print(f"  执行时间: {best_node.exec_time:.2f}s")
+        log_msg(
+            "INFO",
+            f"[最佳] ID={best_node.id[:12]}, metric={best_node.metric_value}, lower_is_better={best_node.lower_is_better}, exec_time={best_node.exec_time:.2f}s",
+        )
     else:
-        print("  未找到有效方案")
-
-    print("\n" + "=" * 60)
+        log_msg("INFO", "[最佳] 未找到有效方案")
+    log_msg("INFO", "=" * 60)
 
 
 def main() -> None:
@@ -338,14 +327,14 @@ def main() -> None:
         5. 生成 Markdown 测试报告
         6. 结果展示
     """
-    print("\n🚀 启动 Swarm-Ev2 双层群体智能系统\n")
+    log_msg("INFO", "启动 Swarm-Ev2 双层群体智能系统")
     start_time = time.time()
 
     try:
         # ============================================================
         # Phase 1: 环境准备
         # ============================================================
-        print("[1/6] 环境准备...")
+        log_msg("INFO", "[1/6] 环境准备...")
 
         # 加载配置
         config = load_config()
@@ -353,24 +342,25 @@ def main() -> None:
         # 验证数据集
         is_valid, error_msg = validate_dataset(config.data.data_dir)
         if not is_valid:
-            print(f"❌ 数据集验证失败: {error_msg}")
+            log_msg("ERROR", f"数据集验证失败: {error_msg}")
             return
 
-        print(f"✅ 数据集验证通过: {config.data.data_dir}")
+        log_msg("INFO", f"数据集验证通过: {config.data.data_dir}")
 
         # 初始化代理（测试连通性 + 配置环境变量）
         from utils.proxy import init_proxy
+
         init_proxy()
 
         # ============================================================
         # Phase 2: 工作空间构建
         # ============================================================
-        print("\n[2/6] 工作空间构建...")
+        log_msg("INFO", "[2/6] 工作空间构建...")
 
         # 清理旧的 workspace 目录
         if config.project.workspace_dir.exists():
             shutil.rmtree(config.project.workspace_dir)
-            print(f"  清理旧的工作空间: {config.project.workspace_dir}")
+            log_msg("INFO", f"清理旧的工作空间: {config.project.workspace_dir}")
 
         # 构建新的 workspace
         task_description = build_workspace(
@@ -378,23 +368,23 @@ def main() -> None:
             workspace_dir=config.project.workspace_dir,
             copy_data=config.data.copy_data,
         )
-        print(f"✅ 工作空间构建成功: {config.project.workspace_dir}")
+        log_msg("INFO", f"工作空间构建成功: {config.project.workspace_dir}")
 
         # 初始化工作空间管理器并执行数据预处理（解压压缩包 + 清理垃圾文件）
         workspace = WorkspaceManager(config)
         if getattr(config.data, "preprocess_data", True):
-            print("  执行数据预处理（解压 + 清理）...")
+            log_msg("INFO", "执行数据预处理（解压 + 清理）...")
             workspace.preprocess_input()
-            print("✅ 数据预处理完成")
+            log_msg("INFO", "数据预处理完成")
 
         # P0-3 修复：保护输入文件
         workspace.protect_input_files()
-        print("✅ 输入文件已保护 (chmod 444)")
+        log_msg("INFO", "输入文件已保护 (chmod 444)")
 
         # ============================================================
         # Phase 3: 组件初始化
         # ============================================================
-        print("\n[3/6] 组件初始化...")
+        log_msg("INFO", "[3/6] 组件初始化...")
 
         # 初始化日志系统
         log_dir = config.project.workspace_dir / "logs"
@@ -469,35 +459,39 @@ def main() -> None:
         )
         log_msg("INFO", "SolutionEvolution 初始化完成（MVP 简化版）")
 
-        print("✅ 所有组件初始化完成")
+        log_msg("INFO", "所有组件初始化完成")
 
-        # 打印配置摘要
-        print("\n📋 配置摘要:")
-        print(f"  Agent 数量: {config.evolution.agent.num_agents}")
-        print(f"  每 Epoch 步数: {config.evolution.solution.steps_per_epoch}")
-        print(f"  探索率: {config.evolution.agent.epsilon}")
-        print(f"  Phase 1 目标节点: {config.evolution.solution.phase1_target_nodes}")
-        print(f"  Debug 最大次数: {config.evolution.solution.debug_max_attempts}")
+        # 配置摘要
+        log_msg(
+            "INFO",
+            f"配置摘要: agents={config.evolution.agent.num_agents}, "
+            f"steps_per_epoch={config.evolution.solution.steps_per_epoch}, "
+            f"epsilon={config.evolution.agent.epsilon}, "
+            f"phase1_target={config.evolution.solution.phase1_target_nodes}, "
+            f"debug_max={config.evolution.solution.debug_max_attempts}",
+        )
 
         # ============================================================
         # Phase 4: 两阶段进化主循环
         # ============================================================
-        print("\n[4/6] 运行两阶段进化主循环...")
+        log_msg("INFO", "[4/6] 运行两阶段进化主循环...")
 
         total_budget = config.agent.max_steps
         steps_per_epoch = config.evolution.solution.steps_per_epoch
         phase1_target = config.evolution.solution.phase1_target_nodes
         global_epoch = 0  # Phase 1 + Phase 2 共享的全局 epoch 计数
 
-        print(f"  总预算: {total_budget} 步 (Phase 1 + Phase 2 共享)")
-        print(f"  Phase 1 目标 valid_pool: {phase1_target}")
-        print(f"  每 Epoch 步数: {steps_per_epoch}")
-        print("")
+        log_msg(
+            "INFO",
+            f"总预算={total_budget}, Phase1目标={phase1_target}, steps_per_epoch={steps_per_epoch}",
+        )
 
         # --- Phase 1: Draft while 循环（每 epoch 后检查终止 + 触发 Agent 进化）---
         log_msg("INFO", "===== 开始 Phase 1: Draft 模式 =====")
 
-        while len(journal.nodes) < total_budget and not orchestrator._check_time_limit():
+        while (
+            len(journal.nodes) < total_budget and not orchestrator._check_time_limit()
+        ):
             remaining = total_budget - len(journal.nodes)
             epoch_steps = min(steps_per_epoch, remaining)
 
@@ -506,11 +500,14 @@ def main() -> None:
 
             # Agent 进化（全局 epoch 计数，Phase 1 + Phase 2 共享）
             if agent_evolution and global_epoch % 3 == 0:
-                log_msg("INFO", f"触发 Agent 层进化（Phase 1, global_epoch={global_epoch}）")
+                log_msg(
+                    "INFO", f"触发 Agent 层进化（Phase 1, global_epoch={global_epoch}）"
+                )
                 agent_evolution.evolve(global_epoch)
 
             valid_pool = [
-                n for n in journal.nodes
+                n
+                for n in journal.nodes
                 if not n.is_buggy and not n.dead and validate_genes(n.genes)
             ]
             log_msg(
@@ -520,7 +517,10 @@ def main() -> None:
             )
 
             if len(valid_pool) >= phase1_target:
-                log_msg("INFO", f"Phase 1 达标: valid_pool={len(valid_pool)}/{phase1_target}")
+                log_msg(
+                    "INFO",
+                    f"Phase 1 达标: valid_pool={len(valid_pool)}/{phase1_target}",
+                )
                 break
 
         log_msg(
@@ -538,8 +538,6 @@ def main() -> None:
             "INFO",
             f"===== 开始 Phase 2: 进化模式 | 剩余预算={phase2_remaining} 步 ({num_epochs} epochs) =====",
         )
-        best_node = None
-
         for epoch in range(num_epochs):
             if orchestrator._check_time_limit():
                 log_msg("INFO", "时间限制已达，停止 Phase 2 进化")
@@ -551,26 +549,15 @@ def main() -> None:
 
             log_msg("INFO", f"===== Phase 2 Epoch {epoch + 1}/{num_epochs} =====")
             steps = min(steps_per_epoch, remaining)
-            epoch_best = solution_evolution.run_epoch(steps)
+            solution_evolution.run_epoch(steps)
 
             global_epoch += 1  # 接续 Phase 1 全局计数
 
-            if epoch_best and epoch_best.metric_value is not None:
-                if best_node is None or best_node.metric_value is None:
-                    best_node = epoch_best
-                else:
-                    lower = orchestrator._global_lower_is_better or False
-                    is_better = (
-                        epoch_best.metric_value < best_node.metric_value
-                        if lower
-                        else epoch_best.metric_value > best_node.metric_value
-                    )
-                    if is_better:
-                        best_node = epoch_best
-
             # Agent 进化（全局 epoch 计数，与 Phase 1 共享）
             if agent_evolution and global_epoch % 3 == 0:
-                log_msg("INFO", f"触发 Agent 层进化（Phase 2, global_epoch={global_epoch}）")
+                log_msg(
+                    "INFO", f"触发 Agent 层进化（Phase 2, global_epoch={global_epoch}）"
+                )
                 agent_evolution.evolve(global_epoch)
 
             current_best = journal.get_best_node(
@@ -593,7 +580,7 @@ def main() -> None:
         # ============================================================
         # Phase 5: 生成 Markdown 测试报告
         # ============================================================
-        print("\n[5/6] 生成测试报告...")
+        log_msg("INFO", "[5/6] 生成测试报告...")
 
         report_path = generate_markdown_report(
             journal=journal,
@@ -604,33 +591,25 @@ def main() -> None:
             best_node=best_node,
         )
 
-        print(f"✅ 测试报告: {report_path}")
+        log_msg("INFO", f"测试报告: {report_path}")
 
         # ============================================================
         # Phase 6: 结果展示
         # ============================================================
-        print("\n[6/6] 结果展示...")
+        log_msg("INFO", "[6/6] 结果展示...")
 
         if best_node is None:
-            print("❌ 未找到有效方案")
             log_msg("WARNING", "未找到有效方案")
         else:
-            print("\n🎉 最佳方案已生成:")
-            print(f"  节点 ID: {best_node.id[:12]}")
-            print(f"  评估指标: {best_node.metric_value}")
-            print(f"  越小越好: {best_node.lower_is_better}")
-            print(f"  执行时间: {best_node.exec_time:.2f}s")
-            print(
-                f"  代码路径: {config.project.workspace_dir / 'best_solution' / 'solution.py'}"
-            )
-
             log_msg(
                 "INFO",
-                f"最佳方案: ID={best_node.id[:12]}, metric={best_node.metric_value}",
+                f"最佳方案: ID={best_node.id[:12]}, metric={best_node.metric_value}, "
+                f"lower_is_better={best_node.lower_is_better}, exec_time={best_node.exec_time:.2f}s, "
+                f"path={config.project.workspace_dir / 'best_solution' / 'solution.py'}",
             )
 
-        # 打印进化统计
-        print_evolution_statistics(journal, experience_pool, task_dispatcher, best_node)
+        # 记录进化统计
+        log_evolution_statistics(journal, experience_pool, task_dispatcher, best_node)
 
         # 保存 Journal
         journal_path = config.project.workspace_dir / "logs" / "journal.json"
@@ -642,7 +621,7 @@ def main() -> None:
         log_msg("INFO", f"经验池已保存: {experience_pool.save_path}")
 
         elapsed_time = time.time() - start_time
-        print(f"\n✅ 执行完成！总耗时: {elapsed_time:.2f}s\n")
+        log_msg("INFO", f"执行完成！总耗时: {elapsed_time:.2f}s")
 
         # 记录最终日志
         log_json(
@@ -657,10 +636,8 @@ def main() -> None:
         )
 
     except KeyboardInterrupt:
-        print("\n\n⚠️  用户中断执行")
         log_msg("WARNING", "用户中断执行")
     except Exception as e:
-        print(f"\n\n❌ 执行失败: {e}")
         log_exception(e, "主程序执行失败")
         raise
 

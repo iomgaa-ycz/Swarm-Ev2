@@ -33,8 +33,6 @@ class AgentContext(DataClassJsonMixin):
         device_info: 硬件描述字符串（CPU/RAM/GPU）
         conda_packages: Conda 环境包信息描述
         conda_env_name: Conda 环境名称
-        parent_a: merge 任务专用 - 父代 A
-        parent_b: merge 任务专用 - 父代 B
         gene_plan: merge 任务专用 - 基因交叉计划
         primary_parent: merge 任务专用 - 贡献基因最多的父代（取代 parent_a 作为语义主父代）
         gene_sources: merge 任务专用 - {locus: source_node_id} 字典，记录每个位点的来源
@@ -54,9 +52,7 @@ class AgentContext(DataClassJsonMixin):
     conda_packages: str = ""
     conda_env_name: str = ""
     # merge 任务专用字段
-    parent_a: Optional[Node] = None       # 保留：兼容旧 execute_merge_task 过渡期
-    parent_b: Optional[Node] = None       # 保留：兼容旧 execute_merge_task 过渡期
-    primary_parent: Optional[Node] = None  # 新增：贡献基因最多的父代
+    primary_parent: Optional[Node] = None
     gene_plan: Optional[dict] = None
     gene_sources: Optional[Dict[str, str]] = None  # 新增：{locus: source_node_id}
     # mutate 任务专用字段

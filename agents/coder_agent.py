@@ -104,7 +104,7 @@ class CoderAgent(BaseAgent):
 
         # Phase 2: 构建 Prompt
         prompt = self.prompt_manager.build_prompt(
-            context.task_type,   # "draft" → draft.j2, "explore" → explore.j2
+            context.task_type,  # "draft" → draft.j2, "explore" → explore.j2
             self.name,
             {
                 "task_desc": context.task_desc,
@@ -288,7 +288,7 @@ class CoderAgent(BaseAgent):
             self.name,
             {
                 "task_desc": context.task_desc,
-                "primary_parent": context.primary_parent,   # 改：取代 parent_a/parent_b
+                "primary_parent": context.primary_parent,  # 改：取代 parent_a/parent_b
                 "gene_plan": context.gene_plan,
                 "time_remaining": time_remaining,
                 "steps_remaining": steps_remaining,
