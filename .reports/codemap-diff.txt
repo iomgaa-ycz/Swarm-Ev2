@@ -1,94 +1,78 @@
 # Codemap 差异报告
-生成时间: 2026-03-01 (第四次更新)
+生成时间: 2026-03-01 (第五次更新)
 
 ## 变更摘要
 
-### 上次版本 (2026-02-11 v0.4.1)
-- 项目版本: 0.4.1
-- 核心代码: ~10817 行 (41 模块)
-- 测试文件: 37 个 (~8709 行)
-- 基因系统: 7 基因
-- 进化架构: 单阶段
-- Review: Function Calling
-
-### 当前版本 (2026-03-01 v0.5.0)
+### 上次版本 (2026-03-01 v0.5.0)
 - 项目版本: 0.5.0
 - 核心代码: ~11865 行 (42 模块)
 - 测试文件: 39 个 (~9600+ 行)
 - 基因系统: 4 基因 + sub-aspects
 - 进化架构: 两阶段 (Phase 1 Draft + Phase 2 GA)
 - Review: 纯文本 JSON + LLM 输出压缩
-- 新增模块: core/evolution/gene_compatibility.py (141行)
+
+### 当前版本 (2026-03-01 v0.5.1)
+- 项目版本: 0.5.1
+- 核心代码: ~11721 行 (42 模块)
+- 测试文件: 41 个 (~11300 行)
+- 基因系统: 4 基因 + sub-aspects + lower_is_better 方向排序
+- 进化架构: 两阶段 (Phase 1 Draft + Phase 2 GA) + 方向感知
+- 新增: config/mle_bench.yaml (29行)
 
 ## 差异比例
 
 | 模块 | 上次行数 | 当前行数 | 变化 |
 |------|---------|---------|------|
-| main.py | 592 | 669 | +77 (+13.0%) |
-| core/orchestrator.py | 1626 | 1835 | **+209 (+12.9%)** |
-| agents/coder_agent.py | 416 | 538 | **+122 (+29.3%)** |
-| agents/base_agent.py | 139 | 148 | +9 (+6.5%) |
-| core/state/node.py | 125 | 133 | +8 (+6.4%) |
-| core/state/journal.py | 360 | 372 | +12 (+3.3%) |
-| core/executor/interpreter.py | 463 | 472 | +9 (+1.9%) |
-| core/executor/workspace.py | 244 | 280 | +36 (+14.8%) |
-| core/evolution/gene_parser.py | 162 | 202 | +40 (+24.7%) |
-| core/evolution/gene_selector.py | 322 | 448 | **+126 (+39.1%)** |
-| core/evolution/solution_evolution.py | 329 | 324 | -5 (-1.5%) |
-| **core/evolution/gene_compatibility.py** | **N/A** | **141** | **NEW** |
-| utils/config.py | 607 | 620 | +13 (+2.1%) |
-| utils/text_utils.py | 72 | 143 | **+71 (+98.6%)** |
-| utils/data_preview.py | ~276 | 390 | **+114 (+41.3%)** |
-| utils/system_info.py | 408 | 439 | +31 (+7.6%) |
+| main.py | 669 | 646 | -23 (-3.4%) |
+| core/orchestrator.py | 1835 | 1810 | -25 (-1.4%) |
+| agents/base_agent.py | 148 | 144 | -4 (-2.7%) |
+| core/state/node.py | 133 | 105 | **-28 (-21.1%)** |
+| core/backend/backend_openai.py | 165 | 163 | -2 (-1.2%) |
+| core/executor/interpreter.py | 472 | 440 | **-32 (-6.8%)** |
+| core/evolution/gene_parser.py | 202 | 201 | -1 (-0.5%) |
+| core/evolution/gene_selector.py | 448 | 463 | +15 (+3.3%) |
+| core/evolution/pheromone.py | 104 | 108 | +4 (+3.8%) |
+| core/evolution/solution_evolution.py | 324 | 351 | +27 (+8.3%) |
+| utils/config.py | 620 | 545 | **-75 (-12.1%)** |
+| utils/text_utils.py | 143 | 144 | +1 (+0.7%) |
+| utils/system_info.py | 439 | 444 | +5 (+1.1%) |
+| utils/proxy.py | 202 | 205 | +3 (+1.5%) |
+| utils/prompt_manager.py | 297 | 288 | -9 (-3.0%) |
 
-**行数总差异: ~10% (+1048 行)**
-**语义总差异: ~38% (超过 30% 阈值，需用户批准)**
+**核心代码行数差异: -144 行 (-1.2%)**
+**测试行数差异: +1697 行 (+17.7%)**
+**语义差异: ~8% (低于 30% 阈值，直接更新)**
 
 ## 主要变更
 
-### 1. 基因系统重设计 (commit 02a3294)
-- 旧: 7 基因 (DATA, MODEL, LOSS, OPTIMIZER, REGULARIZATION, INITIALIZATION, TRAINING_TRICKS)
-- 新: 4 基因 (DATA, MODEL, TRAIN, POSTPROCESS) + GENE_SUB_ASPECTS 精细化变异
-- 每个基因有 3-4 个 sub-aspect（共 15 个可变异维度）
+### 1. lower_is_better 方向排序 (commit e7adaa6)
+- gene_selector.py +15行: 支持 lower_is_better 指标方向排序
+- pheromone.py +4行: 信息素计算感知 lower_is_better
+- solution_evolution.py +27行: GA 选择/排序方向感知
+- 新增测试: test_metric_direction.py (commit b8fa649)
 
-### 2. 两阶段进化架构 (commit 6c80bc6)
-- Phase 1 (Draft): 生成初始种群，直到达到 phase1_target_nodes
-- Phase 2 (GA): 50% merge + 50% mutate，遗传算法优化
-- Orchestrator 新增 run_epoch_draft() / run_epoch() 双入口
-- Node 新增字段: dead, debug_attempts, approach_tag, generation
+### 2. 代码精简 (多个文件)
+- config.py -75行: 移除冗余代码，简化配置验证
+- node.py -28行: 精简数据类字段
+- interpreter.py -32行: 移除冗余逻辑
+- orchestrator.py -25行: 代码优化
 
-### 3. Review 系统重写 (commit 5ac4f9b)
-- 旧: Function Calling (GLM-4.6 submit_review tool)
-- 新: 纯文本 JSON 解析 + 前置 LLM 输出压缩
-- text_utils.py 大幅扩展 (72→143 行)
+### 3. 测试扩展 (39→41 个文件, +1697 行)
+- 新增: tests/unit/test_logger_system.py
+- 新增: tests/unit/test_system_info.py
+- 新增: tests/unit/test_workspace_builder.py
+- 删除: tests/unit/test_gene_parser.py (已在 test_evolution/ 中)
+- 删除: tests/unit/test_gene_selector.py (已在 test_evolution/ 中)
+- 删除: tests/unit/test_gene_selector_direction.py (合并到 test_metric_direction.py)
+- 删除: tests/unit/test_p0_fixes.py, test_p0_v6_fixes.py, test_prompt_builder.py (过时/合并)
 
-### 4. 新增 gene_compatibility.py (141 行)
-- 框架互斥检测 (torch vs sklearn vs tensorflow)
-- CompatibilityResult dataclass
-- merge 前注入兼容性警告
-
-### 5. 任务类型变更
-- 旧: explore, merge, mutate
-- 新: draft, merge, mutate (explore 重命名为 draft)
-- Prompt 模板: explore.j2 → draft.j2
-
-### 6. P0 Bug3 修复 (commit d22d7a8)
-- neg_RMSE 负号问题修复
-- 新增 _sanitize_metric_value() 入口校验
-
-### 7. gene_selector.py 大幅扩展 (322→448 行)
-- 退化检测 (pheromone_with_degenerate_check)
-- 主父代推断 (get_primary_parent)
-- 非 stub 基因选择
-
-### 8. stdout 截断策略改进
-- 旧: 简单截断
-- 新: 保留头 N + 尾 M 字符（避免丢失关键输出如 "Validation metric:" 行）
+### 4. 新增 config/mle_bench.yaml (29行)
+- MLE-Bench 评测专用配置覆盖
 
 ## Codemap 文档修正
 
 | 文件 | 修正内容 |
 |------|---------|
-| architecture.md | 全面更新: 版本号、行数、基因系统(7→4基因+sub-aspects)、两阶段进化、task_type(draft)、新模块(gene_compatibility)、总代码统计 |
-| backend.md | 全面更新: 行数、Review系统(FC→纯文本JSON)、新模块、方法签名、测试列表 |
-| data.md | 更新: 头部元数据、两阶段配置参数、数据流图、Review流程、gene系统配置 |
+| architecture.md | 行数校准(15处)、lower_is_better标注、测试统计(39→41文件, 11300行)、新增mle_bench.yaml |
+| backend.md | 行数校准(15处)、lower_is_better功能标注、新增mle_bench.yaml条目 |
+| data.md | 头部元数据更新(版本+行数+阶段描述) |

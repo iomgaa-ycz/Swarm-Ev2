@@ -1,9 +1,9 @@
 # 数据流与配置管理
 
-**Last Updated:** 2026-03-01 (Codemap 同步: 两阶段进化架构 + 4基因重设计 + Review纯文本JSON + gene_compatibility)
-**Version:** 0.5.0
-**模块范围:** main.py (669行), config/, .env, utils/, core/executor/, core/orchestrator.py (1835行), core/evolution/ (solution_evolution.py 324行), benchmark/
-**当前阶段:** 两阶段进化 (Phase 1 Draft + Phase 2 GA) + P0 Bug 修复完成
+**Last Updated:** 2026-03-01 (Codemap v0.5.1: 行数校准 + lower_is_better + 测试扩展)
+**Version:** 0.5.1
+**模块范围:** main.py (646行), config/, .env, utils/, core/executor/, core/orchestrator.py (1810行), core/evolution/ (solution_evolution.py 351行), benchmark/
+**当前阶段:** 两阶段进化 (Phase 1 Draft + Phase 2 GA) + P0 Bug 修复 + lower_is_better 方向排序
 
 ---
 

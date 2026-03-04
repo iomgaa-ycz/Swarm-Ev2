@@ -1,9 +1,9 @@
 # 后端模块详细说明
 
-**Last Updated:** 2026-03-01 (Codemap 同步: 两阶段进化架构 + 4基因重设计 + Review纯文本JSON + gene_compatibility)
+**Last Updated:** 2026-03-01 (Codemap v0.5.1: 行数校准 + lower_is_better + 测试扩展)
 **模块范围:** main.py, utils/, core/state/, core/backend/, core/executor/, core/evolution/, agents/, config/, tests/, benchmark/
-**当前阶段:** 两阶段进化 (Phase 1 Draft + Phase 2 GA) + P0 Bug 修复完成
-**版本:** 0.5.0
+**当前阶段:** 两阶段进化 (Phase 1 Draft + Phase 2 GA) + P0 Bug 修复 + lower_is_better 方向排序
+**版本:** 0.5.1
 
 ---
 
@@ -12,58 +12,59 @@
 | 模块 | 文件 | 行数 | 职责 | 状态 |
 |------|------|------|------|------|
 | **入口层 (Entry)** |||||
-| **main.py** | **`main.py`** | **669** | **两阶段进化架构入口** | **完成** |
+| **main.py** | **`main.py`** | **646** | **两阶段进化架构入口** | **完成** |
 | **run_mle_adapter.py** | **`run_mle_adapter.py`** | **379** | **MLE-Bench 评测适配** | **完成** |
 | **基础设施层** |||||
-| 配置系统 | `utils/config.py` | 620 | OmegaConf 配置加载与验证 (+两阶段EvolutionConfig) | 完成 |
+| 配置系统 | `utils/config.py` | 545 | OmegaConf 配置加载与验证 (+两阶段EvolutionConfig) | 完成 |
 | 日志系统 | `utils/logger_system.py` | 180 | 双通道日志输出 | 完成 |
 | 文件工具 | `utils/file_utils.py` | 222 | 目录复制/链接/解压/清理 | 完成 |
-| 系统信息 | `utils/system_info.py` | 439 | 系统环境信息收集 | 完成 |
-| 文本压缩工具 | `utils/text_utils.py` | 143 | Review 压缩 + stdout 头尾截断 | 完成 |
+| 系统信息 | `utils/system_info.py` | 444 | 系统环境信息收集 | 完成 |
+| 文本压缩工具 | `utils/text_utils.py` | 144 | Review 压缩 + stdout 头尾截断 | 完成 |
 | 数据预览 | `utils/data_preview.py` | 390 | EDA 预览生成 | 完成 |
-| 代理设置 | `utils/proxy.py` | 202 | HTTP/HTTPS 代理初始化 | 完成 |
+| 代理设置 | `utils/proxy.py` | 205 | HTTP/HTTPS 代理初始化 | 完成 |
 | 代码验证器 | `utils/code_validator.py` | 79 | Python 代码静态验证 | 完成 |
 | 提交验证器 | `utils/submission_validator.py` | 72 | CSV 提交格式验证 | 完成 |
 | **数据结构层** |||||
-| Node 数据类 | `core/state/node.py` | 133 | 解决方案 DAG 节点 (+两阶段字段) | 完成 |
+| Node 数据类 | `core/state/node.py` | 105 | 解决方案 DAG 节点 (+两阶段字段) | 完成 |
 | Journal 数据类 | `core/state/journal.py` | 372 | DAG 容器与查询 | 完成 |
 | Task 数据类 | `core/state/task.py` | 62 | Agent 任务定义 | 完成 |
 | **后端抽象层** |||||
 | 后端抽象层 | `core/backend/__init__.py` | 168 | 统一 LLM 查询接口 (query_with_config) | 完成 |
-| OpenAI 后端 | `core/backend/backend_openai.py` | 165 | OpenAI + GLM 支持 | 完成 |
+| OpenAI 后端 | `core/backend/backend_openai.py` | 163 | OpenAI + GLM 支持 | 完成 |
 | Anthropic 后端 | `core/backend/backend_anthropic.py` | 153 | Claude 系列支持 | 完成 |
 | 后端工具 | `core/backend/utils.py` | 80 | 消息格式化 + 重试机制 | 完成 |
 | API Key 池 | `core/backend/key_pool.py` | 91 | API Key 循环使用管理 | 完成 |
 | **执行层** |||||
-| 代码执行器 | `core/executor/interpreter.py` | 472 | 沙箱执行（精简重构+并行增强） | 完成 |
+| 代码执行器 | `core/executor/interpreter.py` | 440 | 沙箱执行（精简重构+并行增强） | 完成 |
 | 工作空间管理 | `core/executor/workspace.py` | 280 | 目录管理 + 文件归档 + 数据预处理 | 完成 |
 | **工具层** |||||
 | 指标工具 | `utils/metric.py` | 117 | 评估指标容器 | 完成 |
 | 响应解析 | `utils/response.py` | 154 | LLM 响应提取 | 完成 |
 | **Prompt 系统** |||||
-| Prompt 管理器 | `utils/prompt_manager.py` | 297 | Jinja2 模板 + 7 层 Prompt | 完成 |
+| Prompt 管理器 | `utils/prompt_manager.py` | 288 | Jinja2 模板 + 7 层 Prompt | 完成 |
 | 工作空间构建器 | `utils/workspace_builder.py` | 134 | 工作空间初始化 | 完成 |
 | **Agent 层** |||||
-| Agent 基类 | `agents/base_agent.py` | 148 | Agent 抽象基类 (+draft task_type) | 完成 |
+| Agent 基类 | `agents/base_agent.py` | 144 | Agent 抽象基类 (+draft task_type) | 完成 |
 | CoderAgent | `agents/coder_agent.py` | 538 | 代码生成 Agent (+draft/merge/mutate) | 完成 |
 | **编排层** |||||
-| **Orchestrator** | **`core/orchestrator.py`** | **1835** | **两阶段进化 + 纯文本 JSON Review + Metric 校验** | **完成** |
+| **Orchestrator** | **`core/orchestrator.py`** | **1810** | **两阶段进化 + 纯文本 JSON Review + Metric 校验** | **完成** |
 | **进化层** |||||
-| 基因解析器 | `core/evolution/gene_parser.py` | 202 | 4 基因解析 + sub-aspects | 完成 |
-| **基因兼容性** | **`core/evolution/gene_compatibility.py`** | **141** | **框架互斥检测 (merge 前检查)** | **完成 (NEW)** |
+| 基因解析器 | `core/evolution/gene_parser.py` | 201 | 4 基因解析 + sub-aspects | 完成 |
+| 基因兼容性 | `core/evolution/gene_compatibility.py` | 141 | 框架互斥检测 (merge 前检查) | 完成 |
 | 共享经验池 | `core/evolution/experience_pool.py` | 319 | 线程安全存储 + Top-K 查询 | 完成 |
 | 任务分配器 | `core/evolution/task_dispatcher.py` | 157 | Epsilon-Greedy 策略 + EMA 得分更新 | 完成 |
 | Agent 层进化 | `core/evolution/agent_evolution.py` | 437 | LLM 驱动的 Role/Strategy 变异 | 完成 |
 | 基因注册表 | `core/evolution/gene_registry.py` | 196 | 基因级信息素管理 + 哈希 + 衰减 | 完成 |
-| 基因选择器 | `core/evolution/gene_selector.py` | 448 | 信息素选择 + 退化检测 + 主父代推断 | 完成 |
-| 信息素机制 | `core/evolution/pheromone.py` | 104 | 节点级信息素计算 + 时间衰减 | 完成 |
-| Solution 层 GA | `core/evolution/solution_evolution.py` | 324 | 两阶段 GA（Draft + 进化） | 完成 |
+| 基因选择器 | `core/evolution/gene_selector.py` | 463 | 信息素选择 + 退化检测 + lower_is_better | 完成 |
+| 信息素机制 | `core/evolution/pheromone.py` | 108 | 节点级信息素计算 + lower_is_better 方向排序 | 完成 |
+| Solution 层 GA | `core/evolution/solution_evolution.py` | 351 | 两阶段 GA（Draft + 进化 + 方向感知） | 完成 |
 | **Skill 进化** |||||
 | 代码嵌入管理器 | `core/evolution/code_embedding_manager.py` | 130 | bge-m3 文本向量化 + 缓存 | 完成 |
 | Skill 提取器 | `core/evolution/skill_extractor.py` | 302 | HDBSCAN 聚类 + LLM 总结 | 完成 |
 | Skill 管理器 | `core/evolution/skill_manager.py` | 429 | Skill 质量评估、演化、元数据 | 完成 |
 | **配置文件** |||||
-| YAML 配置 | `config/default.yaml` | ~130 | 项目主配置 (+两阶段进化配置) | 完成 |
+| YAML 配置 | `config/default.yaml` | ~131 | 项目主配置 (+两阶段进化配置) | 完成 |
+| MLE-Bench 配置 | `config/mle_bench.yaml` | 29 | 评测专用覆盖配置 | 完成 |
 | 环境变量 | `.env.example` | 36 | API Keys 模板 | 完成 |
 | **Benchmark 资源** |||||
 | Prompt 模板 | `benchmark/mle-bench/prompt_templates/` | - | Jinja2 模板 (draft/merge/mutate) | 完成 |
