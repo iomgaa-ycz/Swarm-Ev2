@@ -21,25 +21,6 @@ from typing import Optional, List, Tuple
 from utils.logger_system import log_msg
 
 
-def trim_long_string(string: str, threshold: int = 5100, k: int = 2500) -> str:
-    """截断过长的字符串，保留首尾 k 个字符。
-
-    Args:
-        string: 输入字符串
-        threshold: 超过此长度才截断
-        k: 保留首尾各 k 个字符
-
-    Returns:
-        截断后的字符串
-    """
-    if len(string) > threshold:
-        first_k = string[:k]
-        last_k = string[-k:]
-        truncated_len = len(string) - 2 * k
-        return f"{first_k}\n ... [{truncated_len} 字符被截断] ... \n{last_k}"
-    return string
-
-
 @dataclass
 class ExecutionResult:
     """代码执行结果容器。
@@ -108,19 +89,6 @@ class Interpreter:
             f"Interpreter 初始化: working_dir={self.working_dir}, "
             f"timeout={self.timeout}s, python={self.python_path}",
         )
-
-    def check_available(self) -> bool:
-        """检查是否有可用的执行槽位。"""
-        return self.current_parallel_run < self.max_parallel_run
-
-    def set_timeout(self, timeout: int) -> None:
-        """动态设置超时时间。
-
-        Args:
-            timeout: 新的超时时间（秒）
-        """
-        self.timeout = timeout
-        log_msg("INFO", f"Interpreter 超时已更新: {timeout}s")
 
     def _replace_submission_name(self, code: str, node_id: str) -> str:
         """将 submission.csv 替换为 submission_{node_id}.csv。

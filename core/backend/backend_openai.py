@@ -27,9 +27,7 @@ _RETRY_EXCEPTIONS = (
 OPENAI_TIMEOUT_EXCEPTIONS = (*_RETRY_EXCEPTIONS, openai.RateLimitError)
 
 
-def _get_client(
-    api_key: str, base_url: str | None = None
-) -> openai.OpenAI:
+def _get_client(api_key: str, base_url: str | None = None) -> openai.OpenAI:
     """获取或创建 OpenAI 客户端（按 key+url 缓存）。
 
     Args:

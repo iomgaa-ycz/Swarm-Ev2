@@ -16,6 +16,7 @@ from .gene_registry import GeneRegistry
 from .gene_selector import select_gene_plan
 from .pheromone import compute_node_pheromone, ensure_node_stats
 from .solution_evolution import SolutionEvolution
+
 try:
     from .code_embedding_manager import CodeEmbeddingManager
 except ImportError:

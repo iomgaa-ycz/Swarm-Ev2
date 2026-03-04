@@ -7,8 +7,9 @@
 """
 
 import difflib
-import random
 import json
+import random
+import re
 import shutil
 import threading
 import time
@@ -21,7 +22,6 @@ from core.executor.interpreter import Interpreter, ExecutionResult
 from core.executor.workspace import WorkspaceManager
 from core.backend import query as backend_query
 from utils.config import Config
-import re
 
 from core.evolution.gene_parser import parse_solution_genes
 from utils.logger_system import log_msg, log_exception
@@ -121,6 +121,15 @@ METRIC_DIRECTION: Dict[str, bool] = {
     "mean column-wise log loss": True,
     "multiclass loss": True,
 }
+
+
+def _match_metric_keyword(keyword: str, text: str) -> bool:
+    """用单词边界匹配 metric 关键词，避免子串误触发。
+
+    注意: 仅适用于自然语言文本（task_desc）。
+    对于 metric_name（可能含 neg_rmse 等下划线前缀），应使用子串匹配。
+    """
+    return bool(re.search(r"\b" + re.escape(keyword) + r"\b", text))
 
 
 class Orchestrator:
@@ -561,9 +570,16 @@ class Orchestrator:
 
         # 规则 0: 必填字段检查（缺失时抛 ValueError 触发重试）
         required_keys = {
-            "is_bug", "has_csv_submission", "metric",
-            "lower_is_better", "metric_name", "key_change", "insight",
-            "bottleneck", "suggested_direction", "approach_tag",
+            "is_bug",
+            "has_csv_submission",
+            "metric",
+            "lower_is_better",
+            "metric_name",
+            "key_change",
+            "insight",
+            "bottleneck",
+            "suggested_direction",
+            "approach_tag",
         }
         missing = required_keys - validated.keys()
         if missing:
@@ -616,9 +632,7 @@ class Orchestrator:
             log_msg("DEBUG", f"submission_{node_id}.csv 不存在")
         return exists
 
-    def _sanitize_metric_value(
-        self, metric: float, metric_name: str
-    ) -> float:
+    def _sanitize_metric_value(self, metric: float, metric_name: str) -> float:
         """Metric 入口常识性校验：修正 sklearn neg_ 前缀导致的负数。
 
         逻辑:
@@ -636,7 +650,7 @@ class Orchestrator:
         if metric >= 0:
             return metric
 
-        # 在 METRIC_BOUNDS 中查找匹配
+        # 在 METRIC_BOUNDS 中查找匹配（子串匹配：metric_name 可能含 neg_ 前缀）
         name_lower = metric_name.lower().strip()
         for keyword, (min_val, _max_val) in METRIC_BOUNDS.items():
             if keyword in name_lower:
@@ -671,7 +685,7 @@ class Orchestrator:
         # Phase 1: 绝对范围检查
         task_lower = (self._task_desc_compressed or "").lower()
         for keyword, (min_val, max_val) in METRIC_BOUNDS.items():
-            if keyword in task_lower:
+            if _match_metric_keyword(keyword, task_lower):
                 if min_val is not None and metric < min_val:
                     log_msg(
                         "WARNING",
@@ -722,7 +736,7 @@ class Orchestrator:
 
         for key in sorted_keys:
             # P0-A 修复：使用单词边界匹配，避免 "mse" 匹配 "themselves" 等子串
-            if re.search(r'\b' + re.escape(key) + r'\b', text):
+            if re.search(r"\b" + re.escape(key) + r"\b", text):
                 direction = METRIC_DIRECTION[key]
                 self._global_lower_is_better = direction
                 log_msg(
@@ -751,7 +765,7 @@ class Orchestrator:
             sorted_keys = sorted(METRIC_DIRECTION.keys(), key=len, reverse=True)
             for key in sorted_keys:
                 # P0-A 修复：使用单词边界匹配，防止同类子串假匹配
-                if re.search(r'\b' + re.escape(key) + r'\b', metric_name):
+                if re.search(r"\b" + re.escape(key) + r"\b", metric_name):
                     self._global_lower_is_better = METRIC_DIRECTION[key]
                     log_msg(
                         "INFO",
@@ -837,9 +851,7 @@ class Orchestrator:
                     )
                 # P0-B 修复：NaN 检查仅针对目标列（非 id 列），避免特征列为空误判
                 id_like = {"id", "image_id", "row_id", "uuid", "pid"}
-                target_cols = [
-                    c for c in sample_df.columns if c.lower() not in id_like
-                ]
+                target_cols = [c for c in sample_df.columns if c.lower() not in id_like]
                 if target_cols:
                     target_col = target_cols[0]
                     nan_count = int(sub_df[target_col].isna().sum())
@@ -1034,7 +1046,9 @@ For buggy solutions, still fill all string fields (e.g. approach_tag="Failed: OO
                     shutil.copy2(submission_src, SUBMISSION_OUTPUT)
                     log_msg("INFO", f"[持久化] 最佳提交已同步到 {SUBMISSION_OUTPUT}")
                 except Exception as sync_err:
-                    log_msg("WARNING", f"[持久化] 同步到 /home/submission/ 失败: {sync_err}")
+                    log_msg(
+                        "WARNING", f"[持久化] 同步到 /home/submission/ 失败: {sync_err}"
+                    )
 
             log_msg("INFO", f"最佳方案已保存到 {best_dir}")
 
@@ -1132,7 +1146,10 @@ For buggy solutions, still fill all string fields (e.g. approach_tag="Failed: OO
             超时时间（秒）
         """
         if not self.config.execution.adaptive_timeout:
-            log_msg("INFO", f"自适应超时已禁用，使用固定超时: {self.config.execution.timeout}s")
+            log_msg(
+                "INFO",
+                f"自适应超时已禁用，使用固定超时: {self.config.execution.timeout}s",
+            )
             return self.config.execution.timeout
 
         base_timeout = self.config.execution.timeout  # 3600s
@@ -1400,6 +1417,54 @@ For buggy solutions, still fill all string fields (e.g. approach_tag="Failed: OO
                         history.append(warning)
         return history
 
+    def _finalize_node(
+        self,
+        node: Node,
+        agent: BaseAgent,
+        context: AgentContext,
+        task_type: str,
+        review_kwargs: Optional[Dict] = None,
+    ) -> Node:
+        """节点后处理流水线：执行 → 校验 → debug → review → 保存 → 入库。
+
+        Args:
+            node: 待处理节点
+            agent: 执行 Agent
+            context: Agent 上下文
+            task_type: 任务类型（draft/merge/mutate）
+            review_kwargs: 传给 _review_node 的额外参数
+
+        Returns:
+            处理完成的节点
+        """
+        # 执行代码
+        exec_result = self._execute_code(node.code, node.id)
+        node.term_out = "\n".join(exec_result.term_out)
+        node.exec_time = exec_result.exec_time
+        node.exc_type = exec_result.exc_type
+        node.exc_info = str(exec_result.exc_info) if exec_result.exc_info else None
+
+        # 校验 + debug
+        self._check_submission_and_set_error(node)
+        node = self._debug_chain(node, agent, context)
+
+        # Review
+        self._review_node(node, **(review_kwargs or {}))
+
+        # 保存 + 入库
+        with self.save_lock:
+            self._save_node_solution(node)
+
+        with self.journal_lock:
+            self.journal.append(node)
+            self._update_best_node(node)
+
+        # 经验池
+        if self.experience_pool:
+            self._write_experience_pool(agent.name, task_type, node)
+
+        return node
+
     def _draft_step(self, draft_history: Optional[List[str]] = None) -> Optional[Node]:
         """执行单个 draft 步骤（Phase 1 专用）。
 
@@ -1448,29 +1513,13 @@ For buggy solutions, still fill all string fields (e.g. approach_tag="Failed: OO
                 return None
 
             node = result.node
-
-            exec_result = self._execute_code(node.code, node.id)
-            node.term_out = "\n".join(exec_result.term_out)
-            node.exec_time = exec_result.exec_time
-            node.exc_type = exec_result.exc_type
-            node.exc_info = str(exec_result.exc_info) if exec_result.exc_info else None
-
-            # Submission 格式校验（NaN 等问题提前标记，使 debug_chain 可处理）
-            self._check_submission_and_set_error(node)
-            node = self._debug_chain(node, agent, context)
-
-            self._review_node(node, parent_node=None)
-
-            with self.save_lock:
-                self._save_node_solution(node)
-
-            with self.journal_lock:
-                self.journal.append(node)
-                self._update_best_node(node)
-
-            if self.experience_pool:
-                self._write_experience_pool(agent.name, "draft", node)
-
+            node = self._finalize_node(
+                node,
+                agent,
+                context,
+                "draft",
+                review_kwargs={"parent_node": None},
+            )
             self._print_node_summary(node)
 
             log_msg(
@@ -1615,14 +1664,14 @@ For buggy solutions, still fill all string fields (e.g. approach_tag="Failed: OO
     def execute_merge_task(
         self,
         primary_parent: Node,
-        gene_plan: Dict,
+        gene_plan: Optional[str] = None,
         gene_sources: Optional[Dict[str, str]] = None,
     ) -> Optional[Node]:
         """执行 merge 任务（基因交叉）。
 
         Args:
             primary_parent: 贡献基因最多的父代（用于 merge.j2 参考框架）
-            gene_plan: 基因交叉计划（pheromone_with_degenerate_check 的输出）
+            gene_plan: 基因交叉计划 Markdown 字符串（pheromone_with_degenerate_check 的输出）
             gene_sources: {locus: source_node_id} 字典（可选，用于 node.metadata 记录）
 
         Returns:
@@ -1673,33 +1722,13 @@ For buggy solutions, still fill all string fields (e.g. approach_tag="Failed: OO
             if gene_sources:
                 node.metadata["gene_sources"] = gene_sources
 
-            # 执行代码
-            exec_result = self._execute_code(node.code, node.id)
-            node.term_out = "\n".join(exec_result.term_out)
-            node.exec_time = exec_result.exec_time
-            node.exc_type = exec_result.exc_type
-            node.exc_info = str(exec_result.exc_info) if exec_result.exc_info else None
-
-            # Submission 格式校验（NaN 等问题提前标记，使 debug_chain 可处理）
-            self._check_submission_and_set_error(node)
-            # 链式 Debug（非超时/OOM 错误才重试）
-            node = self._debug_chain(node, agent, context)
-
-            # Review 评估（merge 使用基因选择方案而非代码 diff）
-            self._review_node(node, gene_plan=gene_plan)
-
-            # 保存节点
-            with self.save_lock:
-                self._save_node_solution(node)
-
-            # 追加到 Journal
-            with self.journal_lock:
-                self.journal.append(node)
-                self._update_best_node(node)
-
-            # 写入经验池
-            if self.experience_pool:
-                self._write_experience_pool(agent.name, "merge", node)
+            node = self._finalize_node(
+                node,
+                agent,
+                context,
+                "merge",
+                review_kwargs={"gene_plan": gene_plan},
+            )
 
             log_msg(
                 "INFO",
@@ -1765,34 +1794,13 @@ For buggy solutions, still fill all string fields (e.g. approach_tag="Failed: OO
                 return None
 
             node = result.node
-
-            # 执行代码
-            exec_result = self._execute_code(node.code, node.id)
-            node.term_out = "\n".join(exec_result.term_out)
-            node.exec_time = exec_result.exec_time
-            node.exc_type = exec_result.exc_type
-            node.exc_info = str(exec_result.exc_info) if exec_result.exc_info else None
-
-            # Submission 格式校验（NaN 等问题提前标记，使 debug_chain 可处理）
-            self._check_submission_and_set_error(node)
-            # 链式 Debug（非超时/OOM 错误才重试）
-            node = self._debug_chain(node, agent, context)
-
-            # Review 评估（mutate 使用代码 diff）
-            self._review_node(node, parent_node=parent)
-
-            # 保存节点
-            with self.save_lock:
-                self._save_node_solution(node)
-
-            # 追加到 Journal
-            with self.journal_lock:
-                self.journal.append(node)
-                self._update_best_node(node)
-
-            # 写入经验池
-            if self.experience_pool:
-                self._write_experience_pool(agent.name, "mutate", node)
+            node = self._finalize_node(
+                node,
+                agent,
+                context,
+                "mutate",
+                review_kwargs={"parent_node": parent},
+            )
 
             log_msg(
                 "INFO",
@@ -1804,32 +1812,3 @@ For buggy solutions, still fill all string fields (e.g. approach_tag="Failed: OO
         except Exception as e:
             log_exception(e, "execute_mutate_task() 失败")
             return None
-
-
-# 兼容旧接口的工厂函数
-def create_orchestrator(
-    agent: BaseAgent,
-    config: Config,
-    journal: Journal,
-    task_desc: str,
-    agent_evolution: Optional["AgentEvolution"] = None,
-) -> Orchestrator:
-    """兼容旧接口的工厂函数（单 Agent）。
-
-    Args:
-        agent: 单个 Agent
-        config: 配置
-        journal: Journal
-        task_desc: 任务描述
-        agent_evolution: Agent 进化器
-
-    Returns:
-        Orchestrator 实例
-    """
-    return Orchestrator(
-        agents=[agent],
-        config=config,
-        journal=journal,
-        task_desc=task_desc,
-        agent_evolution=agent_evolution,
-    )

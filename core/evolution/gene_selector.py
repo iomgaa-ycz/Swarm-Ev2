@@ -284,9 +284,6 @@ def _is_valid_node(node: Node) -> bool:
         return False
     if not node.genes:
         return False
-    review_success = node.metadata.get("review_success") if node.metadata else None
-    if review_success is not None and not review_success:
-        return False
     return True
 
 
@@ -365,14 +362,15 @@ def pheromone_with_degenerate_check(
         return gene_plan  # 来源多样，无退化
 
     dominant_id = next(iter(source_ids))
-    log_msg("WARNING", f"[DEGENERATE] 4 基因全来自节点 {dominant_id[:8]}，启动退化检测替换")
+    log_msg(
+        "WARNING", f"[DEGENERATE] 4 基因全来自节点 {dominant_id[:8]}，启动退化检测替换"
+    )
 
     pools = build_decision_gene_pools(journal, gene_registry, current_step)
 
     for locus, field_name in LOCUS_TO_FIELD.items():
         others = [
-            item for item in pools.get(locus, [])
-            if item.source_node_id != dominant_id
+            item for item in pools.get(locus, []) if item.source_node_id != dominant_id
         ]
         if others:
             second_best = max(others, key=lambda x: x.quality)

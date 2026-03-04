@@ -172,9 +172,7 @@ def merge_genes(
     return "\n".join(merged_sections)
 
 
-def select_mutation_target(
-    node: "Node", stub_threshold: int = 20
-) -> Tuple[str, str]:
+def select_mutation_target(node: "Node", stub_threshold: int = 20) -> Tuple[str, str]:
     """从节点中随机选择一个非 stub 的基因位点和子方面（用于 mutate 目标选择）。
 
     内容 strip 后长度 < stub_threshold 视为 stub（如 "# Not applicable..."）。
@@ -189,7 +187,8 @@ def select_mutation_target(
         若所有基因均为 stub，则 fallback 到随机选择
     """
     candidates = [
-        gene for gene in REQUIRED_GENES
+        gene
+        for gene in REQUIRED_GENES
         if len((node.genes.get(gene) or "").strip()) >= stub_threshold
     ]
     if candidates:

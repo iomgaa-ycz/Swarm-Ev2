@@ -94,7 +94,8 @@ class SolutionEvolution:
 
         # 获取 valid_pool（非 buggy，非 dead，且基因结构完整）
         valid_pool = [
-            n for n in self.journal.nodes
+            n
+            for n in self.journal.nodes
             if not n.is_buggy and not n.dead and validate_genes(n.genes)
         ]
 
@@ -107,7 +108,17 @@ class SolutionEvolution:
             return None
 
         actual_size = min(self.population_size, len(valid_pool))
-        self.population = valid_pool[-actual_size:]
+        lower = self._is_lower_better()
+        sorted_pool = sorted(
+            valid_pool,
+            key=lambda n: (
+                n.metric_value
+                if n.metric_value is not None
+                else (float("inf") if lower else float("-inf"))
+            ),
+            reverse=not lower,
+        )
+        self.population = sorted_pool[:actual_size]
         log_msg("INFO", f"Phase 2 种群: {len(self.population)} 个节点")
 
         merge_count = 0
@@ -158,7 +169,8 @@ class SolutionEvolution:
             生成的子代节点（条件不满足或失败时返回 None）
         """
         valid_pool = [
-            n for n in self.journal.nodes
+            n
+            for n in self.journal.nodes
             if not n.is_buggy and not n.dead and validate_genes(n.genes)
         ]
 
@@ -171,7 +183,17 @@ class SolutionEvolution:
 
         # 刷新种群
         actual_size = min(self.population_size, len(valid_pool))
-        self.population = valid_pool[-actual_size:]
+        lower = self._is_lower_better()
+        sorted_pool = sorted(
+            valid_pool,
+            key=lambda n: (
+                n.metric_value
+                if n.metric_value is not None
+                else (float("inf") if lower else float("-inf"))
+            ),
+            reverse=not lower,
+        )
+        self.population = sorted_pool[:actual_size]
 
         if random.random() < 0.5:
             return self._run_merge_step()
@@ -320,5 +342,10 @@ class SolutionEvolution:
         parent = self._tournament_select()
         target_gene, mutation_aspect = select_mutation_target(parent)
 
-        log_msg("INFO", f"Mutate: parent={parent.id[:8]}, gene={target_gene}, aspect={mutation_aspect}")
-        return self.orchestrator.execute_mutate_task(parent, target_gene, mutation_aspect)
+        log_msg(
+            "INFO",
+            f"Mutate: parent={parent.id[:8]}, gene={target_gene}, aspect={mutation_aspect}",
+        )
+        return self.orchestrator.execute_mutate_task(
+            parent, target_gene, mutation_aspect
+        )

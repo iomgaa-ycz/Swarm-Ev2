@@ -7,7 +7,7 @@ Node 数据类模块。
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Literal
+from typing import Optional, Dict
 
 from dataclasses_json import DataClassJsonMixin
 
@@ -90,9 +90,11 @@ class Node(DataClassJsonMixin):
     fitness: Optional[float] = field(default=None, kw_only=True)
 
     # ---- 两阶段进化 ----
-    dead: bool = field(default=False, kw_only=True)            # 1主操作+2次debug全失败
-    debug_attempts: int = field(default=0, kw_only=True)       # 已执行的 debug_chain 次数
-    approach_tag: Optional[str] = field(default=None, kw_only=True)  # Review 写入，用于 Phase 1 多样性引导
+    dead: bool = field(default=False, kw_only=True)  # 1主操作+2次debug全失败
+    debug_attempts: int = field(default=0, kw_only=True)  # 已执行的 debug_chain 次数
+    approach_tag: Optional[str] = field(
+        default=None, kw_only=True
+    )  # Review 写入，用于 Phase 1 多样性引导
 
     def __eq__(self, other) -> bool:
         """基于 ID 比较节点相等性。"""
@@ -101,33 +103,3 @@ class Node(DataClassJsonMixin):
     def __hash__(self) -> int:
         """基于 ID 生成哈希值。"""
         return hash(self.id)
-
-    @property
-    def stage_name(self) -> Literal["initial", "bugfix", "improve", "unknown"]:
-        """返回节点的生成模式。
-
-        生成模式推导规则：
-        - initial: 无父节点（初始方案）
-        - bugfix: 父节点有 bug（修复模式）
-        - improve: 父节点无 bug（改进模式）
-        - unknown: 其他情况
-
-        Returns:
-            生成模式字符串
-
-        注意: Phase 2 简化实现，需要 Journal 上下文才能准确判断父节点状态
-        """
-        if self.parent_id is None:
-            return "initial"
-        # Phase 2 完善：需要从 Journal 中查找父节点的 is_buggy 状态
-        # 当前 MVP 阶段暂时返回 unknown
-        return "unknown"
-
-    @property
-    def has_exception(self) -> bool:
-        """检查节点执行是否产生异常。
-
-        Returns:
-            True 如果有异常，否则 False
-        """
-        return self.exc_type is not None
