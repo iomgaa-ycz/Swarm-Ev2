@@ -260,3 +260,128 @@ class TestWorkspaceManager:
 
         # 验证：zip 文件仍然存在（未解压，因为是符号链接模式）
         assert zip_path.exists()
+
+
+class TestLinkInputDataEdgeCases:
+    """测试 link_input_data() 的边界情况。"""
+
+    def test_link_input_data_source_not_exists_raises(self, mock_config, tmp_path):
+        """测试 source_dir 不存在时抛出 FileNotFoundError（覆盖 line 69, 72-73）。"""
+        manager = WorkspaceManager(mock_config)
+        manager.setup()
+
+        # 指定一个不存在的目录
+        non_existent = tmp_path / "does_not_exist"
+        with pytest.raises(FileNotFoundError, match="数据源目录不存在"):
+            manager.link_input_data(non_existent)
+
+    def test_link_input_data_default_source_not_exists_raises(self, mock_config, tmp_path):
+        """测试 source_dir=None 且 config.data.input_dir 不存在时抛出异常（覆盖 line 69）。"""
+        # mock_config.data.input_dir 指向不存在的路径
+        mock_config.data.input_dir = tmp_path / "no_such_dir"
+
+        manager = WorkspaceManager(mock_config)
+        manager.setup()
+
+        with pytest.raises(FileNotFoundError, match="数据源目录不存在"):
+            manager.link_input_data()  # source_dir=None，走 config.data.input_dir
+
+    def test_link_input_data_existing_symlink_is_unlinked(self, mock_config, tmp_path):
+        """测试 input_link 已是符号链接时会先 unlink（覆盖 line 80）。"""
+        # 创建两个数据源目录
+        source_v1 = tmp_path / "source_v1"
+        source_v1.mkdir()
+        (source_v1 / "v1.txt").write_text("v1 data")
+
+        source_v2 = tmp_path / "source_v2"
+        source_v2.mkdir()
+        (source_v2 / "v2.txt").write_text("v2 data")
+
+        manager = WorkspaceManager(mock_config)
+        manager.setup()
+
+        # 先建立指向 v1 的符号链接
+        input_link = manager.workspace_dir / "input"
+        input_link.rmdir()
+        input_link.symlink_to(source_v1, target_is_directory=True)
+        assert input_link.is_symlink()
+        assert (input_link / "v1.txt").exists()
+
+        # 再 link 到 v2，期望旧链接被 unlink 并重建
+        manager.link_input_data(source_v2)
+
+        # 旧链接应已被替换，现在指向 v2
+        assert input_link.exists()
+        assert (input_link / "v2.txt").exists()
+        assert not (input_link / "v1.txt").exists()
+
+    def test_link_input_data_symlink_fails_fallback_to_copy(self, mock_config, tmp_path):
+        """测试 symlink_to 失败时降级为 shutil.copytree（覆盖 lines 88-92）。"""
+        from unittest.mock import patch
+
+        source_dir = tmp_path / "source"
+        source_dir.mkdir()
+        (source_dir / "file.txt").write_text("hello")
+
+        manager = WorkspaceManager(mock_config)
+        manager.setup()
+
+        # 删除 setup 创建的空 input 目录，保证 link 可以创建
+        input_link = manager.workspace_dir / "input"
+        input_link.rmdir()
+
+        # 让 symlink_to 抛出 OSError，触发 fallback
+        with patch.object(Path, "symlink_to", side_effect=OSError("权限不足")):
+            manager.link_input_data(source_dir)
+
+        # 应回退到复制模式：input/ 是真实目录，包含源文件
+        assert input_link.exists()
+        assert not input_link.is_symlink()
+        assert (input_link / "file.txt").read_text() == "hello"
+
+
+class TestArchiveNodeFilesFailure:
+    """测试 archive_node_files() 的失败路径。"""
+
+    def test_archive_node_files_returns_none_on_exception(self, mock_config, tmp_path):
+        """测试 zip 创建异常时返回 None（覆盖 lines 161-163）。"""
+        from unittest.mock import patch, MagicMock
+
+        manager = WorkspaceManager(mock_config)
+        manager.setup()
+
+        # 让 zipfile.ZipFile 构造时抛出异常
+        with patch("core.executor.workspace.zipfile.ZipFile", side_effect=OSError("磁盘已满")):
+            result = manager.archive_node_files("fail_node", "print('x')")
+
+        assert result is None
+
+
+class TestPreprocessInputEdgeCases:
+    """测试 preprocess_input() 输入目录不存在的情况。"""
+
+    def test_preprocess_input_input_dir_not_exists_returns_early(self, mock_config, tmp_path):
+        """测试 input/ 目录不存在时提前返回（覆盖 lines 198-199）。"""
+        manager = WorkspaceManager(mock_config)
+        # 不调用 setup()，workspace_dir/input 不存在
+
+        # 不应抛出任何异常，直接返回
+        manager.preprocess_input()
+
+        # 确认 input 目录确实不存在
+        assert not (manager.workspace_dir / "input").exists()
+
+
+class TestProtectInputFilesEdgeCases:
+    """测试 protect_input_files() 输入目录不存在的情况。"""
+
+    def test_protect_input_files_input_dir_not_exists_returns_early(self, mock_config, tmp_path):
+        """测试 input/ 目录不存在时提前返回（覆盖 line 237）。"""
+        manager = WorkspaceManager(mock_config)
+        # 不调用 setup()，workspace_dir/input 不存在
+
+        # 不应抛出任何异常，直接返回
+        manager.protect_input_files()
+
+        # 确认 input 目录确实不存在
+        assert not (manager.workspace_dir / "input").exists()

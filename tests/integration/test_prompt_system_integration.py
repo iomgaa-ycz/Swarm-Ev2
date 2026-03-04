@@ -97,8 +97,8 @@ class TestPromptSystemIntegration:
         role = prompt_manager.load_agent_config("agent_0", "role")
         assert "Agent Role" in role, "Agent 配置内容不正确"
 
-    def test_build_explore_prompt_basic(self, prompt_manager):
-        """测试构建基本 Explore Prompt。"""
+    def test_build_draft_prompt_basic(self, prompt_manager):
+        """测试构建基本 Draft Prompt。"""
         context = {
             "task_desc": "Predict customer churn using historical data",
             "parent_node": None,
@@ -108,14 +108,14 @@ class TestPromptSystemIntegration:
             "steps_remaining": 20,
         }
 
-        prompt = prompt_manager.build_prompt("explore", "agent_0", context)
+        prompt = prompt_manager.build_prompt("draft", "agent_0", context)
 
         assert "Predict customer churn" in prompt, "任务描述缺失"
         assert "1 hour" in prompt, "时间格式化错误"
         assert "20" in prompt, "步数缺失"
 
-    def test_build_explore_prompt_with_parent(self, prompt_manager):
-        """测试构建带父节点的 Explore Prompt。"""
+    def test_build_draft_prompt_with_parent(self, prompt_manager):
+        """测试构建带父节点的 Draft Prompt。"""
 
         # 创建 Mock Node
         class MockNode:
@@ -135,7 +135,7 @@ class TestPromptSystemIntegration:
             "steps_remaining": 15,
         }
 
-        prompt = prompt_manager.build_prompt("explore", "agent_1", context)
+        prompt = prompt_manager.build_prompt("draft", "agent_1", context)
 
         assert "XGBoost" in prompt, "父节点代码缺失"
         assert "0.85" in prompt or "Validation metric" in prompt, "执行结果缺失"

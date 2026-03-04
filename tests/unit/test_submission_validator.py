@@ -99,3 +99,39 @@ class TestValidateSubmission:
 
         is_valid, msg = validate_submission(sub_path, None)
         assert is_valid is True
+
+    def test_unreadable_csv(self, tmp_dir):
+        """CSV 无法读取时返回错误。"""
+        from unittest.mock import patch
+
+        sub_path = tmp_dir / "submission.csv"
+        sub_path.write_text("id,target\n1,0.5\n")
+
+        with patch("utils.submission_validator.pd.read_csv", side_effect=Exception("parse error")):
+            is_valid, msg = validate_submission(sub_path)
+            assert is_valid is False
+            assert "Cannot read" in msg
+
+    def test_sample_comparison_exception(self, tmp_dir):
+        """sample 文件读取异常时不崩溃，仍返回 valid。"""
+        from unittest.mock import patch, call
+
+        sub_path = tmp_dir / "submission.csv"
+        sample_path = tmp_dir / "sample.csv"
+
+        pd.DataFrame({"id": [1, 2], "target": [0.1, 0.2]}).to_csv(sub_path, index=False)
+        sample_path.write_text("id,target\n1,0.5\n2,0.5\n")
+
+        original_read_csv = pd.read_csv
+        call_count = [0]
+
+        def patched_read(path, *args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] >= 2:
+                raise Exception("sample parse error")
+            return original_read_csv(path, *args, **kwargs)
+
+        with patch("utils.submission_validator.pd.read_csv", side_effect=patched_read):
+            is_valid, msg = validate_submission(sub_path, sample_path)
+            # 即使 sample 读取失败，submission 本身有效就通过
+            assert is_valid is True

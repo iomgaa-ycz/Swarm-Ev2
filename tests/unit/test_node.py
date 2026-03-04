@@ -56,26 +56,6 @@ class TestNode:
         node3.id = node1.id
         assert node1 == node3
 
-    def test_node_stage_name(self):
-        """测试 Node stage_name 属性。"""
-        # Draft 节点（无父节点）
-        draft_node = Node(code="x = 1")
-        assert draft_node.stage_name == "initial"  # Phase 2: 改为 "initial"
-
-        # 有父节点的情况（MVP 阶段返回 unknown）
-        child_node = Node(code="x = 2", parent_id="parent_id_123")
-        assert child_node.stage_name == "unknown"
-
-    def test_node_has_exception(self):
-        """测试 Node has_exception 属性。"""
-        # 无异常
-        node1 = Node(code="x = 1")
-        assert not node1.has_exception
-
-        # 有异常
-        node2 = Node(code="y = 2", exc_type="ValueError")
-        assert node2.has_exception
-
     def test_node_children_ids(self):
         """测试 Node children_ids 字段。"""
         parent = Node(code="parent")

@@ -232,7 +232,7 @@ class TestBuildPrompt:
         }
 
         prompt = prompt_manager.build_prompt(
-            task_type="explore",
+            task_type="draft",
             agent_id="agent_0",
             context=context,
         )
@@ -243,8 +243,8 @@ class TestBuildPrompt:
         assert "1 hour" in prompt  # Time remaining
         assert "10" in prompt  # Steps remaining
 
-    def test_build_prompt_explore_with_parent_node(self, prompt_manager):
-        """测试包含父节点的 Explore Prompt 构建。"""
+    def test_build_prompt_draft_with_parent_node(self, prompt_manager):
+        """测试包含父节点的 Draft Prompt 构建。"""
         # 创建 Mock Node
         parent_node = MagicMock(spec=Node)
         parent_node.code = "import pandas as pd\nprint('test')"
@@ -262,7 +262,7 @@ class TestBuildPrompt:
         }
 
         prompt = prompt_manager.build_prompt(
-            task_type="explore",
+            task_type="draft",
             agent_id="agent_0",
             context=context,
         )
@@ -365,7 +365,7 @@ class TestIntegration:
 
         # 构建 Prompt
         prompt = prompt_manager.build_prompt(
-            task_type="explore",
+            task_type="draft",
             agent_id="agent_0",
             context=context,
         )
@@ -377,6 +377,116 @@ class TestIntegration:
         assert "Validation metric: 0.85" in prompt  # Execution result
         assert "3 hours" in prompt  # Time
         assert "15" in prompt  # Steps
+
+
+# ============================================================
+# 以下测试迁移自 test_prompt_builder.py（使用真实 benchmark 目录）
+# ============================================================
+
+
+class TestPromptManagerRealDir:
+    """PromptManager 使用真实 benchmark 目录的测试。"""
+
+    def test_prompt_manager_init(self):
+        """测试 PromptManager 初始化。"""
+        from pathlib import Path
+
+        base_dir = Path("benchmark/mle-bench")
+        pm = PromptManager(
+            template_dir=base_dir / "prompt_templates",
+            skills_dir=base_dir / "skills",
+            agent_configs_dir=base_dir / "agent_configs",
+        )
+        assert pm.env is not None
+
+    def test_build_prompt_draft(self):
+        """测试构建 draft prompt。"""
+        from pathlib import Path
+
+        base_dir = Path("benchmark/mle-bench")
+        pm = PromptManager(
+            template_dir=base_dir / "prompt_templates",
+            skills_dir=base_dir / "skills",
+            agent_configs_dir=base_dir / "agent_configs",
+        )
+
+        prompt = pm.build_prompt(
+            "draft", "agent_0",
+            {
+                "task_desc": "Predict housing prices",
+                "parent_node": None,
+                "memory": "",
+                "data_preview": None,
+                "time_remaining": 3600,
+                "steps_remaining": 10,
+            },
+        )
+
+        assert "# Agent Role" in prompt
+        assert "Predict housing prices" in prompt
+        assert "# Response Format" in prompt or "## Output" in prompt
+
+    def test_format_time(self):
+        """测试时间格式化。"""
+        from pathlib import Path
+
+        base_dir = Path("benchmark/mle-bench")
+        pm = PromptManager(
+            template_dir=base_dir / "prompt_templates",
+            skills_dir=base_dir / "skills",
+            agent_configs_dir=base_dir / "agent_configs",
+        )
+
+        assert pm._format_time(0) == "0 seconds"
+        assert pm._format_time(30) == "30 seconds"
+        assert pm._format_time(60) == "1 minute"
+        assert pm._format_time(3600) == "1 hour"
+
+
+class TestSkillManagerInjection:
+    """测试 SkillManager 路径的 Skill 注入。"""
+
+    def test_inject_with_skill_manager(self, prompt_manager):
+        """测试 skill_manager 优先路径。"""
+        mock_skill_mgr = MagicMock()
+        mock_skill_mgr.get_top_k_skills.return_value = [
+            "# Strategy A\nUse XGBoost",
+            "# Strategy B\nUse LightGBM",
+        ]
+        prompt_manager.skill_manager = mock_skill_mgr
+
+        result = prompt_manager.inject_top_k_skills(task_type="draft", k=2)
+
+        mock_skill_mgr.get_top_k_skills.assert_called_once_with("draft", 2)
+        assert "Top-K Skill" in result
+        assert "Strategy A" in result
+        assert "Strategy B" in result
+        assert "示例 1" in result
+        assert "示例 2" in result
+
+    def test_inject_skill_manager_empty_falls_through(self, prompt_manager):
+        """测试 skill_manager 返回空列表时 fallback 到经验池。"""
+        mock_skill_mgr = MagicMock()
+        mock_skill_mgr.get_top_k_skills.return_value = []
+        prompt_manager.skill_manager = mock_skill_mgr
+
+        # 无 experience_pool -> 返回空字符串
+        result = prompt_manager.inject_top_k_skills(task_type="draft", k=2)
+        assert result == ""
+
+    def test_format_skill_examples_empty(self, prompt_manager):
+        """测试 _format_skill_examples 空列表。"""
+        result = prompt_manager._format_skill_examples([])
+        assert "无可用" in result
+
+    def test_format_skill_examples_multiple(self, prompt_manager):
+        """测试 _format_skill_examples 多个 skill。"""
+        skills = ["Skill content 1", "Skill content 2", "Skill content 3"]
+        result = prompt_manager._format_skill_examples(skills)
+        assert "3 个" in result
+        assert "示例 1" in result
+        assert "Skill content 1" in result
+        assert "示例 3" in result
 
 
 if __name__ == "__main__":

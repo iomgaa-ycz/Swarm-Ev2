@@ -6,8 +6,11 @@ from core.evolution.gene_parser import (
     parse_solution_genes,
     validate_genes,
     merge_genes,
+    select_mutation_target,
     REQUIRED_GENES,
+    GENE_SUB_ASPECTS,
 )
+from core.state.node import Node
 
 
 class TestParseSolutionGenes:
@@ -281,3 +284,103 @@ class TestMergeGenes:
 
         with pytest.raises(ValueError, match="gene_plan\\[DATA\\] 必须为 'A' 或 'B'"):
             merge_genes(genes_a, genes_b, gene_plan)
+
+
+# ============================================================
+# 以下测试迁移自 tests/unit/test_gene_parser.py
+# ============================================================
+
+
+def _make_node_with_genes(genes: dict) -> Node:
+    """构造含指定基因的 Node。"""
+    node = Node(code="pass")
+    node.genes = genes
+    return node
+
+
+class TestSelectMutationTarget:
+    """select_mutation_target 单元测试。"""
+
+    def test_single_non_stub_always_selected(self):
+        """只有 DATA 是非 stub，每次都应选 DATA。"""
+        genes = {g: "# Not applicable" for g in REQUIRED_GENES}
+        genes["DATA"] = "import pandas as pd\ndf = pd.read_csv('./input/train.csv')"
+        node = _make_node_with_genes(genes)
+
+        for _ in range(30):
+            gene, aspect = select_mutation_target(node)
+            assert gene == "DATA"
+            assert aspect in GENE_SUB_ASPECTS["DATA"]
+
+    def test_all_stub_falls_back_without_error(self):
+        """所有基因均为 stub 时，fallback 随机选一个。"""
+        node = _make_node_with_genes({g: "# Not applicable" for g in REQUIRED_GENES})
+        gene, aspect = select_mutation_target(node)
+        assert gene in REQUIRED_GENES
+        assert aspect in GENE_SUB_ASPECTS[gene]
+
+    def test_stub_threshold_exactly_20_is_not_stub(self):
+        """恰好 20 个字符的内容不是 stub。"""
+        genes = {g: "# short" for g in REQUIRED_GENES}
+        genes["MODEL"] = "x" * 20
+        node = _make_node_with_genes(genes)
+
+        for _ in range(20):
+            gene, aspect = select_mutation_target(node)
+            assert gene == "MODEL"
+
+    def test_stub_threshold_19_is_stub(self):
+        """19 个字符的内容是 stub。"""
+        genes = {g: "# short" for g in REQUIRED_GENES}
+        genes["MODEL"] = "x" * 19
+        genes["DATA"] = "x" * 30
+        node = _make_node_with_genes(genes)
+
+        for _ in range(20):
+            gene, aspect = select_mutation_target(node)
+            assert gene == "DATA"
+
+    def test_multiple_non_stub_all_reachable(self):
+        """多个非 stub 基因时，所有候选均可被选中。"""
+        genes = {g: "# Not applicable" for g in REQUIRED_GENES}
+        genes["DATA"] = "import pandas as pd\ndf = pd.read_csv('./input/train.csv')"
+        genes["MODEL"] = "from sklearn.ensemble import RandomForestClassifier\nmodel = RandomForestClassifier()"
+        node = _make_node_with_genes(genes)
+
+        selected_genes = {select_mutation_target(node)[0] for _ in range(200)}
+        assert "DATA" in selected_genes
+        assert "MODEL" in selected_genes
+
+    def test_empty_genes_falls_back(self):
+        """节点无任何基因时，fallback 到 REQUIRED_GENES 随机选。"""
+        node = _make_node_with_genes({})
+        gene, aspect = select_mutation_target(node)
+        assert gene in REQUIRED_GENES
+
+    def test_none_gene_value_treated_as_stub(self):
+        """基因值为 None 时视为 stub。"""
+        genes = {g: None for g in REQUIRED_GENES}
+        genes["DATA"] = "import pandas as pd\ndf = pd.read_csv('./input/train.csv')"
+        node = _make_node_with_genes(genes)
+
+        for _ in range(20):
+            gene, aspect = select_mutation_target(node)
+            assert gene == "DATA"
+
+    def test_returns_tuple(self):
+        """返回值必须是 (gene, aspect) 元组。"""
+        genes = {g: "x" * 30 for g in REQUIRED_GENES}
+        node = _make_node_with_genes(genes)
+        result = select_mutation_target(node)
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+
+    def test_all_aspects_reachable(self):
+        """对单一非 stub 基因，所有 sub-aspect 均应可达。"""
+        genes = {g: "# short" for g in REQUIRED_GENES}
+        genes["MODEL"] = "x" * 30
+        node = _make_node_with_genes(genes)
+
+        aspects_seen = {select_mutation_target(node)[1] for _ in range(300)}
+        for expected_aspect in GENE_SUB_ASPECTS["MODEL"]:
+            assert expected_aspect in aspects_seen

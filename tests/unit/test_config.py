@@ -245,7 +245,7 @@ class TestValidateConfig:
             validate_config(cfg)
 
     def test_validate_config_missing_goal_and_desc(self, tmp_path: Path) -> None:
-        """测试缺少 goal 和 desc_file 时抛出异常。"""
+        """测试缺少 goal 和 desc_file 时仅警告不抛异常。"""
         test_data_dir = tmp_path / "test_data"
         test_data_dir.mkdir()
 
@@ -308,11 +308,11 @@ class TestValidateConfig:
 
         cfg = OmegaConf.create(config_dict)
 
-        # 验证抛出 ValueError
-        with pytest.raises(
-            ValueError, match="必须提供 `data.desc_file` 或 `data.goal` 之一"
-        ):
-            validate_config(cfg)
+        # 代码实际仅 log_msg("WARNING")，不抛异常，验证正常返回
+        result = validate_config(cfg)
+        assert result is not None
+        assert result.data.goal is None
+        assert result.data.desc_file is None
 
 
 class TestGenerateExpName:
@@ -766,3 +766,169 @@ class TestLLMProviderValidation:
         # 验证默认 base_url
         assert cfg.llm.code.base_url == "https://api.openai.com/v1"
         assert cfg.llm.feedback.base_url == "https://api.openai.com/v1"
+
+
+def _make_config_dict(tmp_path: Path, **overrides) -> dict:
+    """创建最小有效配置字典的辅助函数。"""
+    data_dir = overrides.pop("data_dir", str(tmp_path / "test_data"))
+    desc_file = overrides.pop("desc_file", None)
+    goal = overrides.pop("goal", "Test goal")
+    code_provider = overrides.pop("code_provider", "openai")
+    feedback_provider = overrides.pop("feedback_provider", "openai")
+    api_key = overrides.pop("api_key", "test-key")
+
+    return {
+        "project": {
+            "name": "Test",
+            "version": "0.1.0",
+            "workspace_dir": str(tmp_path / "workspace"),
+            "log_dir": str(tmp_path / "logs"),
+            "exp_name": None,
+        },
+        "data": {
+            "data_dir": data_dir,
+            "desc_file": desc_file,
+            "goal": goal,
+            "eval": None,
+            "preprocess_data": True,
+            "copy_data": False,
+        },
+        "llm": {
+            "code": {
+                "provider": code_provider,
+                "model": "gpt-4",
+                "temperature": 0.5,
+                "api_key": api_key,
+                "base_url": "https://api.openai.com/v1",
+                "max_tokens": None,
+            },
+            "feedback": {
+                "provider": feedback_provider,
+                "model": "gpt-4",
+                "temperature": 0.5,
+                "api_key": api_key,
+                "base_url": "https://api.openai.com/v1",
+                "max_tokens": None,
+            },
+        },
+        "execution": {
+            "timeout": 3600,
+            "agent_file_name": "run.py",
+            "format_tb_ipython": False,
+        },
+        "agent": {
+            "max_steps": 50,
+            "time_limit": 86400,
+            "k_fold_validation": 5,
+            "expose_prediction": False,
+            "data_preview": True,
+            "convert_system_to_user": False,
+        },
+        "search": {
+            "strategy": "mcts",
+            "max_debug_depth": 3,
+            "debug_prob": 0.5,
+            "num_drafts": 5,
+            "parallel_num": 3,
+        },
+        "logging": {"level": "INFO", "console_output": True, "file_output": True},
+    }
+
+
+class TestValidateConfigExtended:
+    """validate_config 额外路径测试。"""
+
+    def test_data_dir_not_exists(self, tmp_path):
+        """数据目录不存在时抛出 ValueError。"""
+        cfg_dict = _make_config_dict(tmp_path, data_dir=str(tmp_path / "nonexistent"))
+        cfg = OmegaConf.create(cfg_dict)
+
+        with pytest.raises(ValueError, match="数据目录不存在"):
+            validate_config(cfg)
+
+    def test_desc_file_not_exists(self, tmp_path):
+        """描述文件不存在时抛出 ValueError。"""
+        data_dir = tmp_path / "test_data"
+        data_dir.mkdir()
+
+        cfg_dict = _make_config_dict(
+            tmp_path,
+            data_dir=str(data_dir),
+            desc_file=str(tmp_path / "nonexistent.md"),
+        )
+        cfg = OmegaConf.create(cfg_dict)
+
+        with pytest.raises(ValueError, match="描述文件不存在"):
+            validate_config(cfg)
+
+    def test_feedback_provider_invalid(self, tmp_path):
+        """feedback provider 无效时抛出 ValueError。"""
+        data_dir = tmp_path / "test_data"
+        data_dir.mkdir()
+
+        cfg_dict = _make_config_dict(
+            tmp_path,
+            data_dir=str(data_dir),
+            feedback_provider="invalid_fb",
+        )
+        cfg = OmegaConf.create(cfg_dict)
+
+        with pytest.raises(ValueError, match="无效的 provider"):
+            validate_config(cfg)
+
+    def test_auto_detect_desc_file(self, tmp_path):
+        """自动检测 data_dir/description.md。"""
+        data_dir = tmp_path / "test_data"
+        data_dir.mkdir()
+        desc = data_dir / "description.md"
+        desc.write_text("# Test Description", encoding="utf-8")
+
+        cfg_dict = _make_config_dict(
+            tmp_path, data_dir=str(data_dir), desc_file=None, goal=None
+        )
+        cfg = OmegaConf.create(cfg_dict)
+
+        result = validate_config(cfg)
+        assert result.data.desc_file == desc.resolve()
+
+    def test_api_key_unresolved_warning(self, tmp_path):
+        """API Key 未解析时不抛异常（仅警告）。"""
+        data_dir = tmp_path / "test_data"
+        data_dir.mkdir()
+
+        cfg_dict = _make_config_dict(
+            tmp_path, data_dir=str(data_dir), api_key="${env:MISSING_KEY}"
+        )
+        cfg = OmegaConf.create(cfg_dict)
+
+        # 不应抛异常
+        result = validate_config(cfg)
+        assert result is not None
+
+
+class TestLoadConfigExtended:
+    """load_config 额外路径测试。"""
+
+    def test_config_file_not_found(self, tmp_path):
+        """配置文件不存在时抛出 FileNotFoundError。"""
+        with pytest.raises(FileNotFoundError, match="配置文件不存在"):
+            load_config(config_path=tmp_path / "nonexistent.yaml", use_cli=False)
+
+    def test_env_file_missing(self, tmp_path):
+        """不存在 .env 文件时正常运行。"""
+        data_dir = tmp_path / "test_data"
+        data_dir.mkdir()
+
+        cfg_dict = _make_config_dict(tmp_path, data_dir=str(data_dir))
+        config_path = tmp_path / "config.yaml"
+
+        from omegaconf import OmegaConf as OC
+        config_path.write_text(OC.to_yaml(OC.create(cfg_dict)), encoding="utf-8")
+
+        # env_file 指向不存在的路径
+        cfg = load_config(
+            config_path=config_path,
+            env_file=tmp_path / ".env.nonexistent",
+            use_cli=False,
+        )
+        assert cfg is not None

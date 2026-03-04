@@ -4,6 +4,7 @@ Journal 数据类单元测试。
 
 from core.state import Node, Journal
 from core.evolution.gene_parser import parse_solution_genes
+from utils.prompt_manager import PromptManager
 
 
 class TestJournal:
@@ -375,3 +376,92 @@ model.fit(X_train, y_train)
         assert top_3[0].metric_value == 0.95
         assert top_3[1].metric_value == 0.9
         assert top_3[2].metric_value == 0.8
+
+
+# ============================================================
+# 以下测试迁移自 test_prompt_builder.py
+# ============================================================
+
+
+class TestJournalGenerateSummary:
+    """Journal.generate_summary() 测试类。"""
+
+    def test_generate_summary_empty(self):
+        """测试空 Journal。"""
+        journal = Journal()
+        summary = journal.generate_summary()
+        assert summary == "No previous solutions."
+
+    def test_generate_summary_all_nodes(self):
+        """测试包含所有节点（good + buggy）。"""
+        journal = Journal()
+
+        node1 = Node(
+            code="x = 1",
+            plan="Use RandomForest",
+            analysis="Good solution",
+            analysis_detail={
+                "key_change": "Added RandomForest model",
+                "insight": "Good solution",
+                "bottleneck": None,
+                "suggested_direction": "Try XGBoost",
+            },
+            metric_value=0.85,
+            is_buggy=False,
+        )
+        node2 = Node(
+            code="x = 2",
+            plan="Try deep NN",
+            analysis="NaN loss detected",
+            analysis_detail={
+                "key_change": "Switched to deep NN",
+                "insight": "NaN loss detected due to exploding gradients",
+            },
+            is_buggy=True,
+        )
+
+        journal.append(node1)
+        journal.append(node2)
+
+        summary = journal.generate_summary()
+        assert "## Current Best" in summary
+        assert "0.85" in summary
+        assert "## Changelog" in summary
+        assert "## Constraints" in summary or "NaN loss" in summary
+
+    def test_generate_summary_with_code(self):
+        """测试 include_code=True。"""
+        journal = Journal()
+        node = Node(
+            code="import pandas as pd\nprint('hello')",
+            plan="Load data",
+            analysis="Success",
+            analysis_detail={"key_change": "Load data", "insight": "Success"},
+            metric_value=0.9,
+        )
+        journal.append(node)
+        summary = journal.generate_summary(include_code=False)
+        assert "## Current Best" in summary
+        assert "0.9" in summary
+
+    def test_generate_summary_marks_buggy(self):
+        """测试 buggy 节点在 Changelog 中有 BUGGY 标记。"""
+        journal = Journal()
+
+        node1 = Node(
+            code="x = 1", plan="Good approach", analysis="Works well",
+            analysis_detail={"key_change": "Good approach", "insight": "Works well"},
+            metric_value=0.9, is_buggy=False,
+        )
+        node2 = Node(
+            code="x = 2", plan="Buggy approach", analysis="Failed",
+            analysis_detail={"key_change": "Buggy approach", "insight": "Failed due to memory error"},
+            is_buggy=True,
+        )
+
+        journal.append(node1)
+        journal.append(node2)
+
+        summary = journal.generate_summary()
+        assert "BUGGY" in summary
+        assert "Failed" in summary or "memory error" in summary

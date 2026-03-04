@@ -117,7 +117,7 @@ class TestCoderAgentGenerate:
 
         assert result.success is False
         assert result.node is None
-        assert "parent_a" in result.error or "gene_plan" in result.error
+        assert "primary_parent" in result.error or "gene_plan" in result.error
 
 
 class TestCoderAgentExplore:

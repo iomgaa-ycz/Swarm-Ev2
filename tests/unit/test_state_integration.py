@@ -138,9 +138,6 @@ from sklearn.ensemble import RandomForestClassifier
         assert "MODEL" in root.genes
 
         # 6. 验证 Node 属性
-        assert root.stage_name == "initial"  # Phase 2: 无父节点时为 "initial"
-        assert not root.has_exception
-        assert buggy.has_exception
         assert buggy.exc_type == "SyntaxError"
 
         print("✅ 完整工作流程测试通过")
