@@ -1417,6 +1417,44 @@ For buggy solutions, still fill all string fields (e.g. approach_tag="Failed: OO
                         history.append(warning)
         return history
 
+    def _compute_agent_quality(self, node: Node) -> float:
+        """基于节点在当前 journal 中的相对排名计算 [0,1] 质量。
+
+        策略：percentile rank（百分位排名）
+        - 收集所有非 buggy 节点的 metric_value
+        - 当前节点击败的比例即为 quality
+        - lower_is_better 时翻转比较方向
+
+        Args:
+            node: 已完成评估的节点（metric_value 非 None）
+
+        Returns:
+            [0, 1] 范围的质量值，0.5 为中性
+        """
+        with self.journal_lock:
+            all_metrics = [
+                n.metric_value
+                for n in self.journal.nodes
+                if not n.is_buggy and n.metric_value is not None
+            ]
+
+        if len(all_metrics) <= 1:
+            return 0.5  # 仅一个节点，中性得分
+
+        beaten = 0
+        total = len(all_metrics) - 1  # 排除自身
+        for m in all_metrics:
+            if m == node.metric_value:
+                continue
+            if node.lower_is_better:
+                if node.metric_value < m:
+                    beaten += 1
+            else:
+                if node.metric_value > m:
+                    beaten += 1
+
+        return beaten / total if total > 0 else 0.5
+
     def _finalize_node(
         self,
         node: Node,
@@ -1458,6 +1496,11 @@ For buggy solutions, still fill all string fields (e.g. approach_tag="Failed: OO
         with self.journal_lock:
             self.journal.append(node)
             self._update_best_node(node)
+
+        # 更新 Agent 任务擅长度得分
+        if self.task_dispatcher and not node.is_buggy and node.metric_value is not None:
+            quality = self._compute_agent_quality(node)
+            self.task_dispatcher.update_score(agent.name, task_type, quality)
 
         # 经验池
         if self.experience_pool:
