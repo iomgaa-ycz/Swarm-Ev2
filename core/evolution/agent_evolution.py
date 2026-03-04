@@ -1,10 +1,10 @@
 """Agent 层进化模块。
 
 每 N 个 Epoch 评估所有 Agent 的表现，对弱者进行 Role 和 Strategy 变异。
+配置的读写通过 PromptManager 内存字典完成，不直接操作磁盘文件。
 """
 
 import random
-from pathlib import Path
 from typing import List, Dict, Any, Tuple, Optional
 
 from agents.base_agent import BaseAgent
@@ -23,9 +23,9 @@ class AgentEvolution:
     Attributes:
         agents: Agent 列表
         experience_pool: 共享经验池
+        prompt_manager: PromptManager 实例（配置读写委托）
         skill_manager: Skill 池管理器（可选）
         config: 全局配置
-        configs_dir: Agent 配置文件根目录
         evolution_interval: 进化间隔（每 N 个 Epoch）
         min_records: 进化前最小经验池记录数
     """
@@ -35,6 +35,7 @@ class AgentEvolution:
         agents: List[BaseAgent],
         experience_pool: ExperiencePool,
         config: Config,
+        prompt_manager: Any,
         skill_manager: Optional[Any] = None,
     ):
         """初始化 Agent 进化器。
@@ -43,15 +44,16 @@ class AgentEvolution:
             agents: Agent 列表
             experience_pool: 共享经验池
             config: 全局配置
+            prompt_manager: PromptManager 实例（配置读写委托）
             skill_manager: Skill 池管理器（可选，P3.5 使用）
         """
         self.agents = agents
         self.experience_pool = experience_pool
+        self.prompt_manager = prompt_manager
         self.skill_manager = skill_manager
         self.config = config
 
         # 加载配置
-        self.configs_dir = Path(config.evolution.agent.configs_dir)
         self.evolution_interval = config.evolution.agent.evolution_interval
         self.min_records = config.evolution.agent.min_records_for_evolution
 
@@ -360,7 +362,7 @@ class AgentEvolution:
         return prompt
 
     def _load_agent_config(self, agent_id: str, filename: str) -> str:
-        """加载 Agent 配置文件。
+        """加载 Agent 配置（委托 PromptManager 从内存读取）。
 
         Args:
             agent_id: Agent 唯一标识
@@ -370,32 +372,20 @@ class AgentEvolution:
             配置文件内容
 
         Raises:
-            FileNotFoundError: 配置文件不存在
+            FileNotFoundError: Agent 或 section 不存在
         """
-        config_path = self.configs_dir / agent_id / filename
-
-        if not config_path.exists():
-            raise FileNotFoundError(f"配置文件不存在: {config_path}")
-
-        return config_path.read_text(encoding="utf-8")
+        return self.prompt_manager.load_agent_config(agent_id, filename)
 
     def _save_agent_config(self, agent_id: str, filename: str, content: str) -> None:
-        """保存 Agent 配置文件。
+        """保存 Agent 配置（委托 PromptManager 更新内存字典）。
 
         Args:
             agent_id: Agent 唯一标识
             filename: 文件名（如 "role.md"）
             content: 配置内容
         """
-        config_path = self.configs_dir / agent_id / filename
-
-        # 确保目录存在
-        config_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # 写入文件
-        config_path.write_text(content, encoding="utf-8")
-
-        log_msg("DEBUG", f"配置文件已保存: {config_path}")
+        self.prompt_manager.update_agent_config(agent_id, filename, content)
+        log_msg("DEBUG", f"Agent 配置已更新: {agent_id}/{filename}")
 
     def _update_skill_pool(self) -> None:
         """更新 Skill 池（P3.5 新增）。

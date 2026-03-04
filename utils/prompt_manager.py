@@ -1,8 +1,10 @@
 """Prompt 管理器模块。
 
 基于 Jinja2 的统一 Prompt 管理系统，支持静态/动态 Skill 加载和模板渲染。
+Agent 配置使用单模板 + 内存字典方式管理，避免磁盘多副本同步问题。
 """
 
+import copy
 from pathlib import Path
 from typing import Optional, Dict, Any
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
@@ -27,6 +29,7 @@ class PromptManager:
         skills_dir: Skill 文件根目录
         agent_configs_dir: Agent 配置文件根目录
         env: Jinja2 环境实例
+        _agent_configs: 内存中的 Agent 配置字典 {agent_id: {section: content}}
     """
 
     def __init__(
@@ -35,6 +38,7 @@ class PromptManager:
         skills_dir: Path,
         agent_configs_dir: Path,
         skill_manager: Optional[Any] = None,
+        num_agents: int = 4,
     ):
         """初始化 PromptManager。
 
@@ -43,10 +47,15 @@ class PromptManager:
             skills_dir: Skill 文件根目录（如 benchmark/mle-bench/skills）
             agent_configs_dir: Agent 配置文件根目录（如 benchmark/mle-bench/agent_configs）
             skill_manager: Skill 池管理器（可选，P3.5 使用）
+            num_agents: Agent 数量，从 default/ 模板复制 N 份到内存
         """
         self.skills_dir = Path(skills_dir)
         self.agent_configs_dir = Path(agent_configs_dir)
         self.skill_manager = skill_manager
+
+        # 从 default/ 模板加载配置到内存
+        self._agent_configs: Dict[str, Dict[str, str]] = {}
+        self._load_default_configs(num_agents)
 
         # 初始化 Jinja2 环境
         self.env = Environment(
@@ -59,7 +68,35 @@ class PromptManager:
         self.env.globals["load_skill"] = self.load_skill
         self.env.globals["load_agent_config"] = self.load_agent_config
 
-        log_msg("INFO", f"PromptManager 初始化完成（模板目录: {template_dir}）")
+        log_msg("INFO", f"PromptManager 初始化完成（模板目录: {template_dir}, agents: {num_agents}）")
+
+    def _load_default_configs(self, num_agents: int) -> None:
+        """从 default/ 目录加载模板配置，按 num_agents 复制到内存。
+
+        Args:
+            num_agents: 需要创建的 Agent 数量
+        """
+        default_dir = self.agent_configs_dir / "default"
+        if not default_dir.exists():
+            log_msg("WARNING", f"默认配置目录不存在: {default_dir}，跳过加载")
+            return
+
+        # 读取 default/ 下所有 .md 文件作为模板
+        template_config: Dict[str, str] = {}
+        for md_file in sorted(default_dir.glob("*.md")):
+            section = md_file.stem  # 如 "role", "strategy_explore"
+            template_config[section] = md_file.read_text(encoding="utf-8")
+
+        # 为每个 Agent 复制一份
+        for i in range(num_agents):
+            agent_id = f"agent_{i}"
+            self._agent_configs[agent_id] = copy.deepcopy(template_config)
+
+        log_msg(
+            "INFO",
+            f"Agent 配置已加载到内存: {num_agents} 个 Agent, "
+            f"每个 {len(template_config)} 个 section ({list(template_config.keys())})",
+        )
 
     def load_skill(self, skill_path: str) -> str:
         """加载静态 Skill 文件。
@@ -87,7 +124,7 @@ class PromptManager:
         return content
 
     def load_agent_config(self, agent_id: str, section: str) -> str:
-        """加载 Agent 配置文件。
+        """从内存字典加载 Agent 配置。
 
         Args:
             agent_id: Agent ID（如 "agent_0"）
@@ -97,20 +134,55 @@ class PromptManager:
             配置文件内容（Markdown 格式）
 
         Raises:
-            FileNotFoundError: 配置文件不存在
+            FileNotFoundError: Agent 或 section 不存在
         """
-        # 支持带或不带 .md 后缀
-        if not section.endswith(".md"):
-            section += ".md"
+        # 去掉 .md 后缀（内存字典用 stem 作为 key）
+        if section.endswith(".md"):
+            section = section[:-3]
 
-        full_path = self.agent_configs_dir / agent_id / section
+        if agent_id not in self._agent_configs:
+            log_msg("ERROR", f"Agent 配置不存在: {agent_id}")
+            raise FileNotFoundError(f"Agent 配置不存在: {agent_id}")
 
-        if not full_path.exists():
-            log_msg("ERROR", f"Agent 配置文件不存在: {full_path}")
-            raise FileNotFoundError(f"Agent 配置文件不存在: {full_path}")
+        agent_cfg = self._agent_configs[agent_id]
+        if section not in agent_cfg:
+            log_msg("ERROR", f"Agent 配置节不存在: {agent_id}/{section}")
+            raise FileNotFoundError(f"Agent 配置节不存在: {agent_id}/{section}")
 
-        content = full_path.read_text(encoding="utf-8")
-        return content
+        return agent_cfg[section]
+
+    def update_agent_config(self, agent_id: str, section: str, content: str) -> None:
+        """更新内存中指定 Agent 的指定 section。
+
+        Args:
+            agent_id: Agent ID（如 "agent_0"）
+            section: 配置节名称（如 "role" 或 "strategy_explore"）
+            content: 新的配置内容
+        """
+        # 去掉 .md 后缀
+        if section.endswith(".md"):
+            section = section[:-3]
+
+        if agent_id not in self._agent_configs:
+            self._agent_configs[agent_id] = {}
+
+        self._agent_configs[agent_id][section] = content
+        log_msg("DEBUG", f"Agent 配置已更新: {agent_id}/{section}")
+
+    def export_agent_configs(self, output_dir: Path) -> None:
+        """导出所有 Agent 的最终配置到指定目录。
+
+        Args:
+            output_dir: 输出目录（如 workspace/logs/agent_configs_final/）
+        """
+        output_dir = Path(output_dir)
+        for agent_id, sections in self._agent_configs.items():
+            agent_dir = output_dir / agent_id
+            agent_dir.mkdir(parents=True, exist_ok=True)
+            for section, content in sections.items():
+                (agent_dir / f"{section}.md").write_text(content, encoding="utf-8")
+
+        log_msg("INFO", f"Agent 配置已导出: {output_dir} ({len(self._agent_configs)} 个 Agent)")
 
     def inject_top_k_skills(
         self,
