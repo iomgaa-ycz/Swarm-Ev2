@@ -58,11 +58,11 @@ def temp_prompt_system(tmp_path):
         "# Workspace\nUse ./input/ for data."
     )
 
-    # 创建测试 Agent 配置
-    agent_dir = agent_configs_dir / "agent_0"
-    agent_dir.mkdir()
-    (agent_dir / "role.md").write_text("# Test Agent\nYou are a test agent.")
-    (agent_dir / "strategy_explore.md").write_text(
+    # 创建测试 Agent 配置（default/ 模板）
+    default_dir = agent_configs_dir / "default"
+    default_dir.mkdir()
+    (default_dir / "role.md").write_text("# Test Agent\nYou are a test agent.")
+    (default_dir / "strategy_explore.md").write_text(
         "# Explore Strategy\nStart with baselines."
     )
 
@@ -408,6 +408,7 @@ class TestPromptManagerRealDir:
             template_dir=base_dir / "prompt_templates",
             skills_dir=base_dir / "skills",
             agent_configs_dir=base_dir / "agent_configs",
+            num_agents=4,
         )
 
         prompt = pm.build_prompt(
@@ -435,12 +436,56 @@ class TestPromptManagerRealDir:
             template_dir=base_dir / "prompt_templates",
             skills_dir=base_dir / "skills",
             agent_configs_dir=base_dir / "agent_configs",
+            num_agents=4,
         )
 
         assert pm._format_time(0) == "0 seconds"
         assert pm._format_time(30) == "30 seconds"
         assert pm._format_time(60) == "1 minute"
         assert pm._format_time(3600) == "1 hour"
+
+
+class TestUpdateAndExportAgentConfig:
+    """测试 Agent 配置更新和导出。"""
+
+    def test_update_agent_config(self, prompt_manager):
+        """测试更新 Agent 配置。"""
+        prompt_manager.update_agent_config("agent_0", "role", "# Updated Role\nNew role.")
+        content = prompt_manager.load_agent_config("agent_0", "role")
+        assert "Updated Role" in content
+
+    def test_update_agent_config_with_md_suffix(self, prompt_manager):
+        """测试更新 Agent 配置（带 .md 后缀）。"""
+        prompt_manager.update_agent_config("agent_0", "role.md", "# Role v2\nUpdated.")
+        content = prompt_manager.load_agent_config("agent_0", "role")
+        assert "Role v2" in content
+
+    def test_update_creates_new_agent(self, prompt_manager):
+        """测试更新不存在的 Agent 时自动创建。"""
+        prompt_manager.update_agent_config("agent_99", "role", "# New Agent")
+        content = prompt_manager.load_agent_config("agent_99", "role")
+        assert "New Agent" in content
+
+    def test_export_agent_configs(self, prompt_manager, tmp_path):
+        """测试导出 Agent 配置到磁盘。"""
+        export_dir = tmp_path / "exported"
+        prompt_manager.export_agent_configs(export_dir)
+
+        # 验证导出目录结构（默认 4 个 agent）
+        for i in range(4):
+            agent_dir = export_dir / f"agent_{i}"
+            assert agent_dir.exists(), f"导出目录缺失: agent_{i}"
+            assert (agent_dir / "role.md").exists()
+            assert (agent_dir / "strategy_explore.md").exists()
+
+    def test_memory_isolation_between_agents(self, prompt_manager):
+        """测试各 Agent 配置在内存中互相隔离。"""
+        # 修改 agent_0 的 role
+        prompt_manager.update_agent_config("agent_0", "role", "# Modified Role")
+
+        # agent_1 的 role 应保持原始值
+        content_1 = prompt_manager.load_agent_config("agent_1", "role")
+        assert "Test Agent" in content_1
 
 
 class TestSkillManagerInjection:

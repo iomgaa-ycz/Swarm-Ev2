@@ -30,6 +30,7 @@ class TestPromptSystemIntegration:
             template_dir=base_dir / "prompt_templates",
             skills_dir=base_dir / "skills",
             agent_configs_dir=base_dir / "agent_configs",
+            num_agents=4,
         )
 
     def test_file_structure_templates(self, base_dir):
@@ -64,18 +65,17 @@ class TestPromptSystemIntegration:
             assert (base_dir / skill).exists(), f"任务 Skill 缺失: {skill}"
 
     def test_file_structure_agent_configs(self, base_dir):
-        """测试 Agent 配置文件存在。"""
-        # 检查所有 4 个 Agent 的配置
-        for agent_id in ["agent_0", "agent_1", "agent_2", "agent_3"]:
-            configs = [
-                "role.md",
-                "strategy_explore.md",
-                "strategy_merge.md",
-                "strategy_mutate.md",
-            ]
-            for config in configs:
-                path = base_dir / "agent_configs" / agent_id / config
-                assert path.exists(), f"Agent 配置缺失: {agent_id}/{config}"
+        """测试 Agent 默认配置模板存在。"""
+        # 检查 default/ 目录包含所有模板
+        configs = [
+            "role.md",
+            "strategy_explore.md",
+            "strategy_merge.md",
+            "strategy_mutate.md",
+        ]
+        for config in configs:
+            path = base_dir / "agent_configs" / "default" / config
+            assert path.exists(), f"默认配置缺失: default/{config}"
 
     def test_file_structure_metadata(self, base_dir):
         """测试 Skill 元数据文件存在。"""
@@ -141,8 +141,8 @@ class TestPromptSystemIntegration:
         assert "0.85" in prompt or "Validation metric" in prompt, "执行结果缺失"
         assert "2 hours" in prompt, "时间格式化错误"
 
-    def test_all_agents_have_configs(self, base_dir):
-        """测试所有 4 个 Agent 都有完整配置。"""
+    def test_all_agents_have_configs_in_memory(self, prompt_manager):
+        """测试所有 4 个 Agent 在内存中都有完整配置。"""
         for agent_id in ["agent_0", "agent_1", "agent_2", "agent_3"]:
             for section in [
                 "role",
@@ -150,12 +150,8 @@ class TestPromptSystemIntegration:
                 "strategy_merge",
                 "strategy_mutate",
             ]:
-                path = base_dir / "agent_configs" / agent_id / f"{section}.md"
-                assert path.exists(), f"{agent_id} 缺少 {section} 配置"
-
-                # 验证文件不为空
-                content = path.read_text()
-                assert len(content) > 0, f"{agent_id}/{section} 文件为空"
+                content = prompt_manager.load_agent_config(agent_id, section)
+                assert len(content) > 0, f"{agent_id}/{section} 配置为空"
 
 
 def main():

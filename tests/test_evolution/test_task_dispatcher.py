@@ -6,7 +6,7 @@
 import pytest
 from unittest.mock import MagicMock
 
-from core.evolution import TaskDispatcher
+from core.evolution.task_dispatcher import TaskDispatcher
 from agents.base_agent import BaseAgent
 
 
@@ -150,6 +150,19 @@ class TestTaskDispatcher:
 
         best_mutate = dispatcher._select_best("mutate")
         assert best_mutate.name == "agent_3"  # 0.9
+
+    def test_select_best_tie_breaking(self, mock_agents):
+        """测试得分相同时不固定返回第一个 Agent。"""
+        dispatcher = TaskDispatcher(mock_agents, epsilon=0.0)
+
+        # 所有 Agent 的 explore 得分相同（默认 0.5）
+        selections = [dispatcher.select_agent("explore").name for _ in range(100)]
+
+        # 验证不只选择一个 Agent（tie-breaking 随机性）
+        unique_agents = set(selections)
+        assert len(unique_agents) > 1, (
+            f"得分相同时应随机选择，但只选择了 {unique_agents}"
+        )
 
     def test_epsilon_greedy_mixed_strategy(self, mock_agents):
         """测试混合策略（epsilon=0.3）。"""

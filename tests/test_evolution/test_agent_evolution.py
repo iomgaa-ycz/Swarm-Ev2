@@ -23,6 +23,15 @@ def mock_agents():
 
 
 @pytest.fixture
+def mock_prompt_manager():
+    """创建 Mock PromptManager。"""
+    pm = MagicMock()
+    # 默认返回模板内容
+    pm.load_agent_config.return_value = "# Default Config\nDefault content"
+    return pm
+
+
+@pytest.fixture
 def mock_config(tmp_path):
     """创建 Mock 配置。"""
     config = MagicMock()
@@ -91,20 +100,21 @@ def experience_pool_with_data(mock_config):
 class TestAgentEvolution:
     """AgentEvolution 测试套件。"""
 
-    def test_initialization(self, mock_agents, experience_pool_with_data, mock_config):
+    def test_initialization(self, mock_agents, experience_pool_with_data, mock_config, mock_prompt_manager):
         """测试初始化。"""
-        evolution = AgentEvolution(mock_agents, experience_pool_with_data, mock_config)
+        evolution = AgentEvolution(mock_agents, experience_pool_with_data, mock_config, mock_prompt_manager)
 
         assert evolution.agents == mock_agents
         assert evolution.experience_pool == experience_pool_with_data
+        assert evolution.prompt_manager == mock_prompt_manager
         assert evolution.evolution_interval == 3
         assert evolution.min_records == 20
 
     def test_evolve_skips_non_interval_epochs(
-        self, mock_agents, experience_pool_with_data, mock_config
+        self, mock_agents, experience_pool_with_data, mock_config, mock_prompt_manager
     ):
         """测试 epoch % 3 != 0 时跳过进化。"""
-        evolution = AgentEvolution(mock_agents, experience_pool_with_data, mock_config)
+        evolution = AgentEvolution(mock_agents, experience_pool_with_data, mock_config, mock_prompt_manager)
 
         with patch.object(evolution, "_evaluate_agents") as mock_evaluate:
             # epoch=1, 2 应跳过
@@ -119,20 +129,20 @@ class TestAgentEvolution:
             assert mock_evaluate.call_count == 1
 
     def test_evolve_skips_when_epoch_is_zero(
-        self, mock_agents, experience_pool_with_data, mock_config
+        self, mock_agents, experience_pool_with_data, mock_config, mock_prompt_manager
     ):
         """测试 epoch=0 时跳过进化。"""
-        evolution = AgentEvolution(mock_agents, experience_pool_with_data, mock_config)
+        evolution = AgentEvolution(mock_agents, experience_pool_with_data, mock_config, mock_prompt_manager)
 
         with patch.object(evolution, "_evaluate_agents") as mock_evaluate:
             evolution.evolve(epoch=0)
             assert mock_evaluate.call_count == 0
 
-    def test_evolve_skips_insufficient_records(self, mock_agents, mock_config):
+    def test_evolve_skips_insufficient_records(self, mock_agents, mock_config, mock_prompt_manager):
         """测试记录不足时跳过进化。"""
         # 创建空经验池
         pool = ExperiencePool(mock_config)
-        evolution = AgentEvolution(mock_agents, pool, mock_config)
+        evolution = AgentEvolution(mock_agents, pool, mock_config, mock_prompt_manager)
 
         with patch.object(evolution, "_evaluate_agents") as mock_evaluate:
             evolution.evolve(epoch=3)
@@ -140,9 +150,9 @@ class TestAgentEvolution:
             # 验证未调用评估
             assert mock_evaluate.call_count == 0
 
-    def test_evaluate_agents(self, mock_agents, experience_pool_with_data, mock_config):
+    def test_evaluate_agents(self, mock_agents, experience_pool_with_data, mock_config, mock_prompt_manager):
         """测试 Agent 评估。"""
-        evolution = AgentEvolution(mock_agents, experience_pool_with_data, mock_config)
+        evolution = AgentEvolution(mock_agents, experience_pool_with_data, mock_config, mock_prompt_manager)
 
         scores = evolution._evaluate_agents()
 
@@ -158,10 +168,10 @@ class TestAgentEvolution:
         assert all(0 <= score <= 1 for score in scores.values())
 
     def test_identify_elites_and_weak(
-        self, mock_agents, experience_pool_with_data, mock_config
+        self, mock_agents, experience_pool_with_data, mock_config, mock_prompt_manager
     ):
         """测试识别精英和弱者。"""
-        evolution = AgentEvolution(mock_agents, experience_pool_with_data, mock_config)
+        evolution = AgentEvolution(mock_agents, experience_pool_with_data, mock_config, mock_prompt_manager)
 
         scores = {
             "agent_0": 0.85,
@@ -183,10 +193,10 @@ class TestAgentEvolution:
         assert "agent_3" in weak
 
     def test_get_performance_summary(
-        self, mock_agents, experience_pool_with_data, mock_config
+        self, mock_agents, experience_pool_with_data, mock_config, mock_prompt_manager
     ):
         """测试获取历史表现摘要。"""
-        evolution = AgentEvolution(mock_agents, experience_pool_with_data, mock_config)
+        evolution = AgentEvolution(mock_agents, experience_pool_with_data, mock_config, mock_prompt_manager)
 
         summary = evolution._get_performance_summary("agent_0")
 
@@ -200,10 +210,10 @@ class TestAgentEvolution:
         assert len(summary["top_successes"]) > 0
 
     def test_get_performance_summary_with_task_type(
-        self, mock_agents, experience_pool_with_data, mock_config
+        self, mock_agents, experience_pool_with_data, mock_config, mock_prompt_manager
     ):
         """测试按任务类型获取历史表现。"""
-        evolution = AgentEvolution(mock_agents, experience_pool_with_data, mock_config)
+        evolution = AgentEvolution(mock_agents, experience_pool_with_data, mock_config, mock_prompt_manager)
 
         summary = evolution._get_performance_summary("agent_0", task_type="explore")
 
@@ -214,19 +224,16 @@ class TestAgentEvolution:
 
     @patch("core.evolution.agent_evolution.query_with_config")
     def test_mutate_role(
-        self, mock_query, mock_agents, experience_pool_with_data, mock_config, tmp_path
+        self, mock_query, mock_agents, experience_pool_with_data, mock_config, mock_prompt_manager
     ):
         """测试 Role 变异。"""
-        evolution = AgentEvolution(mock_agents, experience_pool_with_data, mock_config)
+        # 设置 load_agent_config 返回不同内容
+        mock_prompt_manager.load_agent_config.side_effect = lambda agent_id, section: (
+            "# 当前 Role\n弱者角色定义" if agent_id == "agent_2"
+            else "# 精英 Role\n精英角色定义"
+        )
 
-        # 创建测试配置文件
-        agent_2_dir = tmp_path / "agent_configs" / "agent_2"
-        agent_2_dir.mkdir(parents=True, exist_ok=True)
-        (agent_2_dir / "role.md").write_text("# 当前 Role\n弱者角色定义")
-
-        agent_0_dir = tmp_path / "agent_configs" / "agent_0"
-        agent_0_dir.mkdir(parents=True, exist_ok=True)
-        (agent_0_dir / "role.md").write_text("# 精英 Role\n精英角色定义")
+        evolution = AgentEvolution(mock_agents, experience_pool_with_data, mock_config, mock_prompt_manager)
 
         # Mock LLM 返回
         mock_query.return_value = "# 改进后的 Role\n新角色定义"
@@ -237,25 +244,23 @@ class TestAgentEvolution:
         # 验证 LLM 被调用
         assert mock_query.call_count == 1
 
-        # 验证新 Role 写入文件
-        new_role = (agent_2_dir / "role.md").read_text()
-        assert "改进后的 Role" in new_role
+        # 验证 update_agent_config 被调用
+        mock_prompt_manager.update_agent_config.assert_called_once_with(
+            "agent_2", "role.md", "# 改进后的 Role\n新角色定义"
+        )
 
     @patch("core.evolution.agent_evolution.query_with_config")
     def test_mutate_strategy(
-        self, mock_query, mock_agents, experience_pool_with_data, mock_config, tmp_path
+        self, mock_query, mock_agents, experience_pool_with_data, mock_config, mock_prompt_manager
     ):
         """测试 Strategy 变异。"""
-        evolution = AgentEvolution(mock_agents, experience_pool_with_data, mock_config)
+        # 设置 load_agent_config 返回不同内容
+        mock_prompt_manager.load_agent_config.side_effect = lambda agent_id, section: (
+            "# 当前 Strategy\n弱者策略" if agent_id == "agent_2"
+            else "# 精英 Strategy\n精英策略"
+        )
 
-        # 创建测试配置文件
-        agent_2_dir = tmp_path / "agent_configs" / "agent_2"
-        agent_2_dir.mkdir(parents=True, exist_ok=True)
-        (agent_2_dir / "strategy_explore.md").write_text("# 当前 Strategy\n弱者策略")
-
-        agent_0_dir = tmp_path / "agent_configs" / "agent_0"
-        agent_0_dir.mkdir(parents=True, exist_ok=True)
-        (agent_0_dir / "strategy_explore.md").write_text("# 精英 Strategy\n精英策略")
+        evolution = AgentEvolution(mock_agents, experience_pool_with_data, mock_config, mock_prompt_manager)
 
         # Mock LLM 返回
         mock_query.return_value = "# 改进后的 Strategy\n新策略定义"
@@ -266,15 +271,16 @@ class TestAgentEvolution:
         # 验证 LLM 被调用
         assert mock_query.call_count == 1
 
-        # 验证新 Strategy 写入文件
-        new_strategy = (agent_2_dir / "strategy_explore.md").read_text()
-        assert "改进后的 Strategy" in new_strategy
+        # 验证 update_agent_config 被调用
+        mock_prompt_manager.update_agent_config.assert_called_once_with(
+            "agent_2", "strategy_explore.md", "# 改进后的 Strategy\n新策略定义"
+        )
 
     def test_build_mutation_prompt(
-        self, mock_agents, experience_pool_with_data, mock_config
+        self, mock_agents, experience_pool_with_data, mock_config, mock_prompt_manager
     ):
         """测试构建变异 Prompt。"""
-        evolution = AgentEvolution(mock_agents, experience_pool_with_data, mock_config)
+        evolution = AgentEvolution(mock_agents, experience_pool_with_data, mock_config, mock_prompt_manager)
 
         stats = {
             "success_rate": 0.45,
@@ -300,20 +306,14 @@ class TestAgentEvolution:
 
     @patch("core.evolution.agent_evolution.query_with_config")
     def test_full_evolve_workflow(
-        self, mock_query, mock_agents, experience_pool_with_data, mock_config, tmp_path
+        self, mock_query, mock_agents, experience_pool_with_data, mock_config, mock_prompt_manager
     ):
         """测试完整进化流程。"""
-        evolution = AgentEvolution(mock_agents, experience_pool_with_data, mock_config)
+        # 重置 mock_prompt_manager 的 side_effect
+        mock_prompt_manager.load_agent_config.side_effect = None
+        mock_prompt_manager.load_agent_config.return_value = "# Default Config"
 
-        # 创建所有 Agent 的配置文件
-        for agent_id in ["agent_0", "agent_1", "agent_2", "agent_3"]:
-            agent_dir = tmp_path / "agent_configs" / agent_id
-            agent_dir.mkdir(parents=True, exist_ok=True)
-            (agent_dir / "role.md").write_text(f"# {agent_id} Role")
-            for task_type in ["explore", "merge", "mutate"]:
-                (agent_dir / f"strategy_{task_type}.md").write_text(
-                    f"# {agent_id} {task_type} Strategy"
-                )
+        evolution = AgentEvolution(mock_agents, experience_pool_with_data, mock_config, mock_prompt_manager)
 
         # Mock LLM 返回
         mock_query.return_value = "# 改进后的配置"
@@ -323,3 +323,6 @@ class TestAgentEvolution:
 
         # 验证 LLM 被调用（2 个弱者 × (1 Role + 3 Strategy) = 8 次）
         assert mock_query.call_count == 8
+
+        # 验证 update_agent_config 被调用 8 次
+        assert mock_prompt_manager.update_agent_config.call_count == 8
