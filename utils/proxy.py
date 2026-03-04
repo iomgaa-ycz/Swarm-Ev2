@@ -64,9 +64,7 @@ def setup_proxy_env() -> None:
     os.environ["no_proxy"] = no_proxy
 
 
-def test_proxy_connectivity(
-    proxy_url: Optional[str] = None, timeout: int = 5
-) -> bool:
+def test_proxy_connectivity(proxy_url: Optional[str] = None, timeout: int = 5) -> bool:
     """测试代理连通性。
 
     通过代理访问一个轻量级 URL 验证代理是否可用。
@@ -86,10 +84,12 @@ def test_proxy_connectivity(
         return False
 
     try:
-        proxy_handler = urllib.request.ProxyHandler({
-            "http": proxy_url,
-            "https": proxy_url,
-        })
+        proxy_handler = urllib.request.ProxyHandler(
+            {
+                "http": proxy_url,
+                "https": proxy_url,
+            }
+        )
         opener = urllib.request.build_opener(proxy_handler)
         # 用 HEAD 请求测试，不下载内容
         req = urllib.request.Request(
@@ -175,8 +175,11 @@ def log_proxy_status() -> None:
     no_proxy = os.environ.get("NO_PROXY", "")
 
     if http_proxy or https_proxy:
-        _log("INFO", f"代理配置 — HTTP: {_mask_proxy_url(http_proxy)}, "
-             f"HTTPS: {_mask_proxy_url(https_proxy)}, NO_PROXY: {no_proxy}")
+        _log(
+            "INFO",
+            f"代理配置 — HTTP: {_mask_proxy_url(http_proxy)}, "
+            f"HTTPS: {_mask_proxy_url(https_proxy)}, NO_PROXY: {no_proxy}",
+        )
     else:
         _log("INFO", "代理配置 — 未启用（直连模式）")
 

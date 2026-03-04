@@ -78,6 +78,7 @@ def condense_term_out(
 
 # ── Review Prompt 任务描述压缩 ─────────────────────────────────────
 
+
 def compress_task_desc(full_desc: str) -> str:
     """从完整竞赛描述中提取 Review 所需的最小信息。
 

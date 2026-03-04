@@ -189,9 +189,8 @@ class PromptManager:
                 - time_remaining: int - 剩余时间（秒）
                 - steps_remaining: int - 剩余步数
                 对于 merge 任务，还需要：
-                - parent_a: Node - 父节点 A
-                - parent_b: Node - 父节点 B
-                - gene_plan: Dict[str, str] - 基因交叉计划
+                - primary_parent: Node - 贡献基因最多的父代
+                - gene_plan: str - 基因交叉计划（Markdown 格式）
                 对于 mutate 任务，还需要：
                 - target_gene: str - 目标基因块
 
@@ -266,15 +265,6 @@ class PromptManager:
             )
 
         return " ".join(parts) if parts else "0 seconds"
-
-    def update_skill_pool(self, skill_manager: Any) -> None:
-        """更新 Skill 池引用（Agent 进化后调用）。
-
-        Args:
-            skill_manager: 新的 SkillManager 实例
-        """
-        self.skill_manager = skill_manager
-        log_msg("INFO", "PromptManager Skill 池已更新")
 
     def _format_skill_examples(self, skills: list) -> str:
         """格式化 Skill 为 Markdown 列表。

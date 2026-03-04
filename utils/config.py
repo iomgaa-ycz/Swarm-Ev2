@@ -131,8 +131,8 @@ class SolutionEvolutionConfig:
     steps_per_epoch: int
     crossover_strategy: str = "random"  # "random" 或 "pheromone"
     # ---- 两阶段进化新增 ----
-    phase1_target_nodes: int = 8       # Phase 1 结束条件：valid_pool 达到此数量
-    debug_max_attempts: int = 2        # debug_chain 最大次数（两阶段共用）
+    phase1_target_nodes: int = 8  # Phase 1 结束条件：valid_pool 达到此数量
+    debug_max_attempts: int = 2  # debug_chain 最大次数（两阶段共用）
 
 
 @dataclass
@@ -259,7 +259,15 @@ def load_config(
     log_msg("INFO", f"加载配置文件: {config_path}")
 
     # 步骤 3: 加载 YAML 配置（会自动解析 ${env:VAR} 插值）
-    cfg = OmegaConf.load(config_path)
+    # 非 default.yaml 时先加载 default.yaml 作为底层，再合并覆盖项
+    default_path = Path(__file__).parent.parent / "config" / "default.yaml"
+    if config_path.resolve() != default_path.resolve() and default_path.exists():
+        base_cfg = OmegaConf.load(default_path)
+        override_cfg = OmegaConf.load(config_path)
+        cfg = OmegaConf.merge(base_cfg, override_cfg)
+        log_msg("INFO", f"已合并基础配置 {default_path.name} + 覆盖配置 {config_path.name}")
+    else:
+        cfg = OmegaConf.load(config_path)
 
     # 步骤 4: 合并 CLI 参数（优先级最高）
     if use_cli:
@@ -508,81 +516,6 @@ def generate_exp_name() -> str:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     suffix = "".join(random.choices("abcdefghijklmnopqrstuvwxyz", k=4))
     return f"{timestamp}_{suffix}"
-
-
-def print_config(cfg: Config) -> None:
-    """美观打印配置（用于调试）。
-
-    Args:
-        cfg: Config 对象
-
-    实现细节:
-        - 使用 rich 库高亮显示 YAML 格式
-        - 使用 paraiso-dark 主题
-    """
-    from rich import print as rprint
-    from rich.syntax import Syntax
-
-    # 转换为字典以便序列化
-    cfg_dict = {
-        "project": {
-            "name": cfg.project.name,
-            "version": cfg.project.version,
-            "workspace_dir": str(cfg.project.workspace_dir),
-            "log_dir": str(cfg.project.log_dir),
-            "exp_name": cfg.project.exp_name,
-        },
-        "data": {
-            "data_dir": str(cfg.data.data_dir) if cfg.data.data_dir else None,
-            "desc_file": str(cfg.data.desc_file) if cfg.data.desc_file else None,
-            "goal": cfg.data.goal,
-            "eval": cfg.data.eval,
-            "preprocess_data": cfg.data.preprocess_data,
-            "copy_data": cfg.data.copy_data,
-        },
-        "llm": {
-            "code": {
-                "model": cfg.llm.code.model,
-                "temperature": cfg.llm.code.temperature,
-                "api_key": "***" if cfg.llm.code.api_key else None,  # 隐藏 API Key
-            },
-            "feedback": {
-                "model": cfg.llm.feedback.model,
-                "temperature": cfg.llm.feedback.temperature,
-                "api_key": "***" if cfg.llm.feedback.api_key else None,
-            },
-        },
-        "execution": {
-            "timeout": cfg.execution.timeout,
-            "agent_file_name": cfg.execution.agent_file_name,
-            "format_tb_ipython": cfg.execution.format_tb_ipython,
-        },
-        "agent": {
-            "max_steps": cfg.agent.max_steps,
-            "time_limit": cfg.agent.time_limit,
-            "k_fold_validation": cfg.agent.k_fold_validation,
-            "expose_prediction": cfg.agent.expose_prediction,
-            "data_preview": cfg.agent.data_preview,
-            "convert_system_to_user": cfg.agent.convert_system_to_user,
-        },
-        "search": {
-            "strategy": cfg.search.strategy,
-            "max_debug_depth": cfg.search.max_debug_depth,
-            "debug_prob": cfg.search.debug_prob,
-            "num_drafts": cfg.search.num_drafts,
-            "parallel_num": cfg.search.parallel_num,
-        },
-        "logging": {
-            "level": cfg.logging.level,
-            "console_output": cfg.logging.console_output,
-            "file_output": cfg.logging.file_output,
-        },
-    }
-
-    yaml_str = OmegaConf.create(cfg_dict)
-    yaml_str = OmegaConf.to_yaml(yaml_str)
-    syntax = Syntax(yaml_str, "yaml", theme="paraiso-dark", line_numbers=True)
-    rprint(syntax)
 
 
 def setup_workspace(cfg: Config) -> None:

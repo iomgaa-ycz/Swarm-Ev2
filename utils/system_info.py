@@ -412,7 +412,12 @@ def get_conda_packages(env_name: Optional[str] = None) -> str:
 
         # 负面约束：常见但未安装的包（扩展覆盖范围）
         common_ml_packages = {
-            "catboost", "xgboost", "lightgbm", "timm", "transformers", "fastai"
+            "catboost",
+            "xgboost",
+            "lightgbm",
+            "timm",
+            "transformers",
+            "fastai",
         }
         not_installed = common_ml_packages - installed_names
         if not_installed:
