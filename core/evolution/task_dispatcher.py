@@ -140,18 +140,23 @@ class TaskDispatcher:
     def _select_best(self, task_type: str) -> BaseAgent:
         """选择擅长度得分最高的 Agent（内部方法）。
 
+        当多个 Agent 得分相同时，随机选择（避免偏向列表第一个元素）。
+
         Args:
             task_type: 任务类型
 
         Returns:
-            擅长度得分最高的 Agent
+            擅长度得分最高的 Agent（平局随机选）
 
         时间复杂度: O(n)，n 为 Agent 数量
         """
-        # 找到擅长度得分最高的 Agent
-        best_agent = max(
-            self.agents,
-            key=lambda agent: self.specialization_scores[agent.name][task_type],
+        best_score = max(
+            self.specialization_scores[a.name][task_type] for a in self.agents
         )
-
-        return best_agent
+        # 收集所有得分等于最高分的 Agent，随机选一个
+        candidates = [
+            a
+            for a in self.agents
+            if self.specialization_scores[a.name][task_type] >= best_score - 1e-9
+        ]
+        return random.choice(candidates)
