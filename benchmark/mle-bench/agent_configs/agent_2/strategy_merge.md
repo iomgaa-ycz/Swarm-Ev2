@@ -21,8 +21,8 @@ Create a **coherent, executable child solution** that:
 ## 2. Analyze Parent Solutions
 
 ### Extract Gene Blocks
-- Parse each parent's code to identify the 7 gene blocks:
-  - `DATA`, `MODEL`, `LOSS`, `OPTIMIZER`, `REGULARIZATION`, `INITIALIZATION`, `TRAINING_TRICKS`
+- Parse each parent's code to identify the 4 gene blocks:
+  - `DATA`, `MODEL`, `TRAIN`, `POSTPROCESS`
 - Note the approach used in each block (e.g., "Parent A uses XGBoost, Parent B uses CNN")
 
 ### Assess Fitness
@@ -111,7 +111,7 @@ model = parent_a_model
 ## 6. Implementation Checklist
 
 Before finalizing the merged solution:
-- [ ] All 7 gene blocks are present
+- [ ] All 4 gene blocks are present
 - [ ] Gene plan is followed strictly (unless conflicts require adaptation)
 - [ ] Conflicts are resolved (documented in comments)
 - [ ] Code is syntactically correct and executable

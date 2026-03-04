@@ -19,12 +19,6 @@ When creating a new solution or improving an existing one:
 - Analyze the validation metric to understand performance gaps
 - Check for common issues: overfitting, underfitting, data leakage, inefficient preprocessing
 
-### Debugging Buggy Code
-- Examine the error message or exception carefully
-- Identify the root cause (syntax error, shape mismatch, missing import, etc.)
-- Fix the bug with minimal changes (avoid unnecessary refactoring)
-- Ensure the fix doesn't introduce new issues
-
 ## 2. Design the Solution
 
 ### Data Preprocessing
