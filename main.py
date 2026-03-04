@@ -63,6 +63,7 @@ def initialize_evolution_components(
     agents: List[BaseAgent],
     config: Config,
     workspace: WorkspaceManager,
+    prompt_manager: PromptManager,
     skill_manager: Optional[SkillManager] = None,
 ) -> Tuple[ExperiencePool, TaskDispatcher, GeneRegistry, Optional[AgentEvolution]]:
     """初始化进化算法组件。
@@ -71,6 +72,7 @@ def initialize_evolution_components(
         agents: Agent 列表
         config: 全局配置
         workspace: 工作空间管理器
+        prompt_manager: PromptManager 实例
         skill_manager: SkillManager 实例（可选）
 
     Returns:
@@ -92,19 +94,20 @@ def initialize_evolution_components(
     gene_registry = GeneRegistry()
     log_msg("INFO", "基因注册表初始化完成")
 
-    # Agent 层进化器（可选，需要配置目录存在）
+    # Agent 层进化器（可选，需要 default/ 配置目录存在）
     agent_evolution = None
     configs_dir = Path(config.evolution.agent.configs_dir)
-    if configs_dir.exists():
+    if (configs_dir / "default").exists():
         agent_evolution = AgentEvolution(
             agents=agents,
             experience_pool=experience_pool,
             config=config,
+            prompt_manager=prompt_manager,
             skill_manager=skill_manager,
         )
         log_msg("INFO", "Agent 进化器初始化完成（Skill 进化已启用）")
     else:
-        log_msg("WARNING", f"Agent 配置目录不存在，跳过 Agent 进化: {configs_dir}")
+        log_msg("WARNING", f"Agent 配置目录不存在，跳过 Agent 进化: {configs_dir}/default")
 
     return experience_pool, task_dispatcher, gene_registry, agent_evolution
 
@@ -418,6 +421,7 @@ def main() -> None:
             skills_dir=base_dir / "skills",
             agent_configs_dir=base_dir / "agent_configs",
             skill_manager=skill_manager,
+            num_agents=config.evolution.agent.num_agents,
         )
 
         # 初始化 Agent 种群
@@ -429,6 +433,7 @@ def main() -> None:
                 agents=agents,
                 config=config,
                 workspace=workspace,
+                prompt_manager=prompt_manager,
                 skill_manager=skill_manager,
             )
         )
@@ -619,6 +624,16 @@ def main() -> None:
         # 保存经验池
         experience_pool.save()
         log_msg("INFO", f"经验池已保存: {experience_pool.save_path}")
+
+        # 导出 Agent 最终配置
+        agent_configs_final_dir = config.project.workspace_dir / "logs" / "agent_configs_final"
+        prompt_manager.export_agent_configs(agent_configs_final_dir)
+        log_msg("INFO", f"Agent 最终配置已导出: {agent_configs_final_dir}")
+
+        # 导出 Skill 池
+        skills_final_dir = config.project.workspace_dir / "logs" / "skills_final"
+        shutil.copytree(base_dir / "skills", skills_final_dir, dirs_exist_ok=True)
+        log_msg("INFO", f"Skill 池已导出: {skills_final_dir}")
 
         elapsed_time = time.time() - start_time
         log_msg("INFO", f"执行完成！总耗时: {elapsed_time:.2f}s")

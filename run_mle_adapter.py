@@ -252,6 +252,7 @@ def run_adapter() -> None:
         skills_dir=base_dir / "skills",
         agent_configs_dir=base_dir / "agent_configs",
         skill_manager=skill_manager,
+        num_agents=config.evolution.agent.num_agents,
     )
 
     num_agents = config.evolution.agent.num_agents
@@ -271,11 +272,12 @@ def run_adapter() -> None:
 
     agent_evolution: Optional[AgentEvolution] = None
     configs_dir = Path(config.evolution.agent.configs_dir)
-    if configs_dir.exists():
+    if (configs_dir / "default").exists():
         agent_evolution = AgentEvolution(
             agents=agents,
             experience_pool=experience_pool,
             config=config,
+            prompt_manager=prompt_manager,
             skill_manager=skill_manager,
         )
 
@@ -364,6 +366,17 @@ def run_adapter() -> None:
         log_msg("WARNING", "未找到有效方案")
 
     experience_pool.save()
+
+    # 导出 Agent 最终配置
+    agent_configs_final_dir = config.project.workspace_dir / "logs" / "agent_configs_final"
+    prompt_manager.export_agent_configs(agent_configs_final_dir)
+    log_msg("INFO", f"Agent 最终配置已导出: {agent_configs_final_dir}")
+
+    # 导出 Skill 池（通过 logs symlink 落地到宿主机）
+    skills_final_dir = config.project.workspace_dir / "logs" / "skills_final"
+    shutil.copytree(base_dir / "skills", skills_final_dir, dirs_exist_ok=True)
+    log_msg("INFO", f"Skill 池已导出: {skills_final_dir}")
+
     elapsed = time.time() - start_time
     log_msg("INFO", f"Swarm-Ev2 MLE-Bench Adapter 结束 | 耗时 {elapsed:.1f}s")
 
