@@ -31,14 +31,9 @@
 
 > **CRITICAL**: The validation strategy MUST follow these rules:
 
-1. **For sklearn/tabular models**: Use `StratifiedKFold(n_splits=5)` (classification) or `KFold(n_splits=5)` (regression). Report the **mean** of all folds.
-2. **For deep learning models**: Still use K-Fold (k=5), but you may **only run a subset of folds** if training is slow. The number of folds actually executed **MUST be > k/2** (e.g., at least 3 out of 5). Report the mean of the executed folds.
-3. **MUST use the competition's evaluation metric** for validation (NOT training loss):
-   - If competition uses `log_loss`, validate with `sklearn.metrics.log_loss`
-   - If competition uses `AUC`, validate with `sklearn.metrics.roc_auc_score`
-   - If competition uses `RMSE`, validate with `sqrt(mean_squared_error)`
-   - **NEVER** report training loss (e.g., Focal Loss, BCELoss) as validation metric
-4. Print the validation metric: `print(f"Validation metric: {metric_value:.6f}")`
+1. **Default**: `StratifiedKFold(n_splits=5)` (classification) or `KFold(n_splits=5)` (regression). For deep learning, may run ≥3 of 5 folds. Report **mean** of all folds.
+2. **Exception — grouped data**: If training files share date/session/patient prefixes (few unique groups), use `GroupKFold(groups=...)` instead. Random KFold on grouped data causes severe leakage (CV ~0.99 but test ~0.5).
+3. **Metric**: MUST use competition evaluation metric (NOT training loss). Print: `print(f"Validation metric: {metric_value:.6f}")`
 
 ### DataLoader Workers (CRITICAL for Image/Audio Tasks)
 - ALWAYS set `num_workers` to use multi-core CPU; `num_workers=0` serializes all I/O and causes GPU starvation
