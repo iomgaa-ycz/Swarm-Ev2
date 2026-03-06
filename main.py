@@ -5,7 +5,9 @@
     - Solution 层：遗传算法（精英保留 + 锦标赛 + 交叉 + 变异）
 """
 
+import os
 import shutil
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
@@ -32,6 +34,75 @@ from core.evolution import (
     SkillManager,
     validate_genes,
 )
+
+
+def _init_grader() -> Tuple[Optional[object], bool]:
+    """初始化 mlebench 评分器。
+
+    仅在 COMPETITION_ID 环境变量存在且 mlebench 可导入时启用，否则静默跳过。
+
+    Returns:
+        (competition 对象, 是否可用) 元组
+    """
+    comp_id = os.environ.get("COMPETITION_ID", "").strip()
+    if not comp_id:
+        return None, False
+
+    try:
+        from mlebench.registry import registry
+
+        competition = registry.get_competition(comp_id)
+        log_msg("INFO", f"[GRADER] mlebench 评分器初始化成功: competition={comp_id}")
+        return competition, True
+    except Exception as e:
+        log_msg("WARNING", f"[GRADER] mlebench 评分器初始化失败（将跳过评分）: {e}")
+        return None, False
+
+
+def _grade_best_submission(
+    best_node: "Node",
+    workspace_dir: Path,
+    competition: object,
+    epoch: int,
+) -> None:
+    """对当前最优节点的 submission 进行 mlebench 真实评分。
+
+    评分结果仅日志输出，不影响进化逻辑。失败时静默跳过。
+
+    Args:
+        best_node: 当前最优节点
+        workspace_dir: 工作空间目录
+        competition: mlebench Competition 对象
+        epoch: 当前 epoch 编号
+    """
+    try:
+        from mlebench.grade import grade_csv
+
+        submission_path = workspace_dir / "submission" / f"submission_{best_node.id}.csv"
+        if not submission_path.exists():
+            log_msg("WARNING", f"[GRADE] Epoch {epoch} | submission 文件不存在: {submission_path}")
+            return
+
+        report = grade_csv(Path(submission_path), competition)
+
+        # 判定奖牌
+        medal = "None"
+        if report.gold_medal:
+            medal = "Gold"
+        elif report.silver_medal:
+            medal = "Silver"
+        elif report.bronze_medal:
+            medal = "Bronze"
+
+        log_msg(
+            "INFO",
+            f"[GRADE] Epoch {epoch} | node={best_node.id[:12]}, "
+            f"LB_score={report.score}, medal={medal}, "
+            f"thresholds=(G={report.gold_threshold}, S={report.silver_threshold}, B={report.bronze_threshold}), "
+            f"valid={report.valid_submission}",
+        )
+    except Exception as e:
+        log_msg("WARNING", f"[GRADE] Epoch {epoch} | 评分失败: {e}")
 
 
 def initialize_agents(config: Config, prompt_manager: PromptManager) -> List[BaseAgent]:
@@ -217,7 +288,7 @@ def generate_markdown_report(
     for agent_id, task_scores in scores.items():
         content += (
             f"| {agent_id} "
-            f"| {task_scores.get('draft', task_scores.get('explore', 0)):.3f} "
+            f"| {task_scores.get('draft', 0):.3f} "
             f"| {task_scores.get('merge', 0):.3f} "
             f"| {task_scores.get('mutate', 0):.3f} |\n"
         )
@@ -304,7 +375,7 @@ def log_evolution_statistics(
         log_msg(
             "INFO",
             f"[Agent] {agent_id}: "
-            f"draft={task_scores.get('draft', task_scores.get('explore', 0)):.3f}, "
+            f"draft={task_scores.get('draft', 0):.3f}, "
             f"merge={task_scores.get('merge', 0):.3f}, "
             f"mutate={task_scores.get('mutate', 0):.3f}",
         )
@@ -473,6 +544,9 @@ def main() -> None:
         )
         log_msg("INFO", "SolutionEvolution 初始化完成（MVP 简化版）")
 
+        # 初始化 mlebench 评分器（可选）
+        _grader_competition, _grader_available = _init_grader()
+
         log_msg("INFO", "所有组件初始化完成")
 
         # 配置摘要
@@ -551,6 +625,12 @@ def main() -> None:
                 f"valid={len(valid_pool)}, hybrid={hybrid_active}, "
                 f"best={current_best.metric_value if current_best else 'N/A'}",
             )
+
+            # mlebench 真实评分（仅日志，不影响进化）
+            if _grader_available and current_best:
+                _grade_best_submission(
+                    current_best, config.project.workspace_dir, _grader_competition, global_epoch
+                )
 
         best_node = journal.get_best_node(
             only_good=True, lower_is_better=orchestrator._global_lower_is_better
