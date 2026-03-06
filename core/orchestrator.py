@@ -24,7 +24,7 @@ from core.backend import query as backend_query
 from utils.config import Config
 
 from core.evolution.gene_parser import parse_solution_genes
-from utils.logger_system import log_msg, log_exception
+from utils.logger_system import log_msg, log_json, log_exception
 from utils.text_utils import condense_term_out
 from utils.system_info import (
     get_hardware_description,
@@ -1453,7 +1453,15 @@ For buggy solutions, still fill all string fields (e.g. approach_tag="Failed: OO
                 if node.metric_value > m:
                     beaten += 1
 
-        return beaten / total if total > 0 else 0.5
+        quality = beaten / total if total > 0 else 0.5
+        log_json({
+            "event": "node_quality_computed",
+            "node_id": node.id[:12],
+            "metric_value": node.metric_value,
+            "lower_is_better": node.lower_is_better,
+            "quality": round(quality, 3),
+        })
+        return quality
 
     def _finalize_node(
         self,
@@ -1498,13 +1506,15 @@ For buggy solutions, still fill all string fields (e.g. approach_tag="Failed: OO
             self._update_best_node(node)
 
         # 更新 Agent 任务擅长度得分
-        if self.task_dispatcher and not node.is_buggy and node.metric_value is not None:
+        quality = None
+        if not node.is_buggy and node.metric_value is not None:
             quality = self._compute_agent_quality(node)
-            self.task_dispatcher.update_score(agent.name, task_type, quality)
+            if self.task_dispatcher:
+                self.task_dispatcher.update_score(agent.name, task_type, quality)
 
         # 经验池
         if self.experience_pool:
-            self._write_experience_pool(agent.name, task_type, node)
+            self._write_experience_pool(agent.name, task_type, node, quality)
 
         return node
 
@@ -1665,13 +1675,16 @@ For buggy solutions, still fill all string fields (e.g. approach_tag="Failed: OO
         )
         return generated
 
-    def _write_experience_pool(self, agent_id: str, task_type: str, node: Node) -> None:
+    def _write_experience_pool(
+        self, agent_id: str, task_type: str, node: Node, quality: Optional[float] = None
+    ) -> None:
         """写入经验池（Phase 3）。
 
         Args:
             agent_id: Agent ID
             task_type: 任务类型
             node: 生成的节点
+            quality: 归一化质量 [0,1]（None 表示 buggy 节点，存为 0.0）
         """
         try:
             import hashlib
@@ -1683,8 +1696,8 @@ For buggy solutions, still fill all string fields (e.g. approach_tag="Failed: OO
                 :16
             ]
 
-            # 计算输出质量（基于 metric_value）
-            output_quality = float(node.metric_value or 0.0)
+            # 使用归一化 quality（buggy 节点存 0.0）
+            output_quality = quality if quality is not None else 0.0
 
             # 提取策略摘要（从 plan）
             strategy_summary = node.plan[:200] if node.plan else "No plan"
@@ -1699,7 +1712,14 @@ For buggy solutions, still fill all string fields (e.g. approach_tag="Failed: OO
             )
 
             self.experience_pool.add(record)
-            log_msg("DEBUG", f"经验池记录已添加: agent={agent_id}, task={task_type}")
+            log_json({
+                "event": "experience_pool_record_added",
+                "agent_id": agent_id,
+                "task_type": task_type,
+                "output_quality": round(output_quality, 3),
+                "is_buggy": node.is_buggy,
+                "node_id": node.id[:12],
+            })
 
         except Exception as e:
             log_msg("WARNING", f"写入经验池失败: {e}")
