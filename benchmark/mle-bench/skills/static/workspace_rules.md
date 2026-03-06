@@ -75,16 +75,17 @@ test = pd.read_csv('./input/???')   # Replace ??? with test file from Data Overv
 # [SECTION: MODEL]
 model = ...  # model definition
 
-# [SECTION: TRAINING_TRICKS]
-# Cross-validation
+# [SECTION: TRAIN]
+# Cross-validation + training
 scores = cross_val_score(model, X, y, cv=5, scoring='...')
 print(f"Validation metric: {scores.mean():.6f}")
 
-# Final training and prediction
+# Final training
 model.fit(X, y)
-predictions = model.predict(X_test)
 
-# [SECTION: OUTPUT]
+# [SECTION: POSTPROCESS]
+# Inference + output
+predictions = model.predict(X_test)
 pd.DataFrame({'id': test_ids, 'target': predictions}).to_csv(
     './submission/submission.csv', index=False
 )
