@@ -318,6 +318,15 @@ def log_evolution_statistics(
         log_msg("INFO", "[最佳] 未找到有效方案")
     log_msg("INFO", "=" * 60)
 
+    log_json({
+        "event": "evolution_statistics",
+        "total_nodes": total_nodes,
+        "success_rate": round(success_rate, 1),
+        "experience_pool_size": len(experience_pool.records),
+        "specialization_matrix": scores,
+        "best_metric": best_node.metric_value if best_node else None,
+    })
+
 
 def main() -> None:
     """主执行函数（双层进化架构）。

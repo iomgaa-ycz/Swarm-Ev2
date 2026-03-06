@@ -220,6 +220,13 @@ class AgentEvolution:
         # [5] 写入文件
         self._save_agent_config(weak_agent_id, "role.md", new_role)
 
+        log_json({
+            "event": "agent_config_mutated",
+            "agent_id": weak_agent_id,
+            "section": "role",
+            "old_length": len(current_role),
+            "new_length": len(new_role),
+        })
         log_msg("INFO", f"✓ Role 变异完成: {weak_agent_id}")
 
     def _mutate_strategy(
@@ -255,6 +262,13 @@ class AgentEvolution:
         # [5] 写入文件
         self._save_agent_config(weak_agent_id, filename, new_strategy)
 
+        log_json({
+            "event": "agent_config_mutated",
+            "agent_id": weak_agent_id,
+            "section": f"strategy_{task_type}",
+            "old_length": len(current_strategy),
+            "new_length": len(new_strategy),
+        })
         log_msg("INFO", f"✓ Strategy ({task_type}) 变异完成: {weak_agent_id}")
 
     def _get_performance_summary(
