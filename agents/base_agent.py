@@ -60,6 +60,8 @@ class AgentContext(DataClassJsonMixin):
     mutation_aspect: Optional[str] = None
     # draft 任务专用字段
     draft_history: Optional[List[str]] = None  # 新增：已用方法标签列表
+    # 执行超时（秒，用于注入 Prompt 时间约束）
+    exec_timeout: int = 5400
     # 经验池（用于动态 Skill 注入）
     experience_pool: Optional[Any] = field(
         default=None, metadata={"dataclasses_json": {"exclude": lambda _: True}}

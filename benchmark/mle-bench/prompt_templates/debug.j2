@@ -75,6 +75,11 @@ The following issues were detected before execution:
 
 {{ load_skill("static/common_pitfalls") }}
 
+## Time and Resource Constraints
+
+- **Per-Node Execution Timeout**: {{ exec_timeout_str | default("1 hour 30 minutes") }}
+- Be aware of the running time of the code, it should complete within {{ exec_timeout_str | default("1 hour 30 minutes") }}.
+
 ## System Environment
 
 - **Device**: {{ device_info | default("CPU only") }}

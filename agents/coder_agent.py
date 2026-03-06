@@ -116,6 +116,7 @@ class CoderAgent(BaseAgent):
                 "device_info": context.device_info,
                 "conda_packages": context.conda_packages,
                 "conda_env_name": context.conda_env_name,
+                "exec_timeout": context.exec_timeout,
                 "experience_pool": getattr(context, "experience_pool", None),
                 "draft_history": getattr(context, "draft_history", None),  # 新增
             },
@@ -295,6 +296,7 @@ class CoderAgent(BaseAgent):
                 "device_info": context.device_info,
                 "conda_packages": context.conda_packages,
                 "conda_env_name": context.conda_env_name,
+                "exec_timeout": context.exec_timeout,
                 "experience_pool": getattr(context, "experience_pool", None),
             },
         )
@@ -356,6 +358,7 @@ class CoderAgent(BaseAgent):
                 "device_info": context.device_info,
                 "conda_packages": context.conda_packages,
                 "conda_env_name": context.conda_env_name,
+                "exec_timeout": context.exec_timeout,
                 "experience_pool": getattr(context, "experience_pool", None),
             },
         )

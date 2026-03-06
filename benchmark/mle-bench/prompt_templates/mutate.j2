@@ -81,6 +81,13 @@ Before finalizing the mutated solution:
 - [ ] Predictions are saved to `./submission/submission.csv`
 - [ ] Mutation rationale is documented in a comment
 
+## Time and Resource Constraints
+
+- **Total Time Remaining**: {{ time_str }}
+- **Total Steps Remaining**: {{ steps_remaining }}
+- **Per-Node Execution Timeout**: {{ exec_timeout_str }}
+- Be aware of the running time of the code, it should complete within {{ exec_timeout_str }}.
+
 ## System Environment
 
 - **Device**: {{ device_info | default("CPU only") }}

@@ -292,6 +292,10 @@ class PromptManager:
         time_str = self._format_time(context.get("time_remaining", 0))
         template_context["time_str"] = time_str
 
+        # 格式化单节点执行超时
+        exec_timeout_str = self._format_time(context.get("exec_timeout", 5400))
+        template_context["exec_timeout_str"] = exec_timeout_str
+
         # 注入 Top-K 动态 Skill（如果经验池可用）
         experience_pool = context.get("experience_pool")
         if experience_pool is not None:
