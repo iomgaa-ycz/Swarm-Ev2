@@ -10,9 +10,14 @@ from utils.data_preview import (
     preview_json,
     preview_special_file,
     preview_image_dir,
+    preview_audio_dir,
+    detect_filename_labels,
+    _is_train_dir,
     file_tree,
     get_file_len_size,
     _walk,
+    AUDIO_EXTS,
+    IMAGE_EXTS,
 )
 
 
@@ -437,7 +442,9 @@ class TestFileTreePermissionError:
         from unittest.mock import patch
 
         # 在 file_tree 内部的 Path.iterdir 模拟权限拒绝
-        with patch("utils.data_preview.Path.iterdir", side_effect=PermissionError("拒绝")):
+        with patch(
+            "utils.data_preview.Path.iterdir", side_effect=PermissionError("拒绝")
+        ):
             result = file_tree(tmp_path)
 
         assert "[Permission Denied]" in result
@@ -472,7 +479,9 @@ class TestPreviewCsvObjectHighCardinality:
         from unittest.mock import patch
 
         csv_file = tmp_path / "text.csv"
-        csv_file.write_text("name\n" + "\n".join(f"item_{i}" for i in range(20)), encoding="utf-8")
+        csv_file.write_text(
+            "name\n" + "\n".join(f"item_{i}" for i in range(20)), encoding="utf-8"
+        )
 
         # 构造 object dtype 的 DataFrame（pandas 3.0 不再自动推断纯字符串为 object）
         # 必须使用 pd.Series(dtype='object') 显式指定，否则会被推断为 'str'
@@ -536,7 +545,14 @@ class TestPreviewImageDirWithPIL:
         mock_np_module = MagicMock()
         mock_np_module.array.return_value = mock_arr
 
-        with patch.dict(sys.modules, {"PIL": mock_pil_module, "PIL.Image": mock_pil_module.Image, "numpy": mock_np_module}):
+        with patch.dict(
+            sys.modules,
+            {
+                "PIL": mock_pil_module,
+                "PIL.Image": mock_pil_module.Image,
+                "numpy": mock_np_module,
+            },
+        ):
             # 移除已缓存的模块引用，确保 import 重新执行
             result = preview_image_dir(tmp_path, max_sample=1)
 
@@ -574,7 +590,14 @@ class TestPreviewImageDirWithPIL:
 
         mock_np_module = MagicMock()
 
-        with patch.dict(sys.modules, {"PIL": mock_pil_module, "PIL.Image": mock_pil_module.Image, "numpy": mock_np_module}):
+        with patch.dict(
+            sys.modules,
+            {
+                "PIL": mock_pil_module,
+                "PIL.Image": mock_pil_module.Image,
+                "numpy": mock_np_module,
+            },
+        ):
             result = preview_image_dir(tmp_path)
 
         assert "preview failed" in result or "PIL not available" in result
@@ -594,7 +617,10 @@ class TestGenerateImageFiles:
         img_file.write_bytes(b"\xff\xd8\xff" + b"\x00" * 50)
 
         # mock preview_image_dir 返回固定字符串
-        with patch("utils.data_preview.preview_image_dir", return_value="-> Image directory: 1 images") as mock_preview:
+        with patch(
+            "utils.data_preview.preview_image_dir",
+            return_value="-> Image directory: 1 images",
+        ) as mock_preview:
             result = generate(tmp_path, include_file_details=True, simple=False)
 
         mock_preview.assert_called_once_with(img_dir)
@@ -609,7 +635,10 @@ class TestGenerateImageFiles:
         for name in ["a.jpg", "b.png", "c.jpeg"]:
             (img_dir / name).write_bytes(b"\xff\xd8\xff" + b"\x00" * 10)
 
-        with patch("utils.data_preview.preview_image_dir", return_value="-> Image directory: 3 images") as mock_preview:
+        with patch(
+            "utils.data_preview.preview_image_dir",
+            return_value="-> Image directory: 3 images",
+        ) as mock_preview:
             generate(tmp_path, include_file_details=True, simple=False)
 
         # 只调用了一次（同一目录去重）
@@ -621,7 +650,7 @@ class TestGenerateFileReadException:
 
     def test_small_plaintext_read_exception(self, tmp_path):
         """小型纯文本文件读取失败时，generate 不抛出异常（lines 374-375）。"""
-        from unittest.mock import patch, mock_open
+        from unittest.mock import patch
 
         # 创建一个小的 .txt 文件（< 30 行）
         small_file = tmp_path / "small.txt"
@@ -665,4 +694,318 @@ class TestGenerateSimpleTruncation:
             result = generate(tmp_path, include_file_details=True, simple=True)
 
         # 结果应该被截断
-        assert "truncated" in result or len(result) <= MAX_PREVIEW_LENGTH + len("\n... (truncated)")
+        assert "truncated" in result or len(result) <= MAX_PREVIEW_LENGTH + len(
+            "\n... (truncated)"
+        )
+
+
+# ============================================================
+# 音频预览 + 文件名标签检测测试
+# ============================================================
+
+
+class TestPreviewAudioDir:
+    """测试 preview_audio_dir 函数。"""
+
+    def test_empty_dir(self, tmp_path):
+        """测试无音频文件的目录。"""
+        result = preview_audio_dir(tmp_path)
+        assert result == ""
+
+    def test_non_audio_files_ignored(self, tmp_path):
+        """测试非音频文件被忽略。"""
+        (tmp_path / "readme.txt").write_text("text")
+        result = preview_audio_dir(tmp_path)
+        assert result == ""
+
+    def test_librosa_not_available(self, tmp_path):
+        """当 librosa 不可用时返回降级信息。"""
+        import sys
+        from unittest.mock import patch
+
+        for name in ["file1.aif", "file2.aif", "file3.wav"]:
+            (tmp_path / name).write_bytes(b"\x00" * 100)
+
+        with patch.dict(sys.modules, {"librosa": None}):
+            result = preview_audio_dir(tmp_path)
+
+        assert "Audio directory: 3 files" in result
+        assert "librosa not available" in result
+
+    def test_librosa_success_mock(self, tmp_path):
+        """模拟 librosa 成功加载音频。"""
+        import sys
+        from unittest.mock import patch, MagicMock
+        import numpy as np
+
+        for name in ["a.wav", "b.wav"]:
+            (tmp_path / name).write_bytes(b"\x00" * 100)
+
+        mock_librosa = MagicMock()
+        # mono 信号
+        mock_librosa.load.return_value = (np.zeros(16000), 16000)
+        mock_librosa.get_duration.return_value = 1.0
+
+        with patch.dict(sys.modules, {"librosa": mock_librosa}):
+            result = preview_audio_dir(tmp_path, max_sample=2)
+
+        assert "Audio directory: 2 files" in result
+        assert "16000" in result
+        assert "1.0" in result
+
+    def test_librosa_multichannel_mock(self, tmp_path):
+        """模拟多通道音频。"""
+        import sys
+        from unittest.mock import patch, MagicMock
+        import numpy as np
+
+        (tmp_path / "stereo.wav").write_bytes(b"\x00" * 100)
+
+        mock_librosa = MagicMock()
+        # stereo: shape (2, N)
+        mock_librosa.load.return_value = (np.zeros((2, 16000)), 44100)
+        mock_librosa.get_duration.return_value = 0.36
+
+        with patch.dict(sys.modules, {"librosa": mock_librosa}):
+            result = preview_audio_dir(tmp_path, max_sample=1)
+
+        assert "channels: {2}" in result
+
+    def test_librosa_exception_degrades(self, tmp_path):
+        """当 librosa.load 抛出异常时降级。"""
+        import sys
+        from unittest.mock import patch, MagicMock
+
+        (tmp_path / "bad.flac").write_bytes(b"\x00" * 50)
+
+        mock_librosa = MagicMock()
+        mock_librosa.load.side_effect = Exception("解码失败")
+
+        with patch.dict(sys.modules, {"librosa": mock_librosa}):
+            result = preview_audio_dir(tmp_path)
+
+        assert "preview failed" in result or "librosa not available" in result
+
+
+class TestIsTrainDir:
+    """测试 _is_train_dir 函数。"""
+
+    def test_train_dir(self, tmp_path):
+        """train 目录返回 True。"""
+        d = tmp_path / "train"
+        d.mkdir()
+        assert _is_train_dir(d) is True
+
+    def test_train2_dir(self, tmp_path):
+        """train2 目录返回 True。"""
+        d = tmp_path / "train2"
+        d.mkdir()
+        assert _is_train_dir(d) is True
+
+    def test_training_dir(self, tmp_path):
+        """training 目录返回 True。"""
+        d = tmp_path / "training"
+        d.mkdir()
+        assert _is_train_dir(d) is True
+
+    def test_test_dir(self, tmp_path):
+        """test 目录返回 False。"""
+        d = tmp_path / "test"
+        d.mkdir()
+        assert _is_train_dir(d) is False
+
+    def test_val_dir(self, tmp_path):
+        """val 目录返回 False。"""
+        d = tmp_path / "val"
+        d.mkdir()
+        assert _is_train_dir(d) is False
+
+    def test_case_insensitive(self, tmp_path):
+        """大小写不敏感。"""
+        d = tmp_path / "TRAIN"
+        d.mkdir()
+        assert _is_train_dir(d) is True
+
+
+class TestDetectFilenameLabels:
+    """测试 detect_filename_labels 函数。"""
+
+    def test_suffix_pattern(self, tmp_path):
+        """检测后缀模式 _0/_1。"""
+        for i in range(90):
+            (tmp_path / f"file{i}_0.aif").write_bytes(b"\x00")
+        for i in range(10):
+            (tmp_path / f"file{i}_1.aif").write_bytes(b"\x00")
+
+        result = detect_filename_labels(tmp_path, AUDIO_EXTS)
+        assert "LABEL DETECTED" in result
+        assert "suffix" in result
+        assert "'0': 90 (90.0%)" in result
+        assert "'1': 10 (10.0%)" in result
+        assert "class imbalance" in result
+
+    def test_prefix_pattern(self, tmp_path):
+        """检测前缀模式（后缀基数太高时回退到前缀）。"""
+        # 后缀各不同（高基数），前缀只有 cat/dog
+        for i in range(50):
+            (tmp_path / f"cat_{i:04d}.jpg").write_bytes(b"\x00")
+        for i in range(50):
+            (tmp_path / f"dog_{i:04d}.jpg").write_bytes(b"\x00")
+
+        result = detect_filename_labels(tmp_path, IMAGE_EXTS)
+        assert "LABEL DETECTED" in result
+        assert "prefix" in result
+        assert "'cat'" in result
+        assert "'dog'" in result
+
+    def test_no_pattern_no_underscore(self, tmp_path):
+        """无下划线的文件名不检测到标签。"""
+        for i in range(20):
+            (tmp_path / f"file{i}.wav").write_bytes(b"\x00")
+
+        result = detect_filename_labels(tmp_path, AUDIO_EXTS)
+        assert result == ""
+
+    def test_too_few_files(self, tmp_path):
+        """文件数 < 10 时不检测。"""
+        for i in range(5):
+            (tmp_path / f"file{i}_0.aif").write_bytes(b"\x00")
+
+        result = detect_filename_labels(tmp_path, AUDIO_EXTS)
+        assert result == ""
+
+    def test_high_cardinality_ignored(self, tmp_path):
+        """后缀和前缀基数均 > 20 时忽略。"""
+        # 前缀和后缀都是唯一的，确保两种模式基数都 > 20
+        for i in range(100):
+            (tmp_path / f"prefix{i}_suffix{i}.aif").write_bytes(b"\x00")
+
+        result = detect_filename_labels(tmp_path, AUDIO_EXTS)
+        assert result == ""
+
+    def test_no_imbalance_warning_when_balanced(self, tmp_path):
+        """均衡分布不显示不平衡警告。"""
+        for i in range(50):
+            (tmp_path / f"file{i}_0.wav").write_bytes(b"\x00")
+        for i in range(50):
+            (tmp_path / f"file{i}_1.wav").write_bytes(b"\x00")
+
+        result = detect_filename_labels(tmp_path, AUDIO_EXTS)
+        assert "LABEL DETECTED" in result
+        assert "class imbalance" not in result
+
+
+class TestGenerateWithAudio:
+    """测试 generate 处理音频文件 + 标签检测集成。"""
+
+    def test_audio_branch_triggered(self, tmp_path):
+        """音频文件触发 preview_audio_dir。"""
+        from unittest.mock import patch
+
+        audio_dir = tmp_path / "sounds"
+        audio_dir.mkdir()
+        (audio_dir / "clip.aif").write_bytes(b"\x00" * 50)
+
+        with patch(
+            "utils.data_preview.preview_audio_dir",
+            return_value="-> Audio directory: 1 files (librosa not available for preview)",
+        ) as mock_preview:
+            result = generate(tmp_path, include_file_details=True, simple=False)
+
+        mock_preview.assert_called_once_with(audio_dir)
+        assert "Audio directory" in result
+
+    def test_audio_dir_previewed_only_once(self, tmp_path):
+        """同一目录多个音频文件只触发一次预览。"""
+        from unittest.mock import patch
+
+        audio_dir = tmp_path / "clips"
+        audio_dir.mkdir()
+        for name in ["a.aif", "b.wav", "c.mp3"]:
+            (audio_dir / name).write_bytes(b"\x00" * 10)
+
+        with patch(
+            "utils.data_preview.preview_audio_dir",
+            return_value="-> Audio directory: 3 files",
+        ) as mock_preview:
+            generate(tmp_path, include_file_details=True, simple=False)
+
+        assert mock_preview.call_count == 1
+
+    def test_train_dir_triggers_label_detection(self, tmp_path):
+        """train 目录触发标签检测。"""
+        from unittest.mock import patch
+
+        train_dir = tmp_path / "train2"
+        train_dir.mkdir()
+        # 创建带标签的音频文件
+        for i in range(90):
+            (train_dir / f"file{i}_0.aif").write_bytes(b"\x00")
+        for i in range(10):
+            (train_dir / f"file{i}_1.aif").write_bytes(b"\x00")
+
+        with patch(
+            "utils.data_preview.preview_audio_dir",
+            return_value="-> Audio directory: 100 files",
+        ):
+            result = generate(tmp_path, include_file_details=True, simple=False)
+
+        assert "LABEL DETECTED" in result
+        assert "class imbalance" in result
+
+    def test_test_dir_skips_label_detection(self, tmp_path):
+        """test 目录跳过标签检测。"""
+        from unittest.mock import patch
+
+        test_dir = tmp_path / "test2"
+        test_dir.mkdir()
+        for i in range(90):
+            (test_dir / f"file{i}_0.aif").write_bytes(b"\x00")
+        for i in range(10):
+            (test_dir / f"file{i}_1.aif").write_bytes(b"\x00")
+
+        with patch(
+            "utils.data_preview.preview_audio_dir",
+            return_value="-> Audio directory: 100 files",
+        ):
+            result = generate(tmp_path, include_file_details=True, simple=False)
+
+        assert "LABEL DETECTED" not in result
+
+    def test_image_train_dir_triggers_label_detection(self, tmp_path):
+        """train 目录中的图像文件也触发标签检测。"""
+        from unittest.mock import patch
+
+        train_dir = tmp_path / "train"
+        train_dir.mkdir()
+        for i in range(90):
+            (train_dir / f"img{i}_0.jpg").write_bytes(b"\x00")
+        for i in range(10):
+            (train_dir / f"img{i}_1.jpg").write_bytes(b"\x00")
+
+        with patch(
+            "utils.data_preview.preview_image_dir",
+            return_value="-> Image directory: 100 images",
+        ):
+            result = generate(tmp_path, include_file_details=True, simple=False)
+
+        assert "LABEL DETECTED" in result
+
+    def test_image_test_dir_skips_label_detection(self, tmp_path):
+        """test 目录中的图像文件跳过标签检测。"""
+        from unittest.mock import patch
+
+        test_dir = tmp_path / "test"
+        test_dir.mkdir()
+        for i in range(90):
+            (test_dir / f"img{i}_0.jpg").write_bytes(b"\x00")
+        for i in range(10):
+            (test_dir / f"img{i}_1.jpg").write_bytes(b"\x00")
+
+        with patch(
+            "utils.data_preview.preview_image_dir",
+            return_value="-> Image directory: 100 images",
+        ):
+            result = generate(tmp_path, include_file_details=True, simple=False)
+
+        assert "LABEL DETECTED" not in result
