@@ -34,6 +34,7 @@ llm:
     api_key: ${env:OPENAI_API_KEY}  # 从环境变量读取
     base_url: ${env:OPENAI_BASE_URL, "https://api.openai.com/v1"}  # API 端点
     max_tokens: ${env:MAX_TOKENS, null}  # 最大生成 token 数
+    timeout: 300  # API 请求超时（秒）
 
   # Feedback Agent 使用的 LLM（Review 评估）
   feedback:
@@ -43,6 +44,7 @@ llm:
     api_key: ${env:OPENAI_API_KEY}
     base_url: ${env:OPENAI_BASE_URL, "https://open.bigmodel.cn/api/coding/paas/v4"}
     max_tokens: ${env:MAX_TOKENS, null}
+    timeout: 60  # API 请求超时（秒）
 
 # ============================================================
 # 执行配置

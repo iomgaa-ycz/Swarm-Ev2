@@ -345,7 +345,7 @@ class Orchestrator:
 
         Args:
             node: 待评估的节点对象
-            parent_node: 父节点（用于 explore/mutate 的代码 diff）
+            parent_node: 父节点（用于 draft/mutate 的代码 diff）
             gene_plan: 基因选择计划（用于 merge 的变更上下文）
         """
         # Phase 0: 生成变更上下文（根据任务类型选择策略）
@@ -353,7 +353,7 @@ class Orchestrator:
             # merge 模式：gene_plan 已是 Markdown 字符串，直接用作变更上下文
             change_context = gene_plan if isinstance(gene_plan, str) else str(gene_plan)
         elif parent_node:
-            # explore/mutate 模式：代码 diff
+            # draft/mutate 模式：代码 diff
             change_context = self._generate_code_diff(parent_node.code, node.code)
         else:
             # 初稿模式
@@ -408,6 +408,7 @@ class Orchestrator:
                     temperature=self.config.llm.feedback.temperature + attempt * 0.1,
                     api_key=self.config.llm.feedback.api_key,
                     base_url=getattr(self.config.llm.feedback, "base_url", None),
+                    timeout=getattr(self.config.llm.feedback, "timeout", 60),
                 )
                 review_debug["output_raw"] = raw_response
                 parsed_data = extract_review(raw_response)
@@ -544,6 +545,7 @@ class Orchestrator:
                 temperature=0.0,
                 api_key=self.config.llm.feedback.api_key,
                 base_url=getattr(self.config.llm.feedback, "base_url", None),
+                timeout=getattr(self.config.llm.feedback, "timeout", 60),
             )
 
         return condense_term_out(term_out, max_len=8000, llm_fn=llm_fn)
@@ -1533,9 +1535,9 @@ For buggy solutions, still fill all string fields (e.g. approach_tag="Failed: OO
             生成的节点（失败时返回 None）
         """
         try:
-            # draft 使用 explore 类型 Agent（功能相同）
+            # 选择擅长 draft 的 Agent
             if self.task_dispatcher:
-                agent = self.task_dispatcher.select_agent("explore")
+                agent = self.task_dispatcher.select_agent("draft")
             else:
                 agent = random.choice(self.agents)
 

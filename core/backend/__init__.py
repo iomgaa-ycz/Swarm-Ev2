@@ -152,6 +152,7 @@ def query_with_config(
     Returns:
         LLM 响应文本
     """
+    timeout = kwargs.pop("timeout", getattr(llm_config, "timeout", 300))
     return query(
         system_message=system_message,
         user_message=user_message,
@@ -160,6 +161,7 @@ def query_with_config(
         temperature=temperature if temperature is not None else llm_config.temperature,
         api_key=llm_config.api_key,
         base_url=llm_config.base_url,
+        timeout=timeout,
         **kwargs,
     )
 

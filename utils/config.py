@@ -55,6 +55,7 @@ class LLMStageConfig:
     api_key: str
     base_url: str = "https://api.openai.com/v1"  # 默认 OpenAI API 端点
     max_tokens: int | None = None  # 最大生成 token 数
+    timeout: int = 300  # API 请求超时（秒），默认 300s
 
 
 @dataclass
@@ -399,6 +400,7 @@ def validate_config(cfg: DictConfig) -> Config:
                     api_key="",
                     base_url="https://api.openai.com/v1",
                     max_tokens=None,
+                    timeout=300,
                 ),
                 feedback=LLMStageConfig(
                     provider="openai",
@@ -407,6 +409,7 @@ def validate_config(cfg: DictConfig) -> Config:
                     api_key="",
                     base_url="https://api.openai.com/v1",
                     max_tokens=None,
+                    timeout=60,
                 ),
             ),
             execution=ExecutionConfig(
