@@ -481,27 +481,25 @@ def main() -> None:
             f"配置摘要: agents={config.evolution.agent.num_agents}, "
             f"steps_per_epoch={config.evolution.solution.steps_per_epoch}, "
             f"epsilon={config.evolution.agent.epsilon}, "
-            f"phase1_target={config.evolution.solution.phase1_target_nodes}, "
+            f"ga_trigger={config.evolution.solution.ga_trigger_threshold}, "
             f"debug_max={config.evolution.solution.debug_max_attempts}",
         )
 
         # ============================================================
-        # Phase 4: 两阶段进化主循环
+        # Phase 4: 混合进化主循环（Draft + GA 交替）
         # ============================================================
-        log_msg("INFO", "[4/6] 运行两阶段进化主循环...")
+        log_msg("INFO", "[4/6] 运行混合进化主循环...")
 
         total_budget = config.agent.max_steps
         steps_per_epoch = config.evolution.solution.steps_per_epoch
-        phase1_target = config.evolution.solution.phase1_target_nodes
-        global_epoch = 0  # Phase 1 + Phase 2 共享的全局 epoch 计数
+        ga_trigger = config.evolution.solution.ga_trigger_threshold
+        global_epoch = 0
+        hybrid_active = False
 
         log_msg(
             "INFO",
-            f"总预算={total_budget}, Phase1目标={phase1_target}, steps_per_epoch={steps_per_epoch}",
+            f"开始进化: total_budget={total_budget}, GA触发阈值={ga_trigger}, steps_per_epoch={steps_per_epoch}",
         )
-
-        # --- Phase 1: Draft while 循环（每 epoch 后检查终止 + 触发 Agent 进化）---
-        log_msg("INFO", "===== 开始 Phase 1: Draft 模式 =====")
 
         while (
             len(journal.nodes) < total_budget and not orchestrator._check_time_limit()
@@ -509,78 +507,49 @@ def main() -> None:
             remaining = total_budget - len(journal.nodes)
             epoch_steps = min(steps_per_epoch, remaining)
 
-            orchestrator.run_epoch_draft(epoch_steps)  # 跑满一个固定 epoch
-            global_epoch += 1
-
-            # Agent 进化（全局 epoch 计数，Phase 1 + Phase 2 共享）
-            if agent_evolution and global_epoch % 3 == 0:
-                log_msg(
-                    "INFO", f"触发 Agent 层进化（Phase 1, global_epoch={global_epoch}）"
-                )
-                agent_evolution.evolve(global_epoch)
-
+            # 检查 valid_pool 是否达到 GA 触发条件
             valid_pool = [
                 n
                 for n in journal.nodes
                 if not n.is_buggy and not n.dead and validate_genes(n.genes)
             ]
-            log_msg(
-                "INFO",
-                f"Phase 1 | epoch={global_epoch}, nodes={len(journal.nodes)}/{total_budget}, "
-                f"valid={len(valid_pool)}/{phase1_target}",
-            )
 
-            if len(valid_pool) >= phase1_target:
-                log_msg(
-                    "INFO",
-                    f"Phase 1 达标: valid_pool={len(valid_pool)}/{phase1_target}",
-                )
-                break
+            if len(valid_pool) >= ga_trigger:
+                # 混合模式：30% Draft + 70% GA
+                if not hybrid_active:
+                    log_msg(
+                        "INFO",
+                        f"===== 切换到混合模式: valid_pool={len(valid_pool)}>={ga_trigger} =====",
+                    )
+                    hybrid_active = True
+                orchestrator.run_epoch_hybrid(epoch_steps, solution_evolution)
+            else:
+                # 纯 Draft 模式（积累种群）
+                orchestrator.run_epoch_draft(epoch_steps)
 
-        log_msg(
-            "INFO",
-            f"Phase 1 完成: journal={len(journal.nodes)}, "
-            f"valid_pool={len([n for n in journal.nodes if not n.is_buggy and not n.dead and validate_genes(n.genes)])}",
-        )
+            global_epoch += 1
 
-        # --- Phase 2: 动态预算进化（merge + mutate）---
-        # 预算在 Phase 1 结束后动态计算，确保 Phase 1 提前结束时 Phase 2 获得剩余步数
-        phase2_remaining = total_budget - len(journal.nodes)
-        num_epochs = max(1, phase2_remaining // steps_per_epoch)
-
-        log_msg(
-            "INFO",
-            f"===== 开始 Phase 2: 进化模式 | 剩余预算={phase2_remaining} 步 ({num_epochs} epochs) =====",
-        )
-        for epoch in range(num_epochs):
-            if orchestrator._check_time_limit():
-                log_msg("INFO", "时间限制已达，停止 Phase 2 进化")
-                break
-
-            remaining = total_budget - len(journal.nodes)
-            if remaining <= 0:
-                break
-
-            log_msg("INFO", f"===== Phase 2 Epoch {epoch + 1}/{num_epochs} =====")
-            steps = min(steps_per_epoch, remaining)
-            solution_evolution.run_epoch(steps)
-
-            global_epoch += 1  # 接续 Phase 1 全局计数
-
-            # Agent 进化（全局 epoch 计数，与 Phase 1 共享）
+            # Agent 进化
             if agent_evolution and global_epoch % 3 == 0:
                 log_msg(
-                    "INFO", f"触发 Agent 层进化（Phase 2, global_epoch={global_epoch}）"
+                    "INFO", f"触发 Agent 层进化（global_epoch={global_epoch}）"
                 )
                 agent_evolution.evolve(global_epoch)
 
+            # epoch 日志
+            valid_pool = [
+                n
+                for n in journal.nodes
+                if not n.is_buggy and not n.dead and validate_genes(n.genes)
+            ]
             current_best = journal.get_best_node(
                 lower_is_better=orchestrator._global_lower_is_better
             )
             log_msg(
                 "INFO",
-                f"Phase 2 Epoch {epoch + 1}/{num_epochs} 完成 | "
-                f"最佳 metric: {current_best.metric_value if current_best else 'N/A'}",
+                f"Epoch {global_epoch} | nodes={len(journal.nodes)}/{total_budget}, "
+                f"valid={len(valid_pool)}, hybrid={hybrid_active}, "
+                f"best={current_best.metric_value if current_best else 'N/A'}",
             )
 
         best_node = journal.get_best_node(
@@ -588,7 +557,7 @@ def main() -> None:
         )
         log_msg(
             "INFO",
-            f"两阶段进化完成: best_node={'存在' if best_node else '不存在'}",
+            f"混合进化完成: best_node={'存在' if best_node else '不存在'}",
         )
 
         # ============================================================
