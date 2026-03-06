@@ -35,7 +35,7 @@ def sample_records():
     return [
         TaskRecord(
             agent_id="agent_0",
-            task_type="explore",
+            task_type="draft",
             input_hash="hash1",
             output_quality=0.8,
             strategy_summary="使用 RandomForest 进行分类",
@@ -43,7 +43,7 @@ def sample_records():
         ),
         TaskRecord(
             agent_id="agent_1",
-            task_type="explore",
+            task_type="draft",
             input_hash="hash2",
             output_quality=0.7,
             strategy_summary="使用 XGBoost 进行分类",
@@ -51,7 +51,7 @@ def sample_records():
         ),
         TaskRecord(
             agent_id="agent_2",
-            task_type="explore",
+            task_type="draft",
             input_hash="hash3",
             output_quality=0.9,
             strategy_summary="使用 LightGBM 进行分类",
@@ -59,7 +59,7 @@ def sample_records():
         ),
         TaskRecord(
             agent_id="agent_3",
-            task_type="explore",
+            task_type="draft",
             input_hash="hash4",
             output_quality=0.6,
             strategy_summary="使用 SVM 进行分类",
@@ -67,7 +67,7 @@ def sample_records():
         ),
         TaskRecord(
             agent_id="agent_0",
-            task_type="explore",
+            task_type="draft",
             input_hash="hash5",
             output_quality=0.85,
             strategy_summary="使用集成方法进行分类",
@@ -95,7 +95,7 @@ class TestSkillExtractor:
         mock_experience_pool.query.return_value = [Mock()] * 3
 
         extractor = SkillExtractor(mock_experience_pool, mock_config)
-        skills = extractor.extract_skills("explore", min_cluster_size=5)
+        skills = extractor.extract_skills("draft", min_cluster_size=5)
 
         assert skills == []
 
@@ -128,7 +128,7 @@ class TestSkillExtractor:
                 1: [3, 4],  # 簇 1: 后 2 个记录
             }
 
-            skills = extractor.extract_skills("explore", min_cluster_size=3)
+            skills = extractor.extract_skills("draft", min_cluster_size=3)
 
         # 验证结果
         assert len(skills) == 2
@@ -144,7 +144,7 @@ class TestSkillExtractor:
         assert "composite_score" in skill
         assert "status" in skill
 
-        assert skill["task_type"] == "explore"
+        assert skill["task_type"] == "draft"
         assert skill["status"] == "candidate"
 
     def test_embed_texts(self, mock_config, mock_experience_pool):
@@ -195,7 +195,7 @@ class TestSkillExtractor:
         extractor = SkillExtractor(mock_experience_pool, mock_config)
 
         strategies = ["策略1", "策略2", "策略3"]
-        task_type = "explore"
+        task_type = "draft"
 
         # Mock LLM 响应
         mock_query.return_value = "## Explore Skill: 测试\n\n### 核心策略\n- 测试策略\n"
@@ -214,7 +214,7 @@ class TestSkillExtractor:
         extractor = SkillExtractor(mock_experience_pool, mock_config)
 
         strategies = ["策略1", "策略2", "策略3"]
-        task_type = "explore"
+        task_type = "draft"
 
         # Mock LLM 抛出异常
         mock_query.side_effect = Exception("LLM 调用失败")
@@ -252,7 +252,7 @@ class TestSkillExtractor:
         failed_records = sample_records + [
             TaskRecord(
                 agent_id="agent_x",
-                task_type="explore",
+                task_type="draft",
                 input_hash="hashx",
                 output_quality=0.0,
                 strategy_summary="失败",

@@ -31,7 +31,7 @@ class TestTaskDispatcher:
         # 验证所有 Agent 对所有任务类型的初始得分为 0.5
         for agent in mock_agents:
             scores = dispatcher.specialization_scores[agent.name]
-            assert scores["explore"] == 0.5
+            assert scores["draft"] == 0.5
             assert scores["merge"] == 0.5
             assert scores["mutate"] == 0.5
 
@@ -40,7 +40,7 @@ class TestTaskDispatcher:
         dispatcher = TaskDispatcher(mock_agents, epsilon=1.0)
 
         # 多次选择，验证所有 Agent 都被选择过
-        selections = [dispatcher.select_agent("explore").name for _ in range(100)]
+        selections = [dispatcher.select_agent("draft").name for _ in range(100)]
 
         # 验证所有 4 个 Agent 都被选择过（分布均匀）
         unique_agents = set(selections)
@@ -52,14 +52,14 @@ class TestTaskDispatcher:
 
         # 手动设置擅长度得分
         dispatcher.specialization_scores = {
-            "agent_0": {"explore": 0.9, "merge": 0.5, "mutate": 0.5},
-            "agent_1": {"explore": 0.3, "merge": 0.5, "mutate": 0.5},
-            "agent_2": {"explore": 0.6, "merge": 0.5, "mutate": 0.5},
-            "agent_3": {"explore": 0.4, "merge": 0.5, "mutate": 0.5},
+            "agent_0": {"draft": 0.9, "merge": 0.5, "mutate": 0.5},
+            "agent_1": {"draft": 0.3, "merge": 0.5, "mutate": 0.5},
+            "agent_2": {"draft": 0.6, "merge": 0.5, "mutate": 0.5},
+            "agent_3": {"draft": 0.4, "merge": 0.5, "mutate": 0.5},
         }
 
         # 多次选择，验证始终选择 agent_0（得分最高）
-        selections = [dispatcher.select_agent("explore").name for _ in range(10)]
+        selections = [dispatcher.select_agent("draft").name for _ in range(10)]
         assert all(name == "agent_0" for name in selections)
 
     def test_score_update(self, mock_agents):
@@ -67,15 +67,15 @@ class TestTaskDispatcher:
         dispatcher = TaskDispatcher(mock_agents, epsilon=0.3, learning_rate=0.3)
 
         # 初始得分
-        initial_score = dispatcher.specialization_scores["agent_0"]["explore"]
+        initial_score = dispatcher.specialization_scores["agent_0"]["draft"]
         assert initial_score == 0.5
 
         # 更新得分（高质量）
-        dispatcher.update_score("agent_0", "explore", quality=0.9)
+        dispatcher.update_score("agent_0", "draft", quality=0.9)
 
         # 验证得分提升（EMA 公式）
         expected = (1 - 0.3) * 0.5 + 0.3 * 0.9
-        actual = dispatcher.specialization_scores["agent_0"]["explore"]
+        actual = dispatcher.specialization_scores["agent_0"]["draft"]
         assert actual == pytest.approx(expected, rel=1e-6)
 
     def test_score_update_multiple_times(self, mock_agents):
@@ -87,12 +87,12 @@ class TestTaskDispatcher:
         score = 0.5  # 初始得分
 
         for quality in qualities:
-            dispatcher.update_score("agent_0", "explore", quality)
+            dispatcher.update_score("agent_0", "draft", quality)
             # 计算预期得分
             score = (1 - 0.3) * score + 0.3 * quality
 
         # 验证最终得分
-        actual = dispatcher.specialization_scores["agent_0"]["explore"]
+        actual = dispatcher.specialization_scores["agent_0"]["draft"]
         assert actual == pytest.approx(score, rel=1e-6)
 
     def test_score_update_unknown_agent(self, mock_agents):
@@ -100,7 +100,7 @@ class TestTaskDispatcher:
         dispatcher = TaskDispatcher(mock_agents, epsilon=0.3)
 
         # 更新未知 Agent（不应抛出异常）
-        dispatcher.update_score("unknown_agent", "explore", 0.9)
+        dispatcher.update_score("unknown_agent", "draft", 0.9)
 
         # 验证擅长度矩阵未被污染
         assert "unknown_agent" not in dispatcher.specialization_scores
@@ -110,7 +110,7 @@ class TestTaskDispatcher:
         dispatcher = TaskDispatcher(mock_agents, epsilon=0.3)
 
         # 更新部分得分
-        dispatcher.update_score("agent_0", "explore", 0.8)
+        dispatcher.update_score("agent_0", "draft", 0.8)
         dispatcher.update_score("agent_1", "merge", 0.7)
 
         # 获取矩阵
@@ -119,10 +119,10 @@ class TestTaskDispatcher:
         # 验证格式
         assert len(matrix) == 4
         assert "agent_0" in matrix
-        assert "explore" in matrix["agent_0"]
+        assert "draft" in matrix["agent_0"]
 
         # 验证得分已更新
-        assert matrix["agent_0"]["explore"] != 0.5
+        assert matrix["agent_0"]["draft"] != 0.5
         assert matrix["agent_1"]["merge"] != 0.5
 
         # 验证其他得分保持 0.5
@@ -135,14 +135,14 @@ class TestTaskDispatcher:
 
         # 设置擅长度得分
         dispatcher.specialization_scores = {
-            "agent_0": {"explore": 0.5, "merge": 0.9, "mutate": 0.6},
-            "agent_1": {"explore": 0.7, "merge": 0.6, "mutate": 0.8},
-            "agent_2": {"explore": 0.8, "merge": 0.5, "mutate": 0.5},
-            "agent_3": {"explore": 0.6, "merge": 0.7, "mutate": 0.9},
+            "agent_0": {"draft": 0.5, "merge": 0.9, "mutate": 0.6},
+            "agent_1": {"draft": 0.7, "merge": 0.6, "mutate": 0.8},
+            "agent_2": {"draft": 0.8, "merge": 0.5, "mutate": 0.5},
+            "agent_3": {"draft": 0.6, "merge": 0.7, "mutate": 0.9},
         }
 
         # 验证每种任务类型选择的最优 Agent
-        best_explore = dispatcher._select_best("explore")
+        best_explore = dispatcher._select_best("draft")
         assert best_explore.name == "agent_2"  # 0.8
 
         best_merge = dispatcher._select_best("merge")
@@ -155,8 +155,8 @@ class TestTaskDispatcher:
         """测试得分相同时不固定返回第一个 Agent。"""
         dispatcher = TaskDispatcher(mock_agents, epsilon=0.0)
 
-        # 所有 Agent 的 explore 得分相同（默认 0.5）
-        selections = [dispatcher.select_agent("explore").name for _ in range(100)]
+        # 所有 Agent 的 draft 得分相同（默认 0.5）
+        selections = [dispatcher.select_agent("draft").name for _ in range(100)]
 
         # 验证不只选择一个 Agent（tie-breaking 随机性）
         unique_agents = set(selections)
@@ -170,14 +170,14 @@ class TestTaskDispatcher:
 
         # 设置擅长度得分（agent_0 最优）
         dispatcher.specialization_scores = {
-            "agent_0": {"explore": 0.9, "merge": 0.5, "mutate": 0.5},
-            "agent_1": {"explore": 0.3, "merge": 0.5, "mutate": 0.5},
-            "agent_2": {"explore": 0.3, "merge": 0.5, "mutate": 0.5},
-            "agent_3": {"explore": 0.3, "merge": 0.5, "mutate": 0.5},
+            "agent_0": {"draft": 0.9, "merge": 0.5, "mutate": 0.5},
+            "agent_1": {"draft": 0.3, "merge": 0.5, "mutate": 0.5},
+            "agent_2": {"draft": 0.3, "merge": 0.5, "mutate": 0.5},
+            "agent_3": {"draft": 0.3, "merge": 0.5, "mutate": 0.5},
         }
 
         # 多次选择
-        selections = [dispatcher.select_agent("explore").name for _ in range(100)]
+        selections = [dispatcher.select_agent("draft").name for _ in range(100)]
 
         # 验证 agent_0 被选择次数占多数（约 70%+）
         agent_0_count = selections.count("agent_0")

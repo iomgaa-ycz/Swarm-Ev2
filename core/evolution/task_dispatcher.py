@@ -49,7 +49,7 @@ class TaskDispatcher:
 
         # 初始化擅长度得分矩阵（中性得分 0.5）
         self.specialization_scores: Dict[str, Dict[str, float]] = {
-            agent.name: {"explore": 0.5, "merge": 0.5, "mutate": 0.5}
+            agent.name: {"draft": 0.5, "merge": 0.5, "mutate": 0.5}
             for agent in agents
         }
 
@@ -62,7 +62,7 @@ class TaskDispatcher:
         """Epsilon-Greedy 选择 Agent。
 
         Args:
-            task_type: 任务类型（"explore" | "merge" | "mutate"）
+            task_type: 任务类型（"draft" | "merge" | "mutate"）
 
         Returns:
             选中的 Agent 对象
@@ -128,8 +128,8 @@ class TaskDispatcher:
         Returns:
             擅长度得分矩阵，格式:
                 {
-                    "agent_0": {"explore": 0.8, "merge": 0.6, "mutate": 0.5},
-                    "agent_1": {"explore": 0.5, "merge": 0.7, "mutate": 0.6},
+                    "agent_0": {"draft": 0.8, "merge": 0.6, "mutate": 0.5},
+                    "agent_1": {"draft": 0.5, "merge": 0.7, "mutate": 0.6},
                     ...
                 }
 

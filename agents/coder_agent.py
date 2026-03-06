@@ -50,7 +50,7 @@ class CoderAgent(BaseAgent):
             AgentResult 对象
         """
         try:
-            if context.task_type in ("draft", "explore"):
+            if context.task_type == "draft":
                 node = self._explore(context)
                 # 静态预验证 + LLM 自修复
                 node = self._validate_and_fix(node, context)
@@ -104,7 +104,7 @@ class CoderAgent(BaseAgent):
 
         # Phase 2: 构建 Prompt
         prompt = self.prompt_manager.build_prompt(
-            context.task_type,  # "draft" → draft.j2, "explore" → explore.j2
+            context.task_type,  # "draft" → draft.j2
             self.name,
             {
                 "task_desc": context.task_desc,

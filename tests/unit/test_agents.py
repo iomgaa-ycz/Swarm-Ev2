@@ -55,7 +55,7 @@ def agent_context(mock_config):
     """创建 AgentContext 对象。"""
     journal = Journal()
     return AgentContext(
-        task_type="explore",
+        task_type="draft",
         parent_node=None,
         journal=journal,
         config=mock_config,
@@ -92,7 +92,7 @@ class TestCoderAgentGenerate:
         mock_prompt_manager,
         agent_context,
     ):
-        """测试 generate() 方法（task_type="explore"）成功。"""
+        """测试 generate() 方法（task_type="draft"）成功。"""
         mock_query.return_value = (
             "Plan: use RandomForest\n```python\nprint('test')\n```"
         )
@@ -169,7 +169,7 @@ class TestCoderAgentExplore:
         # 验证 build_prompt 被调用，且 context dict 包含 parent_node
         mock_prompt_manager.build_prompt.assert_called_once()
         call_args = mock_prompt_manager.build_prompt.call_args[0]
-        assert call_args[0] == "explore"  # task_type
+        assert call_args[0] == "draft"  # task_type
         context_dict = call_args[2]
         assert context_dict["parent_node"] == parent_node
 

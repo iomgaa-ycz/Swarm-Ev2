@@ -2029,7 +2029,7 @@ class TestReviewNodePhase0:
         # 验证 gene_plan 被使用（不崩溃即通过）
 
     def test_parent_node_diff_as_change_context(self, orchestrator):
-        """explore/mutate 模式使用父节点 diff 作为变更上下文。"""
+        """draft/mutate 模式使用父节点 diff 作为变更上下文。"""
         node = Node(code="print(2)")
         parent = Node(code="print(1)")
 

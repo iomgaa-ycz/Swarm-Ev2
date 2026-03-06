@@ -103,7 +103,7 @@ from sklearn.ensemble import RandomForestClassifier
 
         # 4. 创建任务
         task1 = Task(
-            type="explore",
+            type="draft",
             node_id=best.id,
             description="基于最佳节点探索新方案",
             agent_name="explorer_agent",
@@ -120,7 +120,7 @@ from sklearn.ensemble import RandomForestClassifier
             },
         )
 
-        assert task1.type == "explore"
+        assert task1.type == "draft"
         assert task2.type == "merge"
         assert task2.dependencies is not None
 

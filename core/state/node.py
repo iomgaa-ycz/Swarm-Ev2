@@ -27,7 +27,7 @@ class Node(DataClassJsonMixin):
         ctime: 创建时间戳
         parent_id: 父节点 ID
         children_ids: 子节点 ID 列表（用于 DAG 遍历）
-        task_type: 任务类型（explore/merge）
+        task_type: 任务类型（draft/merge/mutate）
         metadata: 额外元数据
         logs: 执行日志
         term_out: 终端输出

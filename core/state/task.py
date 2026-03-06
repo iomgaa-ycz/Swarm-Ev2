@@ -12,8 +12,8 @@ from typing import Literal, Optional, Dict
 from dataclasses_json import DataClassJsonMixin
 
 
-# Task 类型定义（Phase 2: explore/merge）
-TaskType = Literal["explore", "merge"]
+# Task 类型定义: draft/merge/mutate
+TaskType = Literal["draft", "merge"]
 
 
 @dataclass
@@ -24,7 +24,7 @@ class Task(DataClassJsonMixin):
 
     Attributes:
         id: 任务唯一标识符
-        type: 任务类型（explore/merge）
+        type: 任务类型（draft/merge）
         node_id: 关联的节点 ID
         description: 任务描述
         created_at: 创建时间戳
@@ -32,11 +32,9 @@ class Task(DataClassJsonMixin):
         dependencies: 任务依赖关系（格式：{依赖名称: 任务ID}）
         payload: 任务上下文数据
 
-    Task 类型说明（Phase 2）:
-        - explore: 探索新方案（包含初稿生成、改进、修复）
-        - merge: 合并多个方案的优点（Phase 3 实现）
-
-    注意: Phase 3 可能扩展更多任务类型（select/review 等）
+    Task 类型说明:
+        - draft: 生成新方案（包含初稿生成、改进、修复）
+        - merge: 合并多个方案的优点
     """
 
     # ---- 核心字段 ----

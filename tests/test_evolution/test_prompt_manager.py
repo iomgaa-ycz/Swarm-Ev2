@@ -160,7 +160,7 @@ class TestInjectTopKSkills:
         pool.query.return_value = [
             TaskRecord(
                 agent_id="agent_0",
-                task_type="explore",
+                task_type="draft",
                 input_hash="hash1",
                 output_quality=0.9,
                 strategy_summary="Used gradient boosting with cross-validation",
@@ -168,7 +168,7 @@ class TestInjectTopKSkills:
             ),
             TaskRecord(
                 agent_id="agent_1",
-                task_type="explore",
+                task_type="draft",
                 input_hash="hash2",
                 output_quality=0.85,
                 strategy_summary="Applied feature engineering and ensembling",
@@ -177,14 +177,14 @@ class TestInjectTopKSkills:
         ]
 
         result = prompt_manager.inject_top_k_skills(
-            task_type="explore",
+            task_type="draft",
             k=5,
             experience_pool=pool,
         )
 
         # 验证调用
         pool.query.assert_called_once_with(
-            task_type="explore",
+            task_type="draft",
             k=5,
             output_quality=(">", 0.5),
         )
@@ -198,7 +198,7 @@ class TestInjectTopKSkills:
     def test_inject_top_k_skills_without_pool(self, prompt_manager):
         """测试无经验池时返回空字符串。"""
         result = prompt_manager.inject_top_k_skills(
-            task_type="explore",
+            task_type="draft",
             k=5,
             experience_pool=None,
         )
@@ -210,7 +210,7 @@ class TestInjectTopKSkills:
         pool.query.return_value = []
 
         result = prompt_manager.inject_top_k_skills(
-            task_type="explore",
+            task_type="draft",
             k=5,
             experience_pool=pool,
         )
@@ -336,7 +336,7 @@ class TestIntegration:
         pool.query.return_value = [
             TaskRecord(
                 agent_id="agent_0",
-                task_type="explore",
+                task_type="draft",
                 input_hash="hash1",
                 output_quality=0.92,
                 strategy_summary="Used ensemble methods",

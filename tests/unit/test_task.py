@@ -10,9 +10,9 @@ class TestTask:
 
     def test_task_creation(self):
         """测试 Task 创建。"""
-        task = Task(type="explore", node_id="node123", description="探索新方案")
+        task = Task(type="draft", node_id="node123", description="探索新方案")
 
-        assert task.type == "explore"
+        assert task.type == "draft"
         assert task.node_id == "node123"
         assert task.description == "探索新方案"
         assert len(task.id) == 32  # UUID hex 长度
@@ -58,7 +58,7 @@ class TestTask:
     def test_task_types(self):
         """测试所有 Task 类型。"""
         # 测试所有有效的任务类型
-        types: list[TaskType] = ["explore", "merge", "select", "review"]
+        types: list[TaskType] = ["draft", "merge", "select", "review"]
 
         for task_type in types:
             task = Task(type=task_type, node_id="node_test")

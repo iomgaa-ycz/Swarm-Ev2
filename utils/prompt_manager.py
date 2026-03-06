@@ -196,7 +196,7 @@ class PromptManager:
         如果 SkillManager 不可用，则从经验池提取成功案例。
 
         Args:
-            task_type: 任务类型（"draft" / "explore" / "merge" / "mutate"）
+            task_type: 任务类型（"draft" / "merge" / "mutate"）
             k: 提取 Top-K 数量
             experience_pool: 经验池实例（Fallback 使用）
 
@@ -216,10 +216,8 @@ class PromptManager:
             )
             return ""
 
-        # "draft" 与 "explore" 共用经验池
-        query_type = "explore" if task_type == "draft" else task_type
         records = experience_pool.query(
-            task_type=query_type,
+            task_type=task_type,
             k=k,
             output_quality=(">", 0.5),
         )
@@ -251,7 +249,7 @@ class PromptManager:
         """构建完整 Prompt（主入口）。
 
         Args:
-            task_type: 任务类型（"explore" / "merge" / "mutate"）
+            task_type: 任务类型（"draft" / "merge" / "mutate"）
             agent_id: Agent ID（如 "agent_0"）
             context: Prompt 上下文字典，必须包含：
                 - task_desc: str - 任务描述

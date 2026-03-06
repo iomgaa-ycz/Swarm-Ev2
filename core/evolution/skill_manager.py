@@ -165,7 +165,7 @@ class SkillManager:
         log_msg("INFO", "===== 开始 Skill 池演化 =====")
 
         # [1] 新增：提取新 Skill
-        for task_type in ["explore", "merge", "mutate"]:
+        for task_type in ["draft", "merge", "mutate"]:
             new_skills = extractor.extract_skills(task_type)
 
             for skill in new_skills:

@@ -23,7 +23,7 @@ class AgentContext(DataClassJsonMixin):
     封装 Agent 执行所需的所有上下文信息。
 
     Attributes:
-        task_type: 任务类型（"draft"、"explore"、"merge" 或 "mutate"）
+        task_type: 任务类型（"draft"、"merge" 或 "mutate"）
         parent_node: 父节点（None=初稿, buggy=修复, normal=改进）
         journal: 历史节点记录（用于 Memory 机制）
         config: 全局配置
@@ -41,7 +41,7 @@ class AgentContext(DataClassJsonMixin):
         draft_history: draft 任务专用 - 已用方法标签列表，用于多样性引导
     """
 
-    task_type: Literal["draft", "explore", "merge", "mutate"]
+    task_type: Literal["draft", "merge", "mutate"]
     parent_node: Optional[Node]
     journal: Journal
     config: Config
@@ -119,8 +119,8 @@ class BaseAgent(ABC):
             AgentResult 对象，包含生成的节点或错误信息
 
         注意:
-            - 具体实现需要根据 context.task_type 分发到 _explore 或 _merge
-            - Phase 2 只实现 explore，merge 留给 Phase 3
+            - 具体实现需要根据 context.task_type 分发到 _draft 或 _merge
+            - Phase 2 只实现 draft，merge 留给 Phase 3
         """
         pass
 

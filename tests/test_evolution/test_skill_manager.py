@@ -47,7 +47,7 @@ def sample_skill():
     """创建示例 Skill。"""
     return {
         "id": "skill_explore_0_123456",
-        "task_type": "explore",
+        "task_type": "draft",
         "content": "## Explore Skill: 测试\n\n### 核心策略\n- 测试策略\n",
         "coverage": 10,
         "avg_accuracy": 0.8,
@@ -102,7 +102,7 @@ class TestSkillManager:
         skill_path = (
             tmp_skills_dir
             / "by_task_type"
-            / "explore"
+            / "draft"
             / "success_patterns"
             / f"{sample_skill['id']}.md"
         )
@@ -110,7 +110,7 @@ class TestSkillManager:
 
         # 验证索引
         meta = manager.skill_index[sample_skill["id"]]
-        assert meta["task_type"] == "explore"
+        assert meta["task_type"] == "draft"
         assert meta["composite_score"] == 0.84
         assert meta["status"] == "active"
 
@@ -194,7 +194,7 @@ class TestSkillManager:
                 manager.add_skill(skill)
 
         # 获取 Top-3
-        top_k = manager.get_top_k_skills("explore", k=3)
+        top_k = manager.get_top_k_skills("draft", k=3)
 
         assert len(top_k) == 3
 
@@ -350,7 +350,7 @@ class TestSkillManager:
         mock_extractor.extract_skills.return_value = [
             {
                 "id": "skill_explore_new_123456",
-                "task_type": "explore",
+                "task_type": "draft",
                 "content": "新 Skill",
                 "coverage": 5,
                 "avg_accuracy": 0.7,
@@ -365,7 +365,7 @@ class TestSkillManager:
             manager.evolve_skills(mock_pool, mock_extractor)
 
         # 验证提取器被调用
-        assert mock_extractor.extract_skills.call_count == 3  # explore, merge, mutate
+        assert mock_extractor.extract_skills.call_count == 3  # draft, merge, mutate
 
         # 验证新 Skill 被添加
         assert "skill_explore_new_123456" in manager.skill_index
@@ -416,7 +416,7 @@ class TestSkillManager:
         # 添加两个同 task_type 的 Skill
         skill_high = {
             "id": "skill_explore_high_001",
-            "task_type": "explore",
+            "task_type": "draft",
             "content": "高分策略内容",
             "coverage": 10,
             "avg_accuracy": 0.9,
@@ -426,7 +426,7 @@ class TestSkillManager:
         }
         skill_low = {
             "id": "skill_explore_low_002",
-            "task_type": "explore",
+            "task_type": "draft",
             "content": "低分但相似的内容",
             "coverage": 5,
             "avg_accuracy": 0.6,

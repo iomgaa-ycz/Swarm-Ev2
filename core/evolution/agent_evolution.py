@@ -185,7 +185,7 @@ class AgentEvolution:
                 log_exception(e, f"变异 {weak_id} Role 失败")
 
             # [2] 变异 3 种 Strategy
-            for task_type in ["explore", "merge", "mutate"]:
+            for task_type in ["draft", "merge", "mutate"]:
                 try:
                     self._mutate_strategy(weak_id, task_type, elite_id)
                 except Exception as e:
@@ -236,7 +236,7 @@ class AgentEvolution:
 
         Args:
             weak_agent_id: 弱者 Agent ID
-            task_type: 任务类型（"explore" | "merge" | "mutate"）
+            task_type: 任务类型（"draft" | "merge" | "mutate"）
             elite_id: 精英 Agent ID（参考）
         """
         # [1] 读取当前 Strategy 和精英 Strategy

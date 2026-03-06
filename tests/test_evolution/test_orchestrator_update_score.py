@@ -136,15 +136,15 @@ class TestFinalizeNodeCallsUpdateScore:
         orch._compute_agent_quality = MagicMock(return_value=0.75)
         orch._write_experience_pool = MagicMock()
 
-        orch._finalize_node(node, agent, context, "explore")
+        orch._finalize_node(node, agent, context, "draft")
 
         # 验证 update_score 被调用
         orch.task_dispatcher.update_score.assert_called_once_with(
-            "agent_0", "explore", 0.75
+            "agent_0", "draft", 0.75
         )
         # 验证 _write_experience_pool 接收到 quality 参数
         orch._write_experience_pool.assert_called_once_with(
-            "agent_0", "explore", node, 0.75
+            "agent_0", "draft", node, 0.75
         )
 
     def test_update_score_not_called_on_buggy_node(self):
@@ -176,7 +176,7 @@ class TestFinalizeNodeCallsUpdateScore:
         orch._save_node_solution = MagicMock()
         orch._update_best_node = MagicMock()
 
-        orch._finalize_node(node, agent, context, "explore")
+        orch._finalize_node(node, agent, context, "draft")
 
         # 验证 update_score 未被调用
         orch.task_dispatcher.update_score.assert_not_called()
@@ -202,7 +202,7 @@ class TestWriteExperiencePoolQuality:
         orch = self._make_orchestrator_with_pool()
         node = _make_node(metric_value=0.06, node_id="node_with_small_metric")
 
-        orch._write_experience_pool("agent_0", "explore", node, quality=0.75)
+        orch._write_experience_pool("agent_0", "draft", node, quality=0.75)
 
         # 验证 experience_pool.add 被调用，且 output_quality 是归一化值
         orch.experience_pool.add.assert_called_once()
@@ -214,7 +214,7 @@ class TestWriteExperiencePoolQuality:
         orch = self._make_orchestrator_with_pool()
         node = _make_node(metric_value=None, is_buggy=True, node_id="buggy_node")
 
-        orch._write_experience_pool("agent_0", "explore", node, quality=None)
+        orch._write_experience_pool("agent_0", "draft", node, quality=None)
 
         orch.experience_pool.add.assert_called_once()
         record = orch.experience_pool.add.call_args[0][0]

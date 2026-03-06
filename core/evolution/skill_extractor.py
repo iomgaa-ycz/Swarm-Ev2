@@ -60,7 +60,7 @@ class SkillExtractor:
         """从经验池提取 Skill。
 
         Args:
-            task_type: 任务类型（explore/merge/mutate）
+            task_type: 任务类型（draft/merge/mutate）
             min_cluster_size: 最小簇大小（None 时使用配置值）
 
         Returns:

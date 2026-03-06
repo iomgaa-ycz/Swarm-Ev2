@@ -52,19 +52,19 @@ def experience_pool_with_data(mock_config):
     # 添加测试数据（agent_0, agent_1 高分，agent_2, agent_3 低分）
     records = [
         # agent_0: 高质量
-        ("agent_0", "explore", 0.9),
+        ("agent_0", "draft", 0.9),
         ("agent_0", "merge", 0.8),
         ("agent_0", "mutate", 0.85),
         # agent_1: 高质量
-        ("agent_1", "explore", 0.85),
+        ("agent_1", "draft", 0.85),
         ("agent_1", "merge", 0.9),
         ("agent_1", "mutate", 0.8),
         # agent_2: 低质量
-        ("agent_2", "explore", 0.4),
+        ("agent_2", "draft", 0.4),
         ("agent_2", "merge", 0.3),
         ("agent_2", "mutate", 0.35),
         # agent_3: 低质量
-        ("agent_3", "explore", 0.3),
+        ("agent_3", "draft", 0.3),
         ("agent_3", "merge", 0.25),
         ("agent_3", "mutate", 0.2),
     ]
@@ -86,7 +86,7 @@ def experience_pool_with_data(mock_config):
         pool.add(
             TaskRecord(
                 agent_id="agent_0",
-                task_type="explore",
+                task_type="draft",
                 input_hash=f"extra_hash_{i}",
                 output_quality=0.7,
                 strategy_summary=f"Extra strategy {i}",
@@ -215,9 +215,9 @@ class TestAgentEvolution:
         """测试按任务类型获取历史表现。"""
         evolution = AgentEvolution(mock_agents, experience_pool_with_data, mock_config, mock_prompt_manager)
 
-        summary = evolution._get_performance_summary("agent_0", task_type="explore")
+        summary = evolution._get_performance_summary("agent_0", task_type="draft")
 
-        # 验证返回的案例仅包含 explore 任务
+        # 验证返回的案例仅包含 draft 任务
         # （实际验证需要检查 strategy_summary 内容）
         assert "top_successes" in summary
         assert "top_failures" in summary
@@ -266,7 +266,7 @@ class TestAgentEvolution:
         mock_query.return_value = "# 改进后的 Strategy\n新策略定义"
 
         # 执行变异
-        evolution._mutate_strategy("agent_2", "explore", elite_id="agent_0")
+        evolution._mutate_strategy("agent_2", "draft", elite_id="agent_0")
 
         # 验证 LLM 被调用
         assert mock_query.call_count == 1

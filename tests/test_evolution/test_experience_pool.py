@@ -65,7 +65,7 @@ class TestTaskRecord:
         """测试创建 TaskRecord。"""
         record = TaskRecord(
             agent_id="agent_0",
-            task_type="explore",
+            task_type="draft",
             input_hash="abc123",
             output_quality=0.85,
             strategy_summary="Use RandomForest",
@@ -73,7 +73,7 @@ class TestTaskRecord:
         )
 
         assert record.agent_id == "agent_0"
-        assert record.task_type == "explore"
+        assert record.task_type == "draft"
         assert record.output_quality == 0.85
 
 
@@ -93,7 +93,7 @@ class TestExperiencePool:
 
         record = TaskRecord(
             agent_id="agent_0",
-            task_type="explore",
+            task_type="draft",
             input_hash="abc123",
             output_quality=0.85,
             strategy_summary="Use RandomForest",
@@ -114,7 +114,7 @@ class TestExperiencePool:
             pool.add(
                 TaskRecord(
                     agent_id=f"agent_{i}",
-                    task_type="explore" if i < 2 else "merge",
+                    task_type="draft" if i < 2 else "merge",
                     input_hash=f"hash_{i}",
                     output_quality=0.7 + i * 0.1,
                     strategy_summary=f"Strategy {i}",
@@ -122,11 +122,11 @@ class TestExperiencePool:
                 )
             )
 
-        # 查询 explore 任务
-        results = pool.query("explore", k=10)
+        # 查询 draft 任务
+        results = pool.query("draft", k=10)
 
         assert len(results) == 2
-        assert all(r.task_type == "explore" for r in results)
+        assert all(r.task_type == "draft" for r in results)
 
         # 查询 merge 任务
         results = pool.query("merge", k=10)
@@ -143,7 +143,7 @@ class TestExperiencePool:
             pool.add(
                 TaskRecord(
                     agent_id="agent_0" if i < 3 else "agent_1",
-                    task_type="explore",
+                    task_type="draft",
                     input_hash=f"hash_{i}",
                     output_quality=0.5 + i * 0.1,
                     strategy_summary=f"Strategy {i}",
@@ -152,13 +152,13 @@ class TestExperiencePool:
             )
 
         # 过滤 output_quality > 0.7（应返回 0.8, 0.9 = 2 个）
-        results = pool.query("explore", k=10, output_quality=(">", 0.7))
+        results = pool.query("draft", k=10, output_quality=(">", 0.7))
 
         assert len(results) == 2
         assert all(r.output_quality > 0.7 for r in results)
 
         # 过滤 agent_id == "agent_0"
-        results = pool.query("explore", k=10, agent_id="agent_0")
+        results = pool.query("draft", k=10, agent_id="agent_0")
 
         assert len(results) == 3
         assert all(r.agent_id == "agent_0" for r in results)
@@ -173,7 +173,7 @@ class TestExperiencePool:
             pool.add(
                 TaskRecord(
                     agent_id=f"agent_{i}",
-                    task_type="explore",
+                    task_type="draft",
                     input_hash=f"hash_{i}",
                     output_quality=quality,
                     strategy_summary=f"Strategy {i}",
@@ -182,7 +182,7 @@ class TestExperiencePool:
             )
 
         # 查询 Top-3
-        results = pool.query("explore", k=3)
+        results = pool.query("draft", k=3)
 
         assert len(results) == 3
         # 验证降序排列：0.9, 0.8, 0.7
@@ -199,7 +199,7 @@ class TestExperiencePool:
             pool.add(
                 TaskRecord(
                     agent_id="agent_0",
-                    task_type="explore",
+                    task_type="draft",
                     input_hash=f"hash_{i}",
                     output_quality=0.5 + i * 0.1 if i < 4 else -0.1,  # 最后一个失败
                     strategy_summary=f"Strategy {i}",
@@ -239,7 +239,7 @@ class TestExperiencePool:
             pool.add(
                 TaskRecord(
                     agent_id=f"agent_{i}",
-                    task_type="explore",
+                    task_type="draft",
                     input_hash=f"hash_{i}",
                     output_quality=0.5 + i * 0.1,
                     strategy_summary=f"Strategy {i}",
@@ -267,7 +267,7 @@ class TestExperiencePool:
                 pool.add(
                     TaskRecord(
                         agent_id=agent_id,
-                        task_type="explore",
+                        task_type="draft",
                         input_hash=f"{agent_id}_hash_{i}",
                         output_quality=0.5 + i * 0.1,
                         strategy_summary=f"Strategy {i}",
@@ -301,7 +301,7 @@ class TestExperiencePool:
             pool1.add(
                 TaskRecord(
                     agent_id=f"agent_{i}",
-                    task_type="explore",
+                    task_type="draft",
                     input_hash=f"hash_{i}",
                     output_quality=0.5 + i * 0.1,
                     strategy_summary=f"Strategy {i}",
@@ -347,7 +347,7 @@ class TestExperiencePool:
         pool.add(
             TaskRecord(
                 agent_id="agent_0",
-                task_type="explore",
+                task_type="draft",
                 input_hash="hash_1",
                 output_quality=0.8,
                 strategy_summary="Explore strategy",
@@ -383,10 +383,10 @@ class TestExperiencePool:
 
         # 验证包含所有任务类型
         task_types = {r.task_type for r in results}
-        assert task_types == {"explore", "merge", "mutate"}
+        assert task_types == {"draft", "merge", "mutate"}
 
         # 验证按 quality 降序排列
-        assert results[0].output_quality == 0.8  # explore
+        assert results[0].output_quality == 0.8  # draft
         assert results[1].output_quality == 0.7  # merge
         assert results[2].output_quality == 0.6  # mutate
 
@@ -400,7 +400,7 @@ class TestExperiencePool:
                 pool.add(
                     TaskRecord(
                         agent_id=agent_id,
-                        task_type="explore",
+                        task_type="draft",
                         input_hash=f"hash_{agent_id}_{quality}",
                         output_quality=quality,
                         strategy_summary=f"Strategy {quality}",
@@ -410,7 +410,7 @@ class TestExperiencePool:
 
         # 查询 agent_0 的高质量记录（> 0.6）
         results = pool.query(
-            task_type="explore", k=10, agent_id="agent_0", output_quality=(">", 0.6)
+            task_type="draft", k=10, agent_id="agent_0", output_quality=(">", 0.6)
         )
 
         # 验证只返回 agent_0 的记录
@@ -428,7 +428,7 @@ class TestExperiencePool:
         pool = ExperiencePool(temp_config)
 
         # 添加多个任务类型的记录
-        for task_type in ["explore", "merge", "mutate"]:
+        for task_type in ["draft", "merge", "mutate"]:
             for quality in [0.3, 0.7, 0.9]:
                 pool.add(
                     TaskRecord(
@@ -457,4 +457,4 @@ class TestExperiencePool:
 
         # 验证包含所有任务类型
         task_types = {r.task_type for r in results}
-        assert task_types == {"explore", "merge", "mutate"}
+        assert task_types == {"draft", "merge", "mutate"}

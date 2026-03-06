@@ -19,7 +19,7 @@ class TaskRecord:
 
     Attributes:
         agent_id: Agent 唯一标识
-        task_type: 任务类型（"explore" | "merge" | "mutate"）
+        task_type: 任务类型（"draft" | "merge" | "mutate"）
         input_hash: 输入的哈希值（用于去重）
         output_quality: 适应度值（归一化后的质量评分）
         strategy_summary: Agent 的策略摘要（从 node.plan 提取）
@@ -106,7 +106,7 @@ class ExperiencePool:
         """查询指定任务类型的 Top-K 记录。
 
         Args:
-            task_type: 任务类型（"explore" | "merge" | "mutate"），None 表示查询所有任务类型
+            task_type: 任务类型（"draft" | "merge" | "mutate"），None 表示查询所有任务类型
             k: 返回前 k 个记录
             **filters: 过滤条件，支持以下格式:
                 - output_quality=(">", 0.5): 质量大于 0.5
@@ -119,11 +119,11 @@ class ExperiencePool:
 
         示例:
             >>> pool = ExperiencePool(config)
-            >>> # 查询 explore 任务的 Top-5 高质量记录
-            >>> results = pool.query("explore", k=5, output_quality=(">", 0.7))
+            >>> # 查询 draft 任务的 Top-5 高质量记录
+            >>> results = pool.query("draft", k=5, output_quality=(">", 0.7))
             >>> len(results) <= 5
             True
-            >>> all(r.task_type == "explore" for r in results)
+            >>> all(r.task_type == "draft" for r in results)
             True
             >>> # 查询所有任务类型的 Top-3 记录
             >>> results = pool.query(task_type=None, k=3, agent_id="agent_0")
