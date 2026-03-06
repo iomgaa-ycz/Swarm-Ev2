@@ -1,11 +1,12 @@
 """Orchestrator update_score 集成测试。
 
 验证 _finalize_node 后 task_dispatcher.update_score 被正确调用，
-以及 _compute_agent_quality 的 percentile rank 计算。
+以及 _compute_agent_quality 的 percentile rank 计算，
+以及 _write_experience_pool 使用归一化 quality。
 """
 
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, call
 from dataclasses import dataclass
 
 from core.state.node import Node
@@ -103,7 +104,7 @@ class TestFinalizeNodeCallsUpdateScore:
     """验证 _finalize_node 正确调用 task_dispatcher.update_score。"""
 
     def test_update_score_called_on_good_node(self):
-        """非 buggy 且有 metric 的节点应触发 update_score。"""
+        """非 buggy 且有 metric 的节点应触发 update_score 和经验池写入。"""
         from core.orchestrator import Orchestrator
 
         orch = object.__new__(Orchestrator)
@@ -114,7 +115,7 @@ class TestFinalizeNodeCallsUpdateScore:
         orch.save_lock = MagicMock()
         orch.save_lock.__enter__ = MagicMock(return_value=None)
         orch.save_lock.__exit__ = MagicMock(return_value=False)
-        orch.experience_pool = None
+        orch.experience_pool = MagicMock()
         orch.task_dispatcher = MagicMock()
         orch._global_lower_is_better = False
 
@@ -133,12 +134,17 @@ class TestFinalizeNodeCallsUpdateScore:
         orch._save_node_solution = MagicMock()
         orch._update_best_node = MagicMock()
         orch._compute_agent_quality = MagicMock(return_value=0.75)
+        orch._write_experience_pool = MagicMock()
 
         orch._finalize_node(node, agent, context, "explore")
 
         # 验证 update_score 被调用
         orch.task_dispatcher.update_score.assert_called_once_with(
             "agent_0", "explore", 0.75
+        )
+        # 验证 _write_experience_pool 接收到 quality 参数
+        orch._write_experience_pool.assert_called_once_with(
+            "agent_0", "explore", node, 0.75
         )
 
     def test_update_score_not_called_on_buggy_node(self):
@@ -174,3 +180,42 @@ class TestFinalizeNodeCallsUpdateScore:
 
         # 验证 update_score 未被调用
         orch.task_dispatcher.update_score.assert_not_called()
+
+
+class TestWriteExperiencePoolQuality:
+    """验证 _write_experience_pool 使用归一化 quality。"""
+
+    def _make_orchestrator_with_pool(self):
+        """创建带 experience_pool 的 mock orchestrator。"""
+        from core.orchestrator import Orchestrator
+
+        orch = object.__new__(Orchestrator)
+        orch.journal = Journal()
+        orch.journal_lock = MagicMock()
+        orch.journal_lock.__enter__ = MagicMock(return_value=None)
+        orch.journal_lock.__exit__ = MagicMock(return_value=False)
+        orch.experience_pool = MagicMock()
+        return orch
+
+    def test_write_experience_pool_uses_quality(self):
+        """经验池写入的 output_quality 应为归一化值，而非原始 metric。"""
+        orch = self._make_orchestrator_with_pool()
+        node = _make_node(metric_value=0.06, node_id="node_with_small_metric")
+
+        orch._write_experience_pool("agent_0", "explore", node, quality=0.75)
+
+        # 验证 experience_pool.add 被调用，且 output_quality 是归一化值
+        orch.experience_pool.add.assert_called_once()
+        record = orch.experience_pool.add.call_args[0][0]
+        assert record.output_quality == 0.75  # 归一化值，非原始 0.06
+
+    def test_write_experience_pool_buggy_node_quality_zero(self):
+        """buggy 节点（quality=None）写入经验池时 output_quality=0.0。"""
+        orch = self._make_orchestrator_with_pool()
+        node = _make_node(metric_value=None, is_buggy=True, node_id="buggy_node")
+
+        orch._write_experience_pool("agent_0", "explore", node, quality=None)
+
+        orch.experience_pool.add.assert_called_once()
+        record = orch.experience_pool.add.call_args[0][0]
+        assert record.output_quality == 0.0
