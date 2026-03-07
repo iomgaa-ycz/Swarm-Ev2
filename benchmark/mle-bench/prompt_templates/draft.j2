@@ -83,7 +83,8 @@ Your **Thinking** section MUST reference:
 - **Total Time Remaining**: {{ time_str }}
 - **Total Steps Remaining**: {{ steps_remaining }}
 - **Per-Node Execution Timeout**: {{ exec_timeout_str }}
-- Be aware of the running time of the code, it should complete within {{ exec_timeout_str }}.
+- Your code **MUST** complete within **{{ exec_timeout_str }}** — exceeding this limit will be killed and produce zero score.
+- **For image/large datasets (>10k samples)**: Budget time carefully. Prefer fewer folds (3 instead of 5), lower resolution, or smaller model if needed to fit within the timeout. A completed 3-fold run is infinitely better than a timed-out 5-fold run.
 
 ## System Environment
 

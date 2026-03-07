@@ -34,13 +34,15 @@
 1. **Default**: `StratifiedKFold(n_splits=5)` (classification) or `KFold(n_splits=5)` (regression). For deep learning, may run ≥3 of 5 folds. Report **mean** of all folds.
 2. **Exception — grouped data**: If training files share date/session/patient prefixes (few unique groups), use `GroupKFold(groups=...)` instead. Random KFold on grouped data causes severe leakage (CV ~0.99 but test ~0.5).
 3. **Metric**: MUST use competition evaluation metric (NOT training loss). Print: `print(f"Validation metric: {metric_value:.6f}")`
+4. **Deep Learning — Save & Ensemble**: For neural network models, **MUST save each fold's best checkpoint** (e.g., `torch.save(model.state_dict(), f"working/model_fold{i}.pt")`). At inference time, load ALL fold models and **average predictions** (ensemble). **NEVER** discard fold models and retrain a single model on full data — this wastes CV compute and loses ensemble benefit.
 
 ### DataLoader Workers (CRITICAL for Image/Audio Tasks)
 - ALWAYS set `num_workers` to use multi-core CPU; `num_workers=0` serializes all I/O and causes GPU starvation
+- For large datasets (>10k samples), use 8-16 workers for optimal GPU utilization
 - CORRECT:
   ```python
   import os
-  num_workers = min(4, os.cpu_count() or 1)
+  num_workers = min(8, os.cpu_count() or 1)
   DataLoader(dataset, batch_size=32, num_workers=num_workers, pin_memory=True)
   ```
 - `num_workers=0` is ONLY acceptable when dataset size < 1000 samples
