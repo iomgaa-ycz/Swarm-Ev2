@@ -1,6 +1,6 @@
 """文本处理工具模块。
 
-提供 Review Prompt 压缩、执行输出精炼等文本处理功能。
+提供 Review Prompt 任务描述清理、执行输出精炼等文本处理功能。
 """
 
 import re
@@ -76,49 +76,109 @@ def condense_term_out(
     return llm_fn(prompt)
 
 
-# ── Review Prompt 任务描述压缩 ─────────────────────────────────────
+# ── Review Prompt 任务描述清理 ─────────────────────────────────────
+
+# 需要整段移除的 section 标题（## 级别）
+_REMOVE_SECTIONS = {"## Prizes", "## Prize", "## Timeline"}
+# 需要整段移除的 subsection 标题（### 级别）
+_REMOVE_SUBSECTIONS = {"### Citation", "### Acknowledgements"}
+
+# 清理后最大字符数
+_CLEAN_MAX_CHARS = 6000
 
 
-def compress_task_desc(full_desc: str) -> str:
-    """从完整竞赛描述中提取 Review 所需的最小信息。
+def clean_task_desc(full_desc: str) -> str:
+    """清理竞赛描述中的无用内容，保留 Reviewer 所需的关键信息。
 
-    提取规则:
-    1. ## Description: 第一段（任务概述）
-    2. ## Evaluation: 第一段（指标说明）
-    3. ### Submission File: 格式示例
+    清理规则（不做"提取"，只做"删除"）:
+    1. 移除图片标签 ![...](...) 和 HTML img 标签
+    2. 移除 Prizes / Citation 等无关 section
+    3. 移除 Evaluation 中的代码示例块（保留首段 metric 说明）
+    4. 清理后 ≤ 6000 chars 直接返回，否则截断
+
+    保留: Description 全部文字 + Evaluation 首段 + Submission File 格式
+         + Dataset Description（数据结构、标签规则）
 
     Args:
         full_desc: 完整的 description.md 内容
 
     Returns:
-        压缩后的任务描述（约 500 字节）
+        清理后的任务描述
     """
-    parts = []
+    if not full_desc:
+        return ""
 
-    # Phase 1: 提取 Description 首段
-    desc_text = _extract_section(full_desc, "## Description")
-    if desc_text:
-        first_para = desc_text.split("\n\n")[0].strip()
-        parts.append(f"**Task**: {first_para}")
+    text = full_desc
 
-    # Phase 2: 提取 Evaluation 首段
-    eval_text = _extract_section(full_desc, "## Evaluation")
-    if eval_text:
-        first_para = eval_text.split("\n\n")[0].strip()
-        parts.append(f"**Metric**: {first_para}")
+    # Phase 1: 移除图片标签
+    text = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", text)
+    text = re.sub(r"<img[^>]*>", "", text, flags=re.IGNORECASE)
 
-    # Phase 3: 提取 Submission File 格式
-    submission_text = _extract_section(full_desc, "### Submission File")
-    if submission_text:
-        code_block = re.search(r"```[\s\S]*?```", submission_text)
-        if code_block:
-            parts.append(f"**Format**:\n{code_block.group()}")
+    # Phase 2: 移除无关 section（## 级别）
+    for heading in _REMOVE_SECTIONS:
+        text = _remove_section(text, heading, level=2)
 
-    # Phase 4: 回退
-    if not parts:
-        return full_desc[:500] + "..."
+    # Phase 3: 移除无关 subsection（### 级别）
+    for heading in _REMOVE_SUBSECTIONS:
+        text = _remove_section(text, heading, level=3)
 
-    return "\n\n".join(parts)
+    # Phase 4: 移除 Evaluation 中的代码示例块（保留首段说明）
+    text = _strip_eval_code_blocks(text)
+
+    # Phase 5: 清理多余空行
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+
+    # Phase 6: 长度控制
+    if len(text) > _CLEAN_MAX_CHARS:
+        text = text[:_CLEAN_MAX_CHARS] + "\n... (truncated)"
+
+    return text
+
+
+def _remove_section(text: str, heading: str, level: int) -> str:
+    """移除指定标题的整个 section（包括标题行到下一个同级或更高级标题）。
+
+    Args:
+        text: 完整文本
+        heading: 标题文本（如 "## Prizes"）
+        level: 标题级别（2 = ##, 3 = ###）
+
+    Returns:
+        移除 section 后的文本
+    """
+    pattern = rf"^{re.escape(heading)}\s*\n"
+    match = re.search(pattern, text, re.MULTILINE)
+    if not match:
+        return text
+
+    start = match.start()
+    # 找下一个同级或更高级标题
+    rest = text[match.end() :]
+    next_heading = re.search(rf"^#{{1,{level}}}\s+", rest, re.MULTILINE)
+    end = match.end() + next_heading.start() if next_heading else len(text)
+
+    return text[:start] + text[end:]
+
+
+def _strip_eval_code_blocks(text: str) -> str:
+    """移除 Evaluation section 中的代码示例块，保留文字说明。
+
+    Args:
+        text: 完整文本
+
+    Returns:
+        移除代码块后的文本
+    """
+    eval_content = _extract_section(text, "## Evaluation")
+    if not eval_content:
+        return text
+
+    # 移除代码块（```...```）
+    cleaned_eval = re.sub(r"```[\s\S]*?```", "", eval_content)
+    # 清理多余空行
+    cleaned_eval = re.sub(r"\n{3,}", "\n\n", cleaned_eval).strip()
+
+    return text.replace(eval_content, cleaned_eval)
 
 
 def _extract_section(text: str, heading: str) -> Optional[str]:

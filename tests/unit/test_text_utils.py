@@ -2,14 +2,14 @@
 
 覆盖：
 - condense_term_out: 短输出原样返回、LLM 提取、异常传播、metric 精确保留
-- compress_task_desc: 标准压缩、缺失标题、回退、空输入
+- clean_task_desc: 图片移除、section 移除、代码块清理、长度截断
 - _extract_section: 提取标题内容
 """
 
 import pytest
 from unittest.mock import MagicMock
 
-from utils.text_utils import compress_task_desc, _extract_section, condense_term_out
+from utils.text_utils import clean_task_desc, _extract_section, condense_term_out
 
 
 # ============================================================
@@ -145,91 +145,130 @@ submission.csv: created"""
 
 
 # ============================================================
-# compress_task_desc
+# clean_task_desc
 # ============================================================
 
 
-class TestCompressTaskDesc:
-    """compress_task_desc 函数测试。"""
+class TestCleanTaskDesc:
+    """clean_task_desc 函数测试。"""
 
-    def test_compress_standard_desc(self):
-        """测试标准 Kaggle 格式的压缩。"""
-        full_desc = """## Description
+    def test_removes_image_tags(self):
+        """测试移除 Markdown 图片标签。"""
+        desc = "## Description\n\nSome text ![image](http://example.com/img.png) more text.\n"
+        result = clean_task_desc(desc)
+        assert "![image]" not in result
+        assert "Some text" in result
+        assert "more text" in result
 
-This is a competition about predicting house prices. You need to build a model that predicts sale prices based on various features.
+    def test_removes_html_img_tags(self):
+        """测试移除 HTML img 标签。"""
+        desc = '## Description\n\nText <img src="foo.png" alt="bar"> end.\n'
+        result = clean_task_desc(desc)
+        assert "<img" not in result
+        assert "Text" in result
 
-Additional details here.
+    def test_removes_prizes_section(self):
+        """测试移除 Prizes section。"""
+        desc = """## Description
+
+Task details here.
+
+## Prizes
+
+First place: $10000
+Second place: $5000
 
 ## Evaluation
 
-RMSE (Root Mean Squared Error) is used to evaluate submissions.
+RMSE is the metric.
+"""
+        result = clean_task_desc(desc)
+        assert "$10000" not in result
+        assert "Task details" in result
+        assert "RMSE" in result
+
+    def test_removes_citation_subsection(self):
+        """测试移除 Citation subsection。"""
+        desc = """## Description
+
+Task details.
+
+### Citation
+
+@article{foo, title={bar}}
+
+## Evaluation
+
+AUC metric.
+"""
+        result = clean_task_desc(desc)
+        assert "@article" not in result
+        assert "Task details" in result
+        assert "AUC" in result
+
+    def test_strips_eval_code_blocks(self):
+        """测试移除 Evaluation 中的代码块但保留文字说明。"""
+        desc = """## Description
+
+Predict prices.
+
+## Evaluation
+
+RMSE is used for evaluation.
+
+```python
+import numpy as np
+rmse = np.sqrt(np.mean((y_true - y_pred)**2))
+```
 
 Lower is better.
+"""
+        result = clean_task_desc(desc)
+        assert "RMSE is used" in result
+        assert "import numpy" not in result
+        assert "Lower is better" in result
+
+    def test_preserves_description_and_dataset(self):
+        """测试保留 Description 和 Dataset Description 完整内容。"""
+        desc = """## Description
+
+This is a competition about whale identification.
+
+Additional paragraph with important details about the task.
 
 ## Dataset Description
 
-Some data info.
-
-### Submission File
-
-Your submission should be a CSV file with the following format:
-
-```csv
-Id,SalePrice
-1,200000
-2,150000
-```
-
-## Additional Info
-
-Some other info.
+Train contains 9850 images. Test contains 1000 images.
 """
-        result = compress_task_desc(full_desc)
+        result = clean_task_desc(desc)
+        assert "whale identification" in result
+        assert "Additional paragraph" in result
+        assert "9850 images" in result
 
-        # 验证包含三个部分
-        assert "**Task**:" in result
-        assert "**Metric**:" in result
-        assert "**Format**:" in result
+    def test_truncation_at_6000_chars(self):
+        """测试超长描述截断到 6000 chars。"""
+        desc = "## Description\n\n" + "x" * 7000
+        result = clean_task_desc(desc)
+        assert len(result) <= 6000 + len("\n... (truncated)")
+        assert result.endswith("... (truncated)")
 
-        # 验证内容正确
-        assert "house prices" in result
-        assert "RMSE" in result
-        assert "```csv" in result
+    def test_short_desc_no_truncation(self):
+        """测试短描述不截断。"""
+        desc = "## Description\n\nShort task.\n"
+        result = clean_task_desc(desc)
+        assert "truncated" not in result
+        assert "Short task" in result
 
-        # 验证长度合理（远小于原文）
-        assert len(result) < len(full_desc)
-        assert len(result) < 1000  # 预期 ~500B
-
-    def test_compress_missing_sections(self):
-        """测试缺少某些标题时的处理。"""
-        # 只有 Description
-        desc_only = """## Description
-
-A simple task description.
-
-## Other Section
-
-Other content.
-"""
-        result = compress_task_desc(desc_only)
-        assert "**Task**:" in result
-        assert "**Metric**:" not in result
-        assert "**Format**:" not in result
-
-    def test_compress_fallback(self):
-        """测试完全无法解析时的回退。"""
-        weird_format = "This is just plain text without any markdown headers."
-
-        result = compress_task_desc(weird_format)
-
-        # 应该回退到截取前 500 字符
-        assert result.endswith("...")
-        assert len(result) <= 504  # 500 + "..."
-
-    def test_compress_empty_input(self):
+    def test_empty_input(self):
         """测试空输入。"""
-        result = compress_task_desc("")
-        assert result == "..."
+        result = clean_task_desc("")
+        assert result == ""
+
+    def test_plain_text_passthrough(self):
+        """测试无 Markdown 标题的纯文本直接返回。"""
+        text = "Just plain text without headers."
+        result = clean_task_desc(text)
+        assert result == text
 
 
 # ============================================================
