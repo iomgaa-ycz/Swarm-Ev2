@@ -35,6 +35,7 @@ class AgentContext(DataClassJsonMixin):
         conda_env_name: Conda 环境名称
         gene_plan: merge 任务专用 - 基因交叉计划
         primary_parent: merge 任务专用 - 贡献基因最多的父代（取代 parent_a 作为语义主父代）
+        secondary_parent: merge 任务专用 - 第二亲本（V7 两亲本交叉）
         gene_sources: merge 任务专用 - {locus: source_node_id} 字典，记录每个位点的来源
         target_gene: mutate 任务专用 - 目标基因块名称
         mutation_aspect: mutate 任务专用 - 目标基因的子方面（如 "optimizer", "architecture"）
@@ -53,8 +54,9 @@ class AgentContext(DataClassJsonMixin):
     conda_env_name: str = ""
     # merge 任务专用字段
     primary_parent: Optional[Node] = None
+    secondary_parent: Optional[Node] = None  # V7: 第二亲本（两亲本交叉）
     gene_plan: Optional[dict] = None
-    gene_sources: Optional[Dict[str, str]] = None  # 新增：{locus: source_node_id}
+    gene_sources: Optional[Dict[str, str]] = None  # {locus: source_node_id}
     # mutate 任务专用字段
     target_gene: Optional[str] = None
     mutation_aspect: Optional[str] = None

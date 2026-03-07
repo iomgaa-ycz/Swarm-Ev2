@@ -92,8 +92,8 @@ class TestSampleSubmissionGlobMatching:
         # 无 sample_submission → 仅检查 NaN，应该通过
         assert result["valid"] is True
 
-    def test_column_mismatch_invalid(self, tmp_path, mock_orchestrator_with_workspace):
-        """列名不匹配 → valid=False（P0-2 修复：升级为 invalid）。"""
+    def test_missing_column_invalid(self, tmp_path, mock_orchestrator_with_workspace):
+        """缺少必需列 → valid=False，提示缺失列名。"""
         orch = mock_orchestrator_with_workspace
         orch.config.project.workspace_dir = tmp_path
 
@@ -104,16 +104,45 @@ class TestSampleSubmissionGlobMatching:
         submission_dir = tmp_path / "submission"
         submission_dir.mkdir()
         node_id = "test_node"
-        # 列名不同: "id,prediction" vs "id,label"
+        # 缺少 "label" 列
         (submission_dir / f"submission_{node_id}.csv").write_text(
             "id,prediction\n1,0.5\n2,0.5\n"
         )
 
         result = orch._validate_submission_format(node_id)
 
-        # P0-2 修复后应该标记为 invalid
         assert result["valid"] is False
-        assert any("列名不匹配" in err for err in result["errors"])
+        assert any("缺少必需列" in err for err in result["errors"])
+        assert any("label" in err for err in result["errors"])
+
+    def test_extra_columns_auto_trimmed(self, tmp_path, mock_orchestrator_with_workspace):
+        """多余列 → valid=True，自动裁剪并写回。"""
+        orch = mock_orchestrator_with_workspace
+        orch.config.project.workspace_dir = tmp_path
+
+        input_dir = tmp_path / "input"
+        input_dir.mkdir()
+        (input_dir / "sample_submission.csv").write_text("id,label\n1,0.5\n2,0.5\n")
+
+        submission_dir = tmp_path / "submission"
+        submission_dir.mkdir()
+        node_id = "test_node"
+        # 包含多余列 "extra_col"
+        (submission_dir / f"submission_{node_id}.csv").write_text(
+            "id,label,extra_col\n1,0.5,999\n2,0.5,888\n"
+        )
+
+        result = orch._validate_submission_format(node_id)
+
+        assert result["valid"] is True
+        assert len(result["errors"]) == 0
+
+        # 验证文件已被裁剪
+        import pandas as pd
+
+        trimmed_df = pd.read_csv(submission_dir / f"submission_{node_id}.csv")
+        assert list(trimmed_df.columns) == ["id", "label"]
+        assert "extra_col" not in trimmed_df.columns
 
 
 class TestSubmissionRowMismatch:

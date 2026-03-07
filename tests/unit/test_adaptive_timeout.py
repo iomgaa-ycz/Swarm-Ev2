@@ -55,17 +55,15 @@ class TestAdaptiveTimeout:
         input_dir = tmp_path / "input"
         input_dir.mkdir()
 
-        # 模拟 200MB 数据
-        with patch("pathlib.Path.rglob") as mock_rglob:
-            mock_file = Mock()
-            mock_file.is_file.return_value = True
-            mock_file.stat.return_value = Mock(st_size=200 * 1024 * 1024)
-            mock_rglob.return_value = [mock_file]
-
-            with patch.object(Orchestrator, "__init__", lambda x, **kwargs: None):
-                orchestrator = Orchestrator()
-                orchestrator.config = mock_config
-                timeout = orchestrator._estimate_timeout()
+        # 模拟 200MB 数据：os.walk 返回一个文件，stat 返回 200MB
+        walk_result = [(str(input_dir), [], ["big_file.csv"])]
+        with patch("os.walk", return_value=walk_result):
+            mock_stat = Mock(st_size=200 * 1024 * 1024)
+            with patch("pathlib.Path.stat", return_value=mock_stat):
+                with patch.object(Orchestrator, "__init__", lambda x, **kwargs: None):
+                    orchestrator = Orchestrator()
+                    orchestrator.config = mock_config
+                    timeout = orchestrator._estimate_timeout()
 
         assert timeout == 5400  # 1.5x
 
@@ -75,16 +73,14 @@ class TestAdaptiveTimeout:
         input_dir.mkdir()
 
         # 模拟 800MB 数据
-        with patch("pathlib.Path.rglob") as mock_rglob:
-            mock_file = Mock()
-            mock_file.is_file.return_value = True
-            mock_file.stat.return_value = Mock(st_size=800 * 1024 * 1024)
-            mock_rglob.return_value = [mock_file]
-
-            with patch.object(Orchestrator, "__init__", lambda x, **kwargs: None):
-                orchestrator = Orchestrator()
-                orchestrator.config = mock_config
-                timeout = orchestrator._estimate_timeout()
+        walk_result = [(str(input_dir), [], ["big_file.csv"])]
+        with patch("os.walk", return_value=walk_result):
+            mock_stat = Mock(st_size=800 * 1024 * 1024)
+            with patch("pathlib.Path.stat", return_value=mock_stat):
+                with patch.object(Orchestrator, "__init__", lambda x, **kwargs: None):
+                    orchestrator = Orchestrator()
+                    orchestrator.config = mock_config
+                    timeout = orchestrator._estimate_timeout()
 
         assert timeout == 7200  # 2.0x, capped at max
 

@@ -289,7 +289,8 @@ class CoderAgent(BaseAgent):
             self.name,
             {
                 "task_desc": context.task_desc,
-                "primary_parent": context.primary_parent,  # 改：取代 parent_a/parent_b
+                "primary_parent": context.primary_parent,
+                "secondary_parent": context.secondary_parent,  # V7: 第二亲本
                 "gene_plan": context.gene_plan,
                 "time_remaining": time_remaining,
                 "steps_remaining": steps_remaining,

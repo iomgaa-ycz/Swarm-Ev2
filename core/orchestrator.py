@@ -8,6 +8,7 @@
 
 import difflib
 import json
+import os
 import random
 import re
 import shutil
@@ -840,22 +841,25 @@ class Orchestrator:
                     result["errors"].append(
                         f"行数不匹配: submission={len(sub_df)}, sample={len(sample_df)}"
                     )
-                # P0-B 修复：集合比较（不依赖顺序），列存在但顺序不同时自动重排写回
+                # 超集检查：只验证必需列存在，多余列自动裁剪
                 sub_cols = set(sub_df.columns)
                 sample_cols = set(sample_df.columns)
-                if sub_cols != sample_cols:
+                missing_cols = sample_cols - sub_cols
+                extra_cols = sub_cols - sample_cols
+
+                if missing_cols:
                     result["valid"] = False
                     result["errors"].append(
-                        f"列名不匹配: submission={sorted(sub_cols)}, "
-                        f"sample={sorted(sample_cols)}"
+                        f"submission 缺少必需列: {sorted(missing_cols)}"
                     )
-                elif list(sub_df.columns) != list(sample_df.columns):
+                elif extra_cols or list(sub_df.columns) != list(sample_df.columns):
                     sub_df = sub_df[list(sample_df.columns)]
                     sub_df.to_csv(submission_path, index=False)
-                    log_msg(
-                        "INFO",
-                        f"[P0-B] 列顺序已自动调整为 sample 顺序并写回: {node_id}",
-                    )
+                    if extra_cols:
+                        log_msg(
+                            "WARNING",
+                            f"submission 多余列已自动裁剪: {sorted(extra_cols)}, node={node_id}",
+                        )
                 # P0-B 修复：NaN 检查仅针对目标列（非 id 列），避免特征列为空误判
                 id_like = {"id", "image_id", "row_id", "uuid", "pid"}
                 target_cols = [c for c in sample_df.columns if c.lower() not in id_like]
@@ -1180,10 +1184,15 @@ For buggy solutions, still fill all string fields (e.g. approach_tag="Failed: OO
             image_exts = {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff", ".dcm"}
             total_size_bytes = 0
             image_count = 0
-            for f in input_dir.rglob("*"):
-                if f.is_file():
-                    total_size_bytes += f.stat().st_size
-                    if f.suffix.lower() in image_exts:
+            # 使用 os.walk(followlinks=True) 穿透符号链接目录
+            for dirpath, _, filenames in os.walk(input_dir, followlinks=True):
+                for fname in filenames:
+                    fpath = Path(dirpath) / fname
+                    try:
+                        total_size_bytes += fpath.stat().st_size
+                    except OSError:
+                        continue
+                    if fpath.suffix.lower() in image_exts:
                         image_count += 1
             total_size_mb = total_size_bytes / (1024 * 1024)
         except Exception as e:
@@ -1747,14 +1756,16 @@ For buggy solutions, still fill all string fields (e.g. approach_tag="Failed: OO
     def execute_merge_task(
         self,
         primary_parent: Node,
+        secondary_parent: Optional[Node] = None,
         gene_plan: Optional[str] = None,
         gene_sources: Optional[Dict[str, str]] = None,
     ) -> Optional[Node]:
-        """执行 merge 任务（基因交叉）。
+        """执行 merge 任务（两亲本交叉）。
 
         Args:
             primary_parent: 贡献基因最多的父代（用于 merge.j2 参考框架）
-            gene_plan: 基因交叉计划 Markdown 字符串（pheromone_with_degenerate_check 的输出）
+            secondary_parent: 第二亲本（V7 新增，用于两亲本交叉展示）
+            gene_plan: 基因交叉计划 Markdown 字符串
             gene_sources: {locus: source_node_id} 字典（可选，用于 node.metadata 记录）
 
         Returns:
@@ -1769,7 +1780,8 @@ For buggy solutions, still fill all string fields (e.g. approach_tag="Failed: OO
 
             log_msg(
                 "INFO",
-                f"{agent.name} 开始 merge (primary_parent={primary_parent.id[:8]})",
+                f"{agent.name} 开始 merge (primary_parent={primary_parent.id[:8]}"
+                f", secondary_parent={secondary_parent.id[:8] if secondary_parent else 'None'})",
             )
 
             # 构建上下文
@@ -1789,6 +1801,7 @@ For buggy solutions, still fill all string fields (e.g. approach_tag="Failed: OO
                 conda_env_name=self.conda_env_name,
                 exec_timeout=self.interpreter.timeout,
                 primary_parent=primary_parent,
+                secondary_parent=secondary_parent,
                 gene_plan=gene_plan,
                 gene_sources=gene_sources,
                 experience_pool=self.experience_pool,
@@ -1805,6 +1818,9 @@ For buggy solutions, still fill all string fields (e.g. approach_tag="Failed: OO
             # 记录基因来源（用于分析）
             if gene_sources:
                 node.metadata["gene_sources"] = gene_sources
+            # V7: 记录第二亲本 ID
+            if secondary_parent:
+                node.metadata["secondary_parent_id"] = secondary_parent.id
 
             node = self._finalize_node(
                 node,

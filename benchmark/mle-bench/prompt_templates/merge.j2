@@ -1,6 +1,6 @@
 {# ===================================================================== #}
-{# MERGE TASK PROMPT TEMPLATE                                          #}
-{# 用于执行基因交叉，合并两个父节点的基因块                                  #}
+{# MERGE TASK PROMPT TEMPLATE (V7: Two-Parent Crossover)               #}
+{# 用于执行两亲本基因交叉，合并两个父节点的基因块                           #}
 {# ===================================================================== #}
 
 {# SECTION: ROLE [EVOLVABLE] #}
@@ -12,39 +12,50 @@
 {# END SECTION: FORMAT #}
 
 {# SECTION: TASK #}
-# Task: Genetic Crossover
+# Task: Two-Parent Genetic Crossover
 
-You are performing **genetic crossover** to create a child solution
-by combining gene blocks from multiple source solutions.
+You are performing **two-parent genetic crossover** to create a child solution
+by combining gene blocks from two parent solutions.
 
-## Reference Solution (fitness={{ primary_parent.metric_value if primary_parent.metric_value else "N/A" }})
-
-A complete working solution for structural reference (imports, helpers, main logic):
+## Parent A (fitness={{ primary_parent.metric_value if primary_parent.metric_value else "N/A" }})
 
 ```python
 {{ primary_parent.code }}
 ```
 
 {% if primary_parent.term_out %}
-### Execution Result
+### Parent A Execution Result
 ```
 {{ primary_parent.term_out[:1000] }}{% if primary_parent.term_out|length > 1000 %}... (truncated){% endif %}
 ```
 {% endif %}
 
+{% if secondary_parent %}
+## Parent B (fitness={{ secondary_parent.metric_value if secondary_parent.metric_value else "N/A" }})
+
+```python
+{{ secondary_parent.code }}
+```
+
+{% if secondary_parent.term_out %}
+### Parent B Execution Result
+```
+{{ secondary_parent.term_out[:1000] }}{% if secondary_parent.term_out|length > 1000 %}... (truncated){% endif %}
+```
+{% endif %}
+{% endif %}
+
 ---
 
-## Gene Plan
-
-The following specifies the selected gene block for each section:
+## Crossover Plan
 
 {{ gene_plan }}
 
 **Your Task**: Create a child solution that:
-1. Uses the gene block code from each section above
-2. Uses the Reference Solution as structural scaffold (imports, helpers, main logic)
-3. Resolves any conflicts between blocks from different sources
-4. Ensures the merged solution is executable and coherent
+1. Follows the crossover plan (which gene block comes from which parent)
+2. Uses Parent A as structural scaffold (imports, helpers, main logic)
+3. Integrates Parent B's selected gene blocks into the scaffold
+4. Resolves any conflicts and ensures executable coherence
 {# END SECTION: TASK #}
 
 {# SECTION: STRATEGY [HYBRID] #}
