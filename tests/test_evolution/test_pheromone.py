@@ -200,8 +200,8 @@ class TestComputeNodePheromone:
         )
 
         # step_diff = 0, recency = exp(0) = 1.0
-
-        expected = 0.5 * 0.8 + 0.3 * 0.0 + 0.2 * 1.0
+        # V7 默认权重: alpha=0.7, beta=0.1, delta=0.2
+        expected = 0.7 * 0.8 + 0.1 * 0.0 + 0.2 * 1.0
 
         assert pheromone == pytest.approx(expected, rel=1e-6)
 
@@ -217,8 +217,9 @@ class TestComputeNodePheromone:
         )
 
         # step_diff = 100, recency ≈ 0
-        # pheromone ≈ 0.5 * 0.8 + 0.3 * 0.0 + 0.2 * ~0 ≈ 0.4
-        assert pheromone < 0.5  # recency 贡献很小
+        # V7 默认权重: alpha=0.7, beta=0.1, delta=0.2
+        # pheromone ≈ 0.7 * 0.8 + 0.1 * 0.0 + 0.2 * ~0 ≈ 0.56
+        assert pheromone < 0.6  # recency 贡献很小
 
     def test_compute_node_pheromone_none_metadata(self):
         """测试元数据为 None 的情况。"""

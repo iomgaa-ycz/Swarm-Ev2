@@ -62,8 +62,8 @@ def compute_node_pheromone(
     current_step: int,
     score_min: Optional[float],
     score_max: Optional[float],
-    alpha: float = 0.5,
-    beta: float = 0.3,
+    alpha: float = 0.7,
+    beta: float = 0.1,
     delta: float = 0.2,
     lambda_: float = 0.05,
 ) -> float:
