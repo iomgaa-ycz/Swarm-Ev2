@@ -348,13 +348,13 @@ class TestPlausibilityNoBestNode:
     def test_plausibility_no_best_node_bounds_still_checked(self, orch_metric):
         """best_node=None 时，METRIC_BOUNDS 绝对范围检查仍生效。"""
         orch_metric.best_node = None
-        orch_metric._task_desc_compressed = "Evaluate using auc metric"
+        orch_metric._task_desc_clean = "Evaluate using auc metric"
         assert orch_metric._check_metric_plausibility(1.5) is False
 
     def test_plausibility_no_best_node_normal_passes(self, orch_metric):
         """best_node=None 时，正常值仍通过。"""
         orch_metric.best_node = None
-        orch_metric._task_desc_compressed = "Evaluate using auc metric"
+        orch_metric._task_desc_clean = "Evaluate using auc metric"
         assert orch_metric._check_metric_plausibility(0.85) is True
 
 
@@ -383,7 +383,7 @@ class TestCheckMetricPlausibility:
 
     def test_auc_overflow_rejected(self, orch_metric):
         """AUC > 1.0 被拒绝。"""
-        orch_metric._task_desc_compressed = "Evaluate using AUC metric"
+        orch_metric._task_desc_clean = "Evaluate using AUC metric"
         orch_metric.best_node = _make_metric_node(0.85)
         assert orch_metric._check_metric_plausibility(1.5) is False
 
@@ -399,25 +399,25 @@ class TestCheckMetricPlausibility:
 
     def test_metric_zero_with_high_best_rejected(self, orch_metric):
         """metric=0.0 且 best > 0.01 时被拒绝。"""
-        orch_metric._task_desc_compressed = "Some generic task"
+        orch_metric._task_desc_clean = "Some generic task"
         orch_metric.best_node = _make_metric_node(0.5)
         assert orch_metric._check_metric_plausibility(0.0) is False
 
     def test_ratio_check_rejects_extreme(self, orch_metric):
         """相对比率超过 50 倍被拒绝。"""
-        orch_metric._task_desc_compressed = "Some generic task"
+        orch_metric._task_desc_clean = "Some generic task"
         orch_metric.best_node = _make_metric_node(0.85)
         assert orch_metric._check_metric_plausibility(500.0) is False
 
     def test_ratio_check_passes_within_bounds(self, orch_metric):
         """相对比率在 50 倍内通过。"""
-        orch_metric._task_desc_compressed = "Some generic task"
+        orch_metric._task_desc_clean = "Some generic task"
         orch_metric.best_node = _make_metric_node(0.85)
         assert orch_metric._check_metric_plausibility(1.2) is True
 
     def test_negative_rmse_rejected(self, orch_metric):
         """RMSE 负值被绝对范围拒绝。"""
-        orch_metric._task_desc_compressed = "Evaluate using rmse metric"
+        orch_metric._task_desc_clean = "Evaluate using rmse metric"
         orch_metric.best_node = _make_metric_node(0.5)
         assert orch_metric._check_metric_plausibility(-0.1) is False
 

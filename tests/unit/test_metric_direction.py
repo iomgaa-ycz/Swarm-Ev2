@@ -327,7 +327,7 @@ def mock_orchestrator_minimal():
     orch = MagicMock()
     orch.task_desc = ""
     orch._global_lower_is_better = None
-    orch._task_desc_compressed = ""
+    orch._task_desc_clean = ""
 
     # 绑定真实方法（从 Orchestrator 类中复制）
     orch._detect_metric_direction = lambda: Orchestrator._detect_metric_direction(orch)

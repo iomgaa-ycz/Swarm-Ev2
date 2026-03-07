@@ -25,7 +25,7 @@ from utils.config import Config
 
 from core.evolution.gene_parser import parse_solution_genes
 from utils.logger_system import log_msg, log_json, log_exception
-from utils.text_utils import condense_term_out
+from utils.text_utils import condense_term_out, clean_task_desc
 from utils.system_info import (
     get_hardware_description,
     get_conda_packages,
@@ -34,6 +34,13 @@ from utils.system_info import (
 
 if TYPE_CHECKING:
     from core.evolution.agent_evolution import AgentEvolution
+
+# Review LLM 系统消息
+REVIEW_SYSTEM_MSG = (
+    "You are an expert ML engineer reviewing a competition solution. "
+    "Before answering, verify your assumptions against the Data Context. "
+    "For example, check sample rates and durations before claiming data truncation."
+)
 
 # Metric 合理性范围（用于防止 LLM Review 幻觉）
 # 格式: { metric_keyword: (min_val, max_val) }
@@ -178,13 +185,11 @@ class Orchestrator:
             experience_pool: 经验池（Phase 3）
             gene_registry: 基因注册表（信息素驱动交叉时必需）
         """
-        from utils.text_utils import compress_task_desc
-
         self.agents = agents
         self.config = config
         self.journal = journal
         self.task_desc = task_desc
-        self._task_desc_compressed = compress_task_desc(task_desc)
+        self._task_desc_clean = clean_task_desc(task_desc)
         self.agent_evolution = agent_evolution
         self.task_dispatcher = task_dispatcher
         self.experience_pool = experience_pool
@@ -401,7 +406,7 @@ class Orchestrator:
         for attempt in range(2):
             try:
                 raw_response = backend_query(
-                    system_message=None,
+                    system_message=REVIEW_SYSTEM_MSG,
                     user_message=review_input,
                     model=self.config.llm.feedback.model,
                     provider=self.config.llm.feedback.provider,
@@ -685,7 +690,7 @@ class Orchestrator:
             True 如果在合理范围内，False 如果异常
         """
         # Phase 1: 绝对范围检查
-        task_lower = (self._task_desc_compressed or "").lower()
+        task_lower = (self._task_desc_clean or "").lower()
         for keyword, (min_val, max_val) in METRIC_BOUNDS.items():
             if _match_metric_keyword(keyword, task_lower):
                 if min_val is not None and metric < min_val:
@@ -911,16 +916,23 @@ class Orchestrator:
         # 判断是否为初稿（无 Diff）
         is_initial = change_context == "(Initial solution, no diff)"
 
+        # 数据上下文
+        data_preview = self._get_cached_data_preview()
+
         # 核心模板
         prompt = f"""You are evaluating a ML solution.
 
-**Task Summary:**
-{self._task_desc_compressed}
+**Task Description:**
+{self._task_desc_clean}
 
 {baseline_str}
 **Current Best**: {best_metric_str}
 
 ---
+
+## Data Context
+
+{data_preview if data_preview else "(No data preview available)"}
 
 ## Code Changes
 
@@ -953,7 +965,8 @@ class Orchestrator:
 
 **Metric Alignment Check**: Verify that the validation metric printed in output matches the competition's evaluation metric. If the code uses a different loss function for training (e.g., Focal Loss) but reports that loss as the validation metric instead of the actual competition metric (e.g., log_loss), set `is_bug=true` and explain in `key_change`.
 
-Respond with a JSON object (no markdown, no explanation, ALL 10 keys required, only "metric" may be null):
+First, briefly state your key observations (2-3 sentences, verify assumptions against Data Context).
+Then respond with a JSON object (ALL 10 keys required, only "metric" may be null):
 {{
     "is_bug": <bool>,
     "has_csv_submission": <bool>,
@@ -1456,13 +1469,15 @@ For buggy solutions, still fill all string fields (e.g. approach_tag="Failed: OO
                     beaten += 1
 
         quality = beaten / total if total > 0 else 0.5
-        log_json({
-            "event": "node_quality_computed",
-            "node_id": node.id[:12],
-            "metric_value": node.metric_value,
-            "lower_is_better": node.lower_is_better,
-            "quality": round(quality, 3),
-        })
+        log_json(
+            {
+                "event": "node_quality_computed",
+                "node_id": node.id[:12],
+                "metric_value": node.metric_value,
+                "lower_is_better": node.lower_is_better,
+                "quality": round(quality, 3),
+            }
+        )
         return quality
 
     def _finalize_node(
@@ -1715,14 +1730,16 @@ For buggy solutions, still fill all string fields (e.g. approach_tag="Failed: OO
             )
 
             self.experience_pool.add(record)
-            log_json({
-                "event": "experience_pool_record_added",
-                "agent_id": agent_id,
-                "task_type": task_type,
-                "output_quality": round(output_quality, 3),
-                "is_buggy": node.is_buggy,
-                "node_id": node.id[:12],
-            })
+            log_json(
+                {
+                    "event": "experience_pool_record_added",
+                    "agent_id": agent_id,
+                    "task_type": task_type,
+                    "output_quality": round(output_quality, 3),
+                    "is_buggy": node.is_buggy,
+                    "node_id": node.id[:12],
+                }
+            )
 
         except Exception as e:
             log_msg("WARNING", f"写入经验池失败: {e}")
