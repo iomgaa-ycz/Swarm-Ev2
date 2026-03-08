@@ -1,0 +1,65 @@
+{# ===================================================================== #}
+{# 共享宏定义 - 所有模板通过 {% from "_macros.j2" import xxx %} 调用    #}
+{# 修改一处，四个模板同步生效                                            #}
+{# ===================================================================== #}
+
+{# ---- 任务上下文（任务描述 + 数据预览） ---- #}
+{% macro render_task_context(task_desc, data_preview) %}
+# Task Description
+
+{{ task_desc }}
+
+# Data Overview
+
+{{ data_preview }}
+{% endmacro %}
+
+{# ---- 超时强制警告 + fold/workers 建议 ---- #}
+{# time_str / steps_remaining / exec_timeout_str 均为 required 字段，不做 if 守卫 #}
+{% macro render_timeout_warning(time_str, steps_remaining, exec_timeout_str) %}
+## Time and Resource Constraints
+
+- **Total Time Remaining**: {{ time_str }}
+- **Total Steps Remaining**: {{ steps_remaining }}
+- **Per-Node Execution Timeout**: {{ exec_timeout_str }}
+- Your code **MUST** complete within **{{ exec_timeout_str }}** — exceeding this limit will be killed and produce zero score.
+- **For image/large datasets (>10k samples)**: Budget time carefully. Prefer fewer folds (3 instead of 5), lower resolution, or smaller model if needed to fit within the timeout. A completed 3-fold run is infinitely better than a timed-out 5-fold run.
+{% endmacro %}
+
+{# ---- 系统环境信息 ---- #}
+{% macro render_env_info(device_info, conda_env_name, conda_packages) %}
+## System Environment
+
+- **Device**: {{ device_info }}
+- **Conda Environment**: `{{ conda_env_name }}`
+- **Installed Packages**: {{ conda_packages }}
+
+**Note**: Use time and steps efficiently. If GPU is available, prioritize GPU-accelerated solutions. (GPU > Multi-core CPU > Single-core CPU)
+{% endmacro %}
+
+{# ---- Evolution Log + 使用说明（条件渲染） ---- #}
+{% macro render_memory(memory) %}
+{% if memory %}
+# Evolution Log
+
+> **CRITICAL**: You MUST read and use this Evolution Log to inform your approach.
+
+{{ memory }}
+
+## Instructions for Using Evolution Log
+
+You MUST:
+1. **Read the Changelog** - Understand what changes improved/degraded performance
+2. **Respect Constraints** - NEVER repeat errors listed in Constraints section
+3. **Build on Insights** - Your approach should address identified bottlenecks
+4. **Explore New Directions** - Pick from Unexplored Directions or propose new ones
+
+Your **Thinking** section MUST reference:
+- Which insight from Changelog informed your approach
+- What specific bottleneck you're targeting
+- Why your proposed change should help
+
+**DO NOT** copy previous Thinking verbatim. Your analysis must be specific to this attempt.
+
+{% endif %}
+{% endmacro %}

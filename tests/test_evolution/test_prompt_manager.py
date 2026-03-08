@@ -1,6 +1,6 @@
 """PromptManager 单元测试。
 
-测试 Prompt 管理器的核心功能：Skill 加载、Agent 配置加载、Prompt 构建、Top-K 注入。
+测试 Prompt 管理器的核心功能：Skill 加载、Agent 配置加载、Prompt 构建、Top-K 注入、Spec 校验。
 """
 
 import pytest
@@ -380,6 +380,158 @@ class TestIntegration:
 
 
 # ============================================================
+# Prompt Spec 校验测试（Phase 1 新增）
+# ============================================================
+
+
+@pytest.fixture
+def spec_prompt_system(tmp_path):
+    """创建带 prompt_spec.yaml 的临时 Prompt 系统。"""
+    template_dir = tmp_path / "prompt_templates"
+    skills_dir = tmp_path / "skills"
+    agent_configs_dir = tmp_path / "agent_configs"
+    template_dir.mkdir()
+    skills_dir.mkdir()
+    agent_configs_dir.mkdir()
+
+    # 创建测试模板
+    (template_dir / "draft.j2").write_text(
+        "# Task: {{ task_desc }}\n# Time: {{ time_str }}\n# Steps: {{ steps_remaining }}"
+    )
+
+    # 创建 Agent 配置
+    default_dir = agent_configs_dir / "default"
+    default_dir.mkdir()
+    (default_dir / "role.md").write_text("# Role\nTest agent.")
+
+    # 创建 prompt_spec.yaml（在 template_dir 的父目录）
+    spec_content = """
+templates:
+  draft:
+    required_context:
+      - task_desc
+      - time_remaining
+      - steps_remaining
+      - exec_timeout
+    optional_context:
+      - parent_node
+      - memory
+      - data_preview
+"""
+    (tmp_path / "prompt_spec.yaml").write_text(spec_content)
+
+    return {
+        "template_dir": template_dir,
+        "skills_dir": skills_dir,
+        "agent_configs_dir": agent_configs_dir,
+        "spec_path": tmp_path / "prompt_spec.yaml",
+    }
+
+
+class TestPromptSpecValidation:
+    """测试 prompt_spec.yaml 校验逻辑。"""
+
+    def test_validate_context_missing_required_warns(self, spec_prompt_system, capsys):
+        """缺少 required 字段时输出 WARNING（不 raise）。"""
+        pm = PromptManager(
+            template_dir=spec_prompt_system["template_dir"],
+            skills_dir=spec_prompt_system["skills_dir"],
+            agent_configs_dir=spec_prompt_system["agent_configs_dir"],
+            spec_path=spec_prompt_system["spec_path"],
+        )
+
+        # 缺少 exec_timeout
+        context = {
+            "task_desc": "Test task",
+            "time_remaining": 3600,
+            "steps_remaining": 10,
+        }
+
+        # 不应抛出异常
+        prompt = pm.build_prompt("draft", "agent_0", context)
+        assert "Test task" in prompt
+
+        # 验证 WARNING 日志（log_msg 回退到 print）
+        captured = capsys.readouterr()
+        assert "缺少 required 字段: exec_timeout" in captured.out
+
+    def test_validate_context_all_present_no_warning(self, spec_prompt_system, capsys):
+        """所有 required 字段齐全时无 WARNING。"""
+        pm = PromptManager(
+            template_dir=spec_prompt_system["template_dir"],
+            skills_dir=spec_prompt_system["skills_dir"],
+            agent_configs_dir=spec_prompt_system["agent_configs_dir"],
+            spec_path=spec_prompt_system["spec_path"],
+        )
+
+        context = {
+            "task_desc": "Test task",
+            "time_remaining": 3600,
+            "steps_remaining": 10,
+            "exec_timeout": 5400,
+        }
+
+        pm.build_prompt("draft", "agent_0", context)
+
+        captured = capsys.readouterr()
+        assert "缺少 required" not in captured.out
+
+    def test_validate_context_missing_optional_debug_log(self, spec_prompt_system, capsys):
+        """缺少 optional 字段时输出 DEBUG 日志。"""
+        pm = PromptManager(
+            template_dir=spec_prompt_system["template_dir"],
+            skills_dir=spec_prompt_system["skills_dir"],
+            agent_configs_dir=spec_prompt_system["agent_configs_dir"],
+            spec_path=spec_prompt_system["spec_path"],
+        )
+
+        context = {
+            "task_desc": "Test task",
+            "time_remaining": 3600,
+            "steps_remaining": 10,
+            "exec_timeout": 5400,
+            # 不传 parent_node, memory, data_preview (optional)
+        }
+
+        pm.build_prompt("draft", "agent_0", context)
+
+        captured = capsys.readouterr()
+        assert "缺少 optional 字段" in captured.out
+
+    def test_no_spec_skips_validation(self, temp_prompt_system, caplog):
+        """spec 为 None 时跳过校验（向后兼容）。"""
+        pm = PromptManager(
+            template_dir=temp_prompt_system["template_dir"],
+            skills_dir=temp_prompt_system["skills_dir"],
+            agent_configs_dir=temp_prompt_system["agent_configs_dir"],
+        )
+        assert pm._prompt_spec is None
+
+        context = {
+            "task_desc": "Test task",
+            "parent_node": None,
+            "memory": "",
+            "data_preview": None,
+            "time_remaining": 3600,
+            "steps_remaining": 10,
+        }
+
+        # 不应抛出异常
+        prompt = pm.build_prompt("draft", "agent_0", context)
+        assert "Test task" in prompt
+
+    def test_spec_auto_discovery(self, spec_prompt_system):
+        """测试自动从 template_dir 父目录发现 prompt_spec.yaml。"""
+        # 不传 spec_path，应自动从 template_dir 的父目录找到
+        pm = PromptManager(
+            template_dir=spec_prompt_system["template_dir"],
+            skills_dir=spec_prompt_system["skills_dir"],
+            agent_configs_dir=spec_prompt_system["agent_configs_dir"],
+        )
+        assert pm._prompt_spec is not None
+
+
+# ============================================================
 # 以下测试迁移自 test_prompt_builder.py（使用真实 benchmark 目录）
 # ============================================================
 
@@ -417,15 +569,21 @@ class TestPromptManagerRealDir:
                 "task_desc": "Predict housing prices",
                 "parent_node": None,
                 "memory": "",
-                "data_preview": None,
+                "data_preview": "train.csv: 1000 rows",
                 "time_remaining": 3600,
                 "steps_remaining": 10,
+                "device_info": "CPU only",
+                "conda_env_name": "python",
+                "conda_packages": "numpy, pandas",
+                "exec_timeout": 5400,
             },
         )
 
         assert "# Agent Role" in prompt
         assert "Predict housing prices" in prompt
         assert "# Response Format" in prompt or "## Output" in prompt
+        assert "MUST" in prompt  # 强超时警告
+        assert "Common Pitfalls" in prompt or "common_pitfalls" in prompt.lower()
 
     def test_format_time(self):
         """测试时间格式化。"""

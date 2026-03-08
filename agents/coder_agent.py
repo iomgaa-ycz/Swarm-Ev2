@@ -292,6 +292,8 @@ class CoderAgent(BaseAgent):
                 "primary_parent": context.primary_parent,
                 "secondary_parent": context.secondary_parent,  # V7: 第二亲本
                 "gene_plan": context.gene_plan,
+                "memory": context.journal.generate_summary(include_code=False),
+                "data_preview": self._generate_data_preview(),
                 "time_remaining": time_remaining,
                 "steps_remaining": steps_remaining,
                 "device_info": context.device_info,
@@ -354,6 +356,8 @@ class CoderAgent(BaseAgent):
                 "parent_node": context.parent_node,
                 "target_gene": context.target_gene,
                 "mutation_aspect": context.mutation_aspect or "",
+                "memory": context.journal.generate_summary(include_code=False),
+                "data_preview": self._generate_data_preview(),
                 "time_remaining": time_remaining,
                 "steps_remaining": steps_remaining,
                 "device_info": context.device_info,
@@ -473,6 +477,7 @@ class CoderAgent(BaseAgent):
             f"{self.name} 预验证失败: {validation.errors}，尝试自动修复",
         )
 
+        time_remaining, steps_remaining = self._calculate_remaining(context)
         debug_context = {
             "buggy_code": node.code,
             "term_out": "",
@@ -482,6 +487,9 @@ class CoderAgent(BaseAgent):
             "device_info": context.device_info,
             "conda_packages": context.conda_packages,
             "conda_env_name": context.conda_env_name,
+            "time_remaining": time_remaining,
+            "steps_remaining": steps_remaining,
+            "exec_timeout": context.exec_timeout,
         }
 
         fixed_node = self._debug(debug_context)

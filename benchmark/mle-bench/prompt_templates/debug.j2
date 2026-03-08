@@ -1,8 +1,8 @@
 {# ===================================================================== #}
 {# DEBUG TASK PROMPT TEMPLATE                                           #}
 {# 用于修复执行失败的代码（即时 Debug 循环）                                 #}
-{# 参考: AIDE agent.py _debug() + ML-Master _debug()                    #}
 {# ===================================================================== #}
+{% from "_macros.j2" import render_task_context, render_timeout_warning, render_env_info %}
 
 {# SECTION: ROLE [EVOLVABLE] #}
 {{ load_agent_config(agent_id, "role") }}
@@ -13,9 +13,7 @@
 {# END SECTION: FORMAT #}
 
 {# SECTION: TASK #}
-# Task Description
-
-{{ task_desc }}
+{{ render_task_context(task_desc, data_preview) }}
 {# END SECTION: TASK #}
 
 {# SECTION: BUGGY CODE #}
@@ -60,14 +58,6 @@ The following issues were detected before execution:
 > **IMPORTANT**: Output the COMPLETE fixed code, not just the changed parts.
 {# END SECTION: INSTRUCTIONS #}
 
-{# SECTION: CONTEXT #}
-{% if data_preview %}
-# Data Overview
-
-{{ data_preview }}
-{% endif %}
-{# END SECTION: CONTEXT #}
-
 {# SECTION: GUIDELINES #}
 {{ load_skill("static/workspace_rules") }}
 
@@ -75,16 +65,7 @@ The following issues were detected before execution:
 
 {{ load_skill("static/common_pitfalls") }}
 
-## Time and Resource Constraints
+{{ render_timeout_warning(time_str, steps_remaining, exec_timeout_str) }}
 
-- **Per-Node Execution Timeout**: {{ exec_timeout_str | default("1 hour 30 minutes") }}
-- Be aware of the running time of the code, it should complete within {{ exec_timeout_str | default("1 hour 30 minutes") }}.
-
-## System Environment
-
-- **Device**: {{ device_info | default("CPU only") }}
-- **Conda Environment**: `{{ conda_env_name | default("python") }}`
-{% if conda_packages %}
-- **Installed Packages**: {{ conda_packages }}
-{% endif %}
+{{ render_env_info(device_info, conda_env_name, conda_packages) }}
 {# END SECTION: GUIDELINES #}

@@ -1,0 +1,102 @@
+# Prompt 模板字段规格定义
+# PromptManager.build_prompt() 在渲染前校验 context 字典是否满足此规格。
+# Phase 1: WARNING 模式（不阻断）；Phase 4 切换为 ERROR 模式。
+
+templates:
+  draft:
+    required_context:
+      - task_desc          # 竞赛描述
+      - time_remaining     # 剩余总时间(秒)
+      - steps_remaining    # 剩余步数
+      - exec_timeout       # 单节点超时(秒)
+      - data_preview       # 数据预览
+      - device_info        # GPU/CPU
+      - conda_env_name     # Conda 环境名
+      - conda_packages     # 已安装包列表
+    optional_context:
+      - parent_node        # 父节点（改进模式）
+      - memory             # Evolution Log
+      - draft_history      # 已尝试方法列表
+      - dynamic_skills     # Top-K Skill
+    skills:
+      - static/output_format
+      - static/workspace_rules
+      - static/code_style
+      - static/common_pitfalls
+    agent_configs:
+      - role
+      - strategy_explore
+
+  debug:
+    required_context:
+      - task_desc
+      - buggy_code         # 有 bug 的代码
+      - term_out           # 执行输出
+      - exec_timeout
+      - data_preview       # 数据预览
+      - device_info        # GPU/CPU
+      - conda_env_name     # Conda 环境名
+      - conda_packages     # 已安装包列表
+    optional_context:
+      - validation_errors  # 预验证错误
+      - time_remaining
+      - steps_remaining
+    skills:
+      - static/output_format
+      - static/workspace_rules
+      - static/code_style
+      - static/common_pitfalls
+    agent_configs:
+      - role
+
+  merge:
+    required_context:
+      - task_desc          # P0 新增
+      - primary_parent     # 主亲本 Node
+      - gene_plan          # 基因交叉计划
+      - time_remaining
+      - steps_remaining
+      - exec_timeout
+      - data_preview       # 数据预览
+      - device_info        # GPU/CPU
+      - conda_env_name     # Conda 环境名
+      - conda_packages     # 已安装包列表
+    optional_context:
+      - secondary_parent   # 第二亲本
+      - memory             # P1 新增（精简版）
+      - dynamic_skills
+    skills:
+      - static/output_format
+      - static/workspace_rules
+      - static/code_style
+      - static/common_pitfalls
+      - by_task_type/merge/merge_guide
+    agent_configs:
+      - role
+      - strategy_merge
+
+  mutate:
+    required_context:
+      - task_desc          # P0 新增
+      - parent_node        # 亲本 Node
+      - target_gene        # 目标基因块
+      - time_remaining
+      - steps_remaining
+      - exec_timeout
+      - data_preview       # 数据预览
+      - device_info        # GPU/CPU
+      - conda_env_name     # Conda 环境名
+      - conda_packages     # 已安装包列表
+    optional_context:
+      - mutation_aspect    # 变异焦点
+      - memory             # P1 新增
+      - dynamic_skills
+    skills:
+      - static/output_format
+      - static/workspace_rules
+      - static/code_style
+      - static/common_pitfalls
+      - by_task_type/mutate/mutate_guide
+    agent_configs:
+      - role
+      - strategy_mutate

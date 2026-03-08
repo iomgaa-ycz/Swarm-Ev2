@@ -2,6 +2,7 @@
 {# MUTATE TASK PROMPT TEMPLATE                                         #}
 {# 用于对特定基因块进行变异，探索局部优化                                    #}
 {# ===================================================================== #}
+{% from "_macros.j2" import render_task_context, render_timeout_warning, render_env_info, render_memory %}
 
 {# SECTION: ROLE [EVOLVABLE] #}
 {{ load_agent_config(agent_id, "role") }}
@@ -12,6 +13,8 @@
 {# END SECTION: FORMAT #}
 
 {# SECTION: TASK #}
+{{ render_task_context(task_desc, data_preview) }}
+
 # Task: Genetic Mutation
 
 You are performing **genetic mutation** on a solution to explore variations and potentially improve fitness.
@@ -50,10 +53,12 @@ You are performing **genetic mutation** on a solution to explore variations and 
 **Important**: Leave all other gene blocks unchanged. Focus your mutation on `{{ target_gene }}`{% if mutation_aspect %} (specifically the `{{ mutation_aspect }}` aspect){% endif %} only.
 {# END SECTION: TASK #}
 
-{# SECTION: STRATEGY [HYBRID] #}
-{{ load_skill("by_task_type/mutate/mutation_strategies") }}
+{# SECTION: CONTEXT #}
+{{ render_memory(memory) }}
+{# END SECTION: CONTEXT #}
 
-{{ load_skill("by_task_type/mutate/local_optimization") }}
+{# SECTION: STRATEGY [HYBRID] #}
+{{ load_skill("by_task_type/mutate/mutate_guide") }}
 
 {{ load_agent_config(agent_id, "strategy_mutate") }}
 {# END SECTION: STRATEGY #}
@@ -69,6 +74,8 @@ You are performing **genetic mutation** on a solution to explore variations and 
 
 {{ load_skill("static/code_style") }}
 
+{{ load_skill("static/common_pitfalls") }}
+
 ## Mutation Checklist
 
 Before finalizing the mutated solution:
@@ -81,17 +88,7 @@ Before finalizing the mutated solution:
 - [ ] Predictions are saved to `./submission/submission.csv`
 - [ ] Mutation rationale is documented in a comment
 
-## Time and Resource Constraints
+{{ render_timeout_warning(time_str, steps_remaining, exec_timeout_str) }}
 
-- **Total Time Remaining**: {{ time_str }}
-- **Total Steps Remaining**: {{ steps_remaining }}
-- **Per-Node Execution Timeout**: {{ exec_timeout_str }}
-- Be aware of the running time of the code, it should complete within {{ exec_timeout_str }}.
-
-## System Environment
-
-- **Device**: {{ device_info | default("CPU only") }}
-- **Conda Environment**: `{{ conda_env_name | default("python") }}`
-{% if conda_packages %}- **Installed Packages**: {{ conda_packages }}
-{% endif %}
+{{ render_env_info(device_info, conda_env_name, conda_packages) }}
 {# END SECTION: GUIDELINES #}

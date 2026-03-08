@@ -131,10 +131,6 @@ import torch
 torch.manual_seed(RANDOM_SEED)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(RANDOM_SEED)
-
-# For TensorFlow
-import tensorflow as tf
-tf.random.set_seed(RANDOM_SEED)
 ```
 
 ## Output
@@ -146,7 +142,7 @@ Your solution's stdout is parsed by an automated review system. Excessive output
 **MUST**:
 - Print data shape after loading: `print(f"Train shape: {train.shape}, Test shape: {test.shape}")`
 - Print per-fold summary (1 line per fold): `print(f"Fold {i+1}: {metric_name}={value:.6f}")`
-- Print final metric as the LAST informational line: `print(f"Validation metric: {mean_value:.6f}")`
+- Print final metric as the LAST informational line (see workspace_rules.md for exact format)
 
 **MUST NOT**:
 - Print per-epoch training logs. Only print final epoch or every 10th epoch at most
@@ -169,5 +165,5 @@ Your solution's stdout is parsed by an automated review system. Excessive output
   submission = pd.DataFrame({'id': test_ids, 'target': predictions})
   assert submission.shape[0] == len(test_ids), "Submission row count mismatch!"
   assert not submission.isnull().any().any(), "Submission contains NaN values!"
-  submission.to_csv('./submission/submission.csv', index=False)
+  submission.to_csv('./submission/submission.csv', index=False)  # See workspace_rules.md for path
   ```

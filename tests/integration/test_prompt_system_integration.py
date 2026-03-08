@@ -37,11 +37,20 @@ class TestPromptSystemIntegration:
         """测试 Jinja2 模板文件存在。"""
         templates = [
             "prompt_templates/draft.j2",
+            "prompt_templates/debug.j2",
             "prompt_templates/merge.j2",
             "prompt_templates/mutate.j2",
         ]
         for template in templates:
             assert (base_dir / template).exists(), f"模板文件缺失: {template}"
+
+    def test_file_structure_macros(self, base_dir):
+        """测试共享宏文件存在。"""
+        assert (base_dir / "prompt_templates/_macros.j2").exists(), "_macros.j2 缺失"
+
+    def test_file_structure_spec(self, base_dir):
+        """测试 prompt_spec.yaml 存在。"""
+        assert (base_dir / "prompt_spec.yaml").exists(), "prompt_spec.yaml 缺失"
 
     def test_file_structure_static_skills(self, base_dir):
         """测试静态 Skill 文件存在。"""
@@ -56,10 +65,8 @@ class TestPromptSystemIntegration:
     def test_file_structure_task_skills(self, base_dir):
         """测试任务特定 Skill 文件存在。"""
         skills = [
-            "skills/by_task_type/merge/crossover_strategies.md",
-            "skills/by_task_type/merge/conflict_resolution.md",
-            "skills/by_task_type/mutate/mutation_strategies.md",
-            "skills/by_task_type/mutate/local_optimization.md",
+            "skills/by_task_type/merge/merge_guide.md",
+            "skills/by_task_type/mutate/mutate_guide.md",
         ]
         for skill in skills:
             assert (base_dir / skill).exists(), f"任务 Skill 缺失: {skill}"
@@ -106,6 +113,10 @@ class TestPromptSystemIntegration:
             "data_preview": "train.csv: 10000 rows, 25 features",
             "time_remaining": 3600,
             "steps_remaining": 20,
+            "device_info": "CPU only",
+            "conda_env_name": "python",
+            "conda_packages": "numpy, pandas",
+            "exec_timeout": 5400,
         }
 
         prompt = prompt_manager.build_prompt("draft", "agent_0", context)
@@ -113,6 +124,7 @@ class TestPromptSystemIntegration:
         assert "Predict customer churn" in prompt, "任务描述缺失"
         assert "1 hour" in prompt, "时间格式化错误"
         assert "20" in prompt, "步数缺失"
+        assert "MUST" in prompt, "强超时警告缺失"
 
     def test_build_draft_prompt_with_parent(self, prompt_manager):
         """测试构建带父节点的 Draft Prompt。"""
@@ -130,15 +142,19 @@ class TestPromptSystemIntegration:
             "task_desc": "Improve the XGBoost model",
             "parent_node": parent_node,
             "memory": "Previous best: 0.82",
-            "data_preview": None,
+            "data_preview": "train.csv: 1000 rows",
             "time_remaining": 7200,
             "steps_remaining": 15,
+            "device_info": "GPU (NVIDIA T4)",
+            "conda_env_name": "python",
+            "conda_packages": "numpy, pandas, xgboost",
+            "exec_timeout": 5400,
         }
 
         prompt = prompt_manager.build_prompt("draft", "agent_1", context)
 
-        assert "XGBoost" in prompt, "父节点代码缺失"
-        assert "0.85" in prompt or "Validation metric" in prompt, "执行结果缺失"
+        assert "Improve the XGBoost model" in prompt, "任务描述缺失"
+        assert "Previous best: 0.82" in prompt, "memory 缺失"
         assert "2 hours" in prompt, "时间格式化错误"
 
     def test_all_agents_have_configs_in_memory(self, prompt_manager):

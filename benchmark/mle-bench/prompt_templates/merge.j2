@@ -2,6 +2,7 @@
 {# MERGE TASK PROMPT TEMPLATE (V7: Two-Parent Crossover)               #}
 {# 用于执行两亲本基因交叉，合并两个父节点的基因块                           #}
 {# ===================================================================== #}
+{% from "_macros.j2" import render_task_context, render_timeout_warning, render_env_info, render_memory %}
 
 {# SECTION: ROLE [EVOLVABLE] #}
 {{ load_agent_config(agent_id, "role") }}
@@ -12,6 +13,8 @@
 {# END SECTION: FORMAT #}
 
 {# SECTION: TASK #}
+{{ render_task_context(task_desc, data_preview) }}
+
 # Task: Two-Parent Genetic Crossover
 
 You are performing **two-parent genetic crossover** to create a child solution
@@ -30,7 +33,6 @@ by combining gene blocks from two parent solutions.
 ```
 {% endif %}
 
-{% if secondary_parent %}
 ## Parent B (fitness={{ secondary_parent.metric_value if secondary_parent.metric_value else "N/A" }})
 
 ```python
@@ -42,7 +44,6 @@ by combining gene blocks from two parent solutions.
 ```
 {{ secondary_parent.term_out[:1000] }}{% if secondary_parent.term_out|length > 1000 %}... (truncated){% endif %}
 ```
-{% endif %}
 {% endif %}
 
 ---
@@ -58,10 +59,12 @@ by combining gene blocks from two parent solutions.
 4. Resolves any conflicts and ensures executable coherence
 {# END SECTION: TASK #}
 
-{# SECTION: STRATEGY [HYBRID] #}
-{{ load_skill("by_task_type/merge/crossover_strategies") }}
+{# SECTION: CONTEXT #}
+{{ render_memory(memory) }}
+{# END SECTION: CONTEXT #}
 
-{{ load_skill("by_task_type/merge/conflict_resolution") }}
+{# SECTION: STRATEGY [HYBRID] #}
+{{ load_skill("by_task_type/merge/merge_guide") }}
 
 {{ load_agent_config(agent_id, "strategy_merge") }}
 {# END SECTION: STRATEGY #}
@@ -77,6 +80,8 @@ by combining gene blocks from two parent solutions.
 
 {{ load_skill("static/code_style") }}
 
+{{ load_skill("static/common_pitfalls") }}
+
 ## Validation Checklist
 
 After merging, ensure:
@@ -88,17 +93,7 @@ After merging, ensure:
 - [ ] Validation metric is printed
 - [ ] Predictions are saved to `./submission/submission.csv`
 
-## Time and Resource Constraints
+{{ render_timeout_warning(time_str, steps_remaining, exec_timeout_str) }}
 
-- **Total Time Remaining**: {{ time_str }}
-- **Total Steps Remaining**: {{ steps_remaining }}
-- **Per-Node Execution Timeout**: {{ exec_timeout_str }}
-- Be aware of the running time of the code, it should complete within {{ exec_timeout_str }}.
-
-## System Environment
-
-- **Device**: {{ device_info | default("CPU only") }}
-- **Conda Environment**: `{{ conda_env_name | default("python") }}`
-{% if conda_packages %}- **Installed Packages**: {{ conda_packages }}
-{% endif %}
+{{ render_env_info(device_info, conda_env_name, conda_packages) }}
 {# END SECTION: GUIDELINES #}

@@ -3,7 +3,8 @@
 **Your response should contain:**
 
 1. **Thinking** (3-5 sentences, REQUIRED)
-   - Reference specific insights from the Changelog (if available)
+   - If a Changelog or Evolution Log is available, reference specific insights from it
+   - If no Changelog is available: for merge, analyze parent solutions' strengths/weaknesses; for mutate, analyze the parent's bottleneck; for draft, analyze the task requirements
    - Identify the bottleneck you're addressing
    - Explain why your proposed change should help
    - **DO NOT** use generic descriptions like "The dataset has X rows..."
@@ -25,9 +26,15 @@
 - **DO** ensure the code is a single-file Python program
 - **DO** make the code executable without modifications
 
-**Example Thinking (DO NOT copy this content, adapt to your situation):**
+**Example Thinking (with Changelog):**
 
 > "Based on Changelog Step 8's insight that airport features improved RMSE by 12%,
 > I will explore additional location-based features. The current bottleneck is
 > long-distance prediction accuracy. I propose adding zone-based target encoding
 > to capture neighborhood-level fare patterns."
+
+**Example Thinking (without Changelog, mutate):**
+
+> "The parent solution shows signs of overfitting (train=0.95, val=0.82).
+> The MODEL block uses no regularization. I will add Dropout(0.3) and L2
+> regularization to improve generalization."
