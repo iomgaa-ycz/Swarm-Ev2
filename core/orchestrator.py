@@ -1358,6 +1358,13 @@ For buggy solutions, still fill all string fields (e.g. approach_tag="Failed: OO
                 f"node={node.id[:8]}, exc_type={current.exc_type}",
             )
 
+            # 计算时间/步数剩余（debug prompt 需要）
+            elapsed = time.time() - self.start_time
+            time_remaining = max(0, int(self.config.agent.time_limit - elapsed))
+            with self.journal_lock:
+                current_step = len(self.journal.nodes)
+            steps_remaining = max(0, self.config.agent.max_steps - current_step)
+
             debug_context = {
                 "buggy_code": current.code,
                 "exc_type": current.exc_type or "",
@@ -1369,6 +1376,9 @@ For buggy solutions, still fill all string fields (e.g. approach_tag="Failed: OO
                 "device_info": context.device_info,
                 "conda_packages": context.conda_packages,
                 "conda_env_name": context.conda_env_name,
+                "time_remaining": time_remaining,
+                "steps_remaining": steps_remaining,
+                "exec_timeout": context.exec_timeout,
             }
 
             fixed_node = agent._debug(debug_context)

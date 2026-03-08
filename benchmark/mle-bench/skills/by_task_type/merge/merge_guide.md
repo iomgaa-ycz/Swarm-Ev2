@@ -21,17 +21,18 @@ When merging two parent solutions, the goal is to **combine their strengths** wh
 - **DATA ↔ MODEL**: Model architecture must match data format
 - **MODEL ↔ TRAIN**: Training strategy (CV, callbacks) must align with model type (sklearn vs DL)
 - **TRAIN ↔ POSTPROCESS**: Inference must match training paradigm (e.g., fold models for CV ensemble)
+- **loss_function ↔ MODEL**: Loss function must be compatible with model output (logits vs probabilities)
 
 ## Conflict Types and Resolution
 
 ### 1. Data Format Mismatch
-**Symptom**: Parent A expects tabular data, Parent B expects image tensors
+**Symptom**: Parent A uses one-hot encoding, Parent B uses label encoding
 
-**Resolution**: Transform data to match the dominant model's format:
+**Resolution**: Transform to match the selected MODEL block's expectations:
 ```python
-# If using Parent B's CNN model with Parent A's tabular data
-# → Reshape tabular to pseudo-images
-X_image = X_tabular.values.reshape(-1, height, width, channels)
+# If using Parent B's model that expects label encoding with Parent A's one-hot data
+# → Convert back to labels
+y_labels = np.argmax(y_onehot, axis=1)
 ```
 
 ### 2. Model Output Shape Incompatibility
@@ -40,9 +41,9 @@ X_image = X_tabular.values.reshape(-1, height, width, channels)
 **Resolution**: Adjust activation or loss configuration:
 ```python
 # Option A: Add activation
-probabilities = tf.nn.softmax(logits)
-# Option B: Use from_logits=True
-loss = tf.keras.losses.CategoricalCrossentropy(from_logits=True)
+probabilities = F.softmax(logits, dim=-1)
+# Option B: Use CrossEntropyLoss (expects raw logits)
+loss_fn = nn.CrossEntropyLoss()  # expects raw logits, NOT probabilities
 ```
 
 ### 3. Hyperparameter Scale Mismatch

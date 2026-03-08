@@ -31,7 +31,7 @@ conda activate Swarm-Evo
 
 # 推荐：使用 conda run 执行命令（自动使用正确环境）
 conda run -n Swarm-Evo pip install -r requirements.txt
-conda run -n Swarm-Evo pytest tests/unit/ -v
+conda run -n Swarm-Evo python -m pytest tests/unit/ -v
 conda run -n Swarm-Evo python main.py
 
 # 或者：在命令前激活环境

@@ -12,7 +12,7 @@ Examples: adjust learning rate (`lr *= uniform(0.5, 2.0)`), modify regularizatio
 ```python
 # Aspect: optimizer (within MODEL block)
 lr = 0.001 * random.uniform(0.5, 2.0)
-optimizer = Adam(learning_rate=lr)
+optimizer = torch.optim.Adam(model.parameters(), lr=lr)
 ```
 
 ### 2. Component Swap (Moderate Exploration)
@@ -22,10 +22,11 @@ Examples: ReLU → LeakyReLU/GELU, Adam → AdamW/SGD, MSE → Huber loss, Dense
 
 ```python
 # Aspect: architecture (within MODEL block)
-model = Sequential([
-    Dense(128), LeakyReLU(alpha=0.2),  # Swapped from ReLU
-    Dense(num_classes, activation='softmax'),
-])
+model = nn.Sequential(
+    nn.Linear(input_dim, 128),
+    nn.LeakyReLU(0.2),  # Swapped from ReLU
+    nn.Linear(128, num_classes),
+)
 ```
 
 ### 3. Structural Change (High Exploration)
@@ -35,12 +36,12 @@ Examples: add residual connection, insert dropout layer, increase/decrease model
 
 ```python
 # Aspect: architecture (within MODEL block)
-model = Sequential([
-    Dense(128, activation='relu'),
-    Dense(64, activation='relu'),   # Added layer
-    Dense(32, activation='relu'),
-    Dense(num_classes, activation='softmax'),
-])
+model = nn.Sequential(
+    nn.Linear(input_dim, 128), nn.ReLU(),
+    nn.Linear(128, 64), nn.ReLU(),   # Added layer
+    nn.Linear(64, 32), nn.ReLU(),
+    nn.Linear(32, num_classes),
+)
 ```
 
 ## Mutation Intensity
@@ -91,12 +92,12 @@ Parent Solution Analysis
 
 ```python
 # MODEL [architecture] — increase depth
-model = Sequential([
-    Dense(256, activation='relu'),  # Increased from 128
-    Dense(128, activation='relu'),  # Added layer
-    Dense(64, activation='relu'),
-    Dense(num_classes, activation='softmax'),
-])
+model = nn.Sequential(
+    nn.Linear(input_dim, 256), nn.ReLU(),  # Increased from 128
+    nn.Linear(256, 128), nn.ReLU(),        # Added layer
+    nn.Linear(128, 64), nn.ReLU(),
+    nn.Linear(64, num_classes),
+)
 ```
 
 ### 2. Overfitting (Train metric >> Val metric)
@@ -106,12 +107,14 @@ model = Sequential([
 
 ```python
 # MODEL [regularization] — increase dropout + L2
-model = Sequential([
-    Dense(128, activation='relu'),
-    Dropout(0.5),  # Increased from 0.3
-    Dense(64, kernel_regularizer=l2(0.01)),
-    Dense(num_classes, activation='softmax'),
-])
+model = nn.Sequential(
+    nn.Linear(input_dim, 128), nn.ReLU(),
+    nn.Dropout(0.5),                              # Increased from 0.3
+    nn.Linear(128, 64), nn.ReLU(),
+    nn.Linear(64, num_classes),
+)
+# 配合 weight_decay（L2 正则化）
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=0.01)
 ```
 
 ### 3. Loss Plateau (Validation loss stops decreasing)
@@ -121,10 +124,12 @@ model = Sequential([
 
 ```python
 # MODEL [optimizer] — switch optimizer
-optimizer = AdamW(lr=0.001, weight_decay=0.01)
+optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=0.01)
 
 # TRAIN [lr_schedule] — add schedule
-lr_schedule = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    optimizer, mode='min', factor=0.5, patience=5
+)
 ```
 
 ### 4. Slow Convergence (Training takes too long)
@@ -132,14 +137,7 @@ lr_schedule = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5)
 **Root Cause**: Inefficient optimizer, poor initialization, or large model
 **Target Genes**: `MODEL` [optimizer], `MODEL` [architecture]
 
-```python
-# MODEL [optimizer] — better init + optimizer
-optimizer = AdamW(lr=0.001)
-model = Sequential([
-    Dense(128, kernel_initializer=HeNormal()),
-    Dense(64, kernel_initializer=HeNormal()),
-])
-```
+Quick fixes: switch to `AdamW`, use `nn.init.kaiming_normal_` for weight init, reduce model depth/width.
 
 ### 5. Unstable Training (Metrics oscillate)
 
@@ -148,11 +146,13 @@ model = Sequential([
 
 ```python
 # MODEL [optimizer] — reduce lr + gradient clipping + BatchNorm
-optimizer = Adam(lr=0.0001, clipnorm=1.0)
-model = Sequential([
-    Dense(128), BatchNormalization(), Activation('relu'),
-    Dense(num_classes, activation='softmax'),
-])
+optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
+torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+# 在模型中加入 BatchNorm:
+model = nn.Sequential(
+    nn.Linear(input_dim, 128), nn.BatchNorm1d(128), nn.ReLU(),
+    nn.Linear(128, num_classes),
+)
 ```
 
 ## Heuristic Table

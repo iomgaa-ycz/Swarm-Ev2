@@ -23,7 +23,7 @@
 - **Total Steps Remaining**: {{ steps_remaining }}
 - **Per-Node Execution Timeout**: {{ exec_timeout_str }}
 - Your code **MUST** complete within **{{ exec_timeout_str }}** — exceeding this limit will be killed and produce zero score.
-- **For image/large datasets (>10k samples)**: Budget time carefully. Prefer fewer folds (3 instead of 5), lower resolution, or smaller model if needed to fit within the timeout. A completed 3-fold run is infinitely better than a timed-out 5-fold run.
+- **Budget rule**: A completed run with fewer folds/lower resolution is infinitely better than a timed-out full run. See workspace rules for fold guidelines.
 {% endmacro %}
 
 {# ---- 系统环境信息 ---- #}
@@ -49,13 +49,13 @@
 ## Instructions for Using Evolution Log
 
 You MUST:
-1. **Read the Changelog** - Understand what changes improved/degraded performance
+1. **Read the Evolution Log** - Understand what changes improved/degraded performance
 2. **Respect Constraints** - NEVER repeat errors listed in Constraints section
 3. **Build on Insights** - Your approach should address identified bottlenecks
 4. **Explore New Directions** - Pick from Unexplored Directions or propose new ones
 
 Your **Thinking** section MUST reference:
-- Which insight from Changelog informed your approach
+- Which insight from the Evolution Log informed your approach
 - What specific bottleneck you're targeting
 - Why your proposed change should help
 

@@ -61,8 +61,8 @@ templates:
       - device_info        # GPU/CPU
       - conda_env_name     # Conda 环境名
       - conda_packages     # 已安装包列表
+      - secondary_parent   # 第二亲本（V7 必需）
     optional_context:
-      - secondary_parent   # 第二亲本
       - memory             # P1 新增（精简版）
       - dynamic_skills
     skills:

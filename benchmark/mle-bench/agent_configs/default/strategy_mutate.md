@@ -11,11 +11,6 @@ When mutating a solution via genetic mutation:
 - If mutating `DATA`, ensure `MODEL` can accept the new input shape
 - If mutating `TRAIN`, ensure training strategy aligns with model type
 
-### Syntax and Execution
-- Verify all imports are included
-- Ensure no undefined variables
-- Test that the code is syntactically correct
-
 ## 2. Documentation
 
 Add a comment explaining the mutation rationale (bottleneck diagnosed → mutation applied → expected improvement).

@@ -20,6 +20,7 @@
 - **MUST save predictions to `./submission/submission.csv`**
   - Follow the required submission format
   - Ensure no missing values or formatting errors
+- **Minimize stdout** — disable tqdm, suppress per-epoch logs. Total stdout < 5000 chars. See Code Style Guidelines for detailed rules.
 
 ### Available Resources
 - **CRITICAL**: ONLY use packages listed in the "Installed Packages" section of System Environment
@@ -51,14 +52,6 @@
 - For datasets > 1M rows, use **random** sampling — NOT sequential truncation
 - WRONG: `pd.read_csv(path, nrows=5_000_000)` — reads only early rows, causes severe distribution bias for time-series data
 - CORRECT: load with chunking or use `skiprows` with a random mask to get a representative sample
-
-### Best Practices
-- Set random seeds for reproducibility
-- Handle edge cases (missing values, data type mismatches)
-- Use appropriate data types to minimize memory usage
-- **Minimize stdout**: Disable tqdm (`disable=True`), suppress per-epoch logs (`verbose=0`).
-  Only print: data shape, per-fold metric, and final `Validation metric: {value}`.
-  Total stdout MUST be under 5000 characters — excessive output degrades automated evaluation.
 
 ## Example Code Structure
 
