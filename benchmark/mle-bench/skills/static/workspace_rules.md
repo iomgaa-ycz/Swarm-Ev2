@@ -32,10 +32,11 @@
 
 > **CRITICAL**: The validation strategy MUST follow these rules:
 
-1. **Default**: `StratifiedKFold(n_splits=5)` (classification) or `KFold(n_splits=5)` (regression). For deep learning, may run ≥3 of 5 folds. Report **mean** of all folds.
-2. **Exception — grouped data**: If training files share date/session/patient prefixes (few unique groups), use `GroupKFold(groups=...)` instead. Random KFold on grouped data causes severe leakage (CV ~0.99 but test ~0.5).
-3. **Metric**: MUST use competition evaluation metric (NOT training loss). Print: `print(f"Validation metric: {metric_value:.6f}")`
-4. **Deep Learning — Save & Ensemble**: For neural network models, **MUST save each fold's best checkpoint** (e.g., `torch.save(model.state_dict(), f"working/model_fold{i}.pt")`). At inference time, load ALL fold models and **average predictions** (ensemble). **NEVER** discard fold models and retrain a single model on full data — this wastes CV compute and loses ensemble benefit.
+1. **Default (ML)**: `StratifiedKFold(n_splits=5)` (classification) or `KFold(n_splits=5)` (regression). Run all 5 folds. Report **mean** of all folds.
+2. **Default (DL)**: For deep learning (PyTorch/TensorFlow), **MUST use `n_splits=5` but only train folds 0 and 1** (2 out of 5). This gives 80% training data per fold while saving 60% training time. Report **mean** of the 2 folds. Save both fold checkpoints for ensemble inference.
+3. **Exception — grouped data**: If training files share date/session/patient prefixes (few unique groups), use `GroupKFold(groups=...)` instead. Random KFold on grouped data causes severe leakage (CV ~0.99 but test ~0.5).
+4. **Metric**: MUST use competition evaluation metric (NOT training loss). Print: `print(f"Validation metric: {metric_value:.6f}")`
+5. **Deep Learning — Save & Ensemble**: For neural network models, **MUST save each fold's best checkpoint** (e.g., `torch.save(model.state_dict(), f"working/model_fold{i}.pt")`). At inference time, load ALL fold models and **average predictions** (ensemble). **NEVER** discard fold models and retrain a single model on full data — this wastes CV compute and loses ensemble benefit.
 
 ### DataLoader Workers (CRITICAL for Image/Audio Tasks)
 - ALWAYS set `num_workers` to use multi-core CPU; `num_workers=0` serializes all I/O and causes GPU starvation
