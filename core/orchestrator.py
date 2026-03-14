@@ -24,7 +24,7 @@ from core.executor.workspace import WorkspaceManager
 from core.backend import query as backend_query
 from utils.config import Config
 
-from core.evolution.gene_parser import parse_solution_genes
+from core.evolution.gene_parser import parse_solution_genes, validate_genes
 from utils.logger_system import log_msg, log_json, log_exception
 from utils.text_utils import condense_term_out, clean_task_desc
 from utils.system_info import (
@@ -1642,6 +1642,8 @@ For buggy solutions, still fill all string fields (e.g. approach_tag="Failed: OO
             f"===== Phase 1 Draft Epoch 开始 (steps={steps}) =====",
         )
 
+        ga_threshold = self.config.evolution.solution.ga_trigger_threshold
+
         for _ in range(steps):
             if self._check_time_limit():
                 break
@@ -1651,6 +1653,19 @@ For buggy solutions, still fill all string fields (e.g. approach_tag="Failed: OO
 
             if node:
                 generated.append(node)
+
+            # Step 级 GA 条件检查：valid_pool 达到阈值即提前返回，让调用方切换混合模式
+            with self.journal_lock:
+                valid_count = len([
+                    n for n in self.journal.nodes
+                    if not n.is_buggy and not n.dead and validate_genes(n.genes)
+                ])
+            if valid_count >= ga_threshold:
+                log_msg(
+                    "INFO",
+                    f"Draft Epoch 提前结束: valid_pool={valid_count}>={ga_threshold}，切换到混合模式",
+                )
+                break
 
         with self.journal_lock:
             current_valid = len(
