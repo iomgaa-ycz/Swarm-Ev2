@@ -24,7 +24,7 @@ def mock_config():
     config.evolution.solution.tournament_k = 3
     config.evolution.solution.crossover_strategy = "random"
     config.evolution.solution.ga_trigger_threshold = 4
-    config.evolution.solution.phase1_target_nodes = 8
+
     return config
 
 
@@ -193,7 +193,6 @@ def omegaconf_config(tmp_path):
                     "steps_per_epoch": 10,
                     "crossover_strategy": "random",
                     "ga_trigger_threshold": 4,
-                    "phase1_target_nodes": 8,
                 }
             },
         }
@@ -559,7 +558,7 @@ class TestRunSingleGaStep:
         config.evolution.solution.tournament_k = 3
         config.evolution.solution.crossover_strategy = "random"
         config.evolution.solution.ga_trigger_threshold = 4
-        config.evolution.solution.phase1_target_nodes = 8
+    
 
         journal = MagicMock()
         journal.nodes = [self._make_ga_node() for _ in range(2)]
@@ -578,7 +577,7 @@ class TestRunSingleGaStep:
         config.evolution.solution.tournament_k = 3
         config.evolution.solution.crossover_strategy = "random"
         config.evolution.solution.ga_trigger_threshold = 4
-        config.evolution.solution.phase1_target_nodes = 8
+    
 
         journal = MagicMock()
         journal.nodes = [self._make_ga_node() for _ in range(6)]

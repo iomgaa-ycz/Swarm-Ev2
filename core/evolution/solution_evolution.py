@@ -66,10 +66,6 @@ class SolutionEvolution:
         self.crossover_strategy = config.evolution.solution.crossover_strategy
         # GA 触发阈值（解耦于 population_size，允许更早触发进化）
         self.ga_trigger_threshold = config.evolution.solution.ga_trigger_threshold
-        # 两阶段进化参数（P1 新增）
-        self.phase1_target_nodes = getattr(
-            config.evolution.solution, "phase1_target_nodes", 8
-        )
 
         # 当前种群
         self.population: List[Node] = []
@@ -77,8 +73,7 @@ class SolutionEvolution:
         log_msg(
             "INFO",
             f"SolutionEvolution 初始化（两阶段进化 V7）: population_size={self.population_size}, "
-            f"crossover_strategy={self.crossover_strategy}, "
-            f"phase1_target_nodes={self.phase1_target_nodes}",
+            f"crossover_strategy={self.crossover_strategy}",
         )
 
     def run_epoch(self, steps_per_epoch: int) -> Optional[Node]:

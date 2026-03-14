@@ -131,8 +131,6 @@ class SolutionEvolutionConfig:
     tournament_k: int
     steps_per_epoch: int
     crossover_strategy: str = "random"  # "random" 或 "pheromone"
-    # ---- 两阶段进化新增 ----
-    phase1_target_nodes: int = 8  # Phase 1 结束条件：valid_pool 达到此数量
     debug_max_attempts: int = 2  # debug_chain 最大次数（两阶段共用）
 
 
@@ -452,7 +450,6 @@ def validate_config(cfg: DictConfig) -> Config:
                     tournament_k=0,
                     steps_per_epoch=0,
                     crossover_strategy="random",
-                    phase1_target_nodes=8,
                     debug_max_attempts=2,
                 ),
                 agent=AgentEvolutionConfig(
