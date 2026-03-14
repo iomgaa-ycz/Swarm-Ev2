@@ -1,5 +1,5 @@
 vars:
-  time_limit: &time_limit 43200
+  time_limit: &time_limit 86400
   step_limit: &step_limit 100
 
 defaults: &defaults

@@ -13,7 +13,7 @@ execution:
 
 agent:
   max_steps: ${env:STEP_LIMIT, 100}
-  time_limit: ${env:TIME_LIMIT_SECS, 43200}
+  time_limit: ${env:TIME_LIMIT_SECS, 86400}
 
 environment:
   conda_env_name: "agent"
